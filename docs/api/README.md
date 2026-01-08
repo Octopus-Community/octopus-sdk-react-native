@@ -13,6 +13,7 @@
 - [ConnectUserParams](interfaces/ConnectUserParams.md)
 - [EditUserEventParams](interfaces/EditUserEventParams.md)
 - [InitializeParams](interfaces/InitializeParams.md)
+- [OctopusTheme](interfaces/OctopusTheme.md)
 
 ## Type Aliases
 

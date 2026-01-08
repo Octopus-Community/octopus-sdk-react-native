@@ -1,5 +1,28 @@
 import { OctopusReactNativeSdk } from './internals/nativeModule';
 import type { UserProfileField } from './types/userProfileField';
+import type { ImageResolvedAssetSource } from 'react-native';
+
+/**
+ * Theme configuration for customizing the Octopus UI appearance.
+ */
+export interface OctopusTheme {
+  /** Color customization options */
+  colors?: {
+    /** Primary color set for branding (hex format: #FF6B35 or FF6B35) */
+    primary?: string;
+    /** Primary low contrast color (lighter variation of primary) (hex format: #FF6B35 or FF6B35) */
+    primaryLowContrast?: string;
+    /** High contrast variation of primary color (hex format: #FF6B35 or FF6B35) */
+    primaryHighContrast?: string;
+    /** Color for content displayed over the primary color (hex format: #FF6B35 or FF6B35) */
+    onPrimary?: string;
+  };
+  /** Logo customization */
+  logo?: {
+    /** Local image resource - use Image.resolveAssetSource(require('./path/to/image.png')) */
+    image?: ImageResolvedAssetSource;
+  };
+}
 
 /**
  * Configuration params for initializing the Octopus SDK.
@@ -23,6 +46,8 @@ export interface InitializeParams {
         /** Octopus-managed authentication mode */
         type: 'octopus';
       };
+  /** Optional theme customization for the Octopus UI */
+  theme?: OctopusTheme;
 }
 
 /**

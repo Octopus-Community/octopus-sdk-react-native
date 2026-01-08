@@ -47,7 +47,7 @@ PODS:
   - OctopusCommunityUI (1.5.1):
     - OctopusCommunity (= 1.5.1)
     - OctopusCommunityCore (= 1.5.1)
-  - OctopusReactNativeSdk (0.1.0):
+  - OctopusReactNativeSdk (1.0.0):
     - DoubleConversion
     - glog
     - hermes-engine
@@ -1995,7 +1995,7 @@ SPEC CHECKSUMS:
   OctopusCommunityGrpcModels: 2aaba7ddd0778c284857149927aea05a6076802f
   OctopusCommunityRemoteClient: 5683b94a821bb4d6c4420f84cb8e89bbfbfcc186
   OctopusCommunityUI: a5be473c7673475caea3c4220d729a4a79817c41
-  OctopusReactNativeSdk: 9bb73b158b163be5ab9143bf794c78a4a88e47aa
+  OctopusReactNativeSdk: 36515b724ac32a2bb00b20ab7135f3209ba36509
   RCT-Folly: e78785aa9ba2ed998ea4151e314036f6c49e6d82
   RCTDeprecation: be794de7dc6ed8f9f7fbf525f86e7651b8b68746
   RCTRequired: a83787b092ec554c2eb6019ff3f5b8d125472b3b
@@ -2069,8 +2069,8 @@ SPEC CHECKSUMS:
   SwiftNIOTLS: 598af547490133e9aac52aed0c23c4a90c31dcfc
   SwiftNIOTransportServices: 0b2b407819d82eb63af558c5396e33c945759503
   SwiftProtobuf: 3697407f0d5b23bedeba9c2eaaf3ec6fdff69349
-  Yoga: 0c521d2eddeeff54ba1126068140b6e970a77fc0
+  Yoga: 6eb60fc2c0eef63e7d2ef4a56e0a3353534143a2
 
 PODFILE CHECKSUM: 8e83d1363af36f5010341fcaf484cc482cc8334d
 
-COCOAPODS: 1.15.2
+COCOAPODS: 1.16.2

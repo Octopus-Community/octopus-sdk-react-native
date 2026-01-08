@@ -49,7 +49,18 @@ Due to a bug in XCode 15, you might need to set `ENABLE_USER_SCRIPT_SANDBOXING` 
 
 ### Expo
 
-An expo plugin will be available shortly.
+Configure `use_frameworks` (static or dynamic) with `expo-build-properties`:
+
+```json
+[
+  "expo-build-properties",
+  {
+    "ios": {
+      "useFrameworks": "static"
+    }
+  }
+]
+```
 
 ## Usage
 
@@ -89,12 +100,23 @@ import {
   closeUI,
 } from '@octopus-community/react-native';
 
-// Initialize with SSO mode
+// Initialize with SSO mode and custom theme
 await initialize({
   apiKey: 'YOUR_OCTOPUS_API_KEY',
   connectionMode: {
     type: 'sso',
     appManagedFields: ['username', 'profilePicture', 'biography']
+  },
+  theme: {
+    colors: {
+      primary: '#FF6B35', // Your brand's primary color
+      primaryLowContrast: '#FF8C69', // Lighter variation
+      primaryHighContrast: '#CC4A1A', // Darker variation
+      onPrimary: '#FFFFFF', // Text color on primary background
+    },
+    logo: {
+      image: Image.resolveAssetSource(require('./assets/logo.png')), // Your custom logo
+    },
   }
 });
 
@@ -143,6 +165,44 @@ editUserSubscription.remove();
 Show the Octopus home screen with the [`openUI()`](./docs/api/functions/openUI.md) method.
 
 Future versions of this React Native module will let you show the UI in your React components. Please reach out if you need this prioritized.
+
+### Theme Customization
+
+You can customize the Octopus UI to match your app's branding by providing a theme configuration during initialization:
+
+```ts
+import { Image } from 'react-native';
+
+await initialize({
+  apiKey: 'YOUR_OCTOPUS_API_KEY',
+  connectionMode: { type: 'octopus' },
+  theme: {
+    colors: {
+      primary: '#FF6B35', // Main brand color
+      primaryLowContrast: '#FF8C69', // Lighter variation of primary
+      primaryHighContrast: '#CC4A1A', // Darker variation for high contrast
+      onPrimary: '#FFFFFF', // Text color on primary background
+    },
+    logo: {
+      // Use Image.resolveAssetSource() for bundled image assets
+      image: Image.resolveAssetSource(require('./assets/logo.png')),
+    },
+  }
+});
+```
+
+**Supported customizations:**
+- **Colors**: Primary, low contrast, high contrast, and text colors (iOS & Android)
+- **Logo**: Custom logo using bundled images (iOS & Android)
+- **Color Format**: Hex strings with or without # prefix (e.g., `#FF6B35` or `FF6B35`)
+- **Supported Hex Formats**: 3-digit (`#F63`), 6-digit (`#FF6633`), 8-digit (`#FF6633FF`)
+- **Zero Dependencies**: Implementation uses only built-in native APIs
+
+**Logo Options:**
+- **Bundled Images**: Use `Image.resolveAssetSource(require('./assets/logo.png'))` for local assets
+- **Platform Support**: Both iOS and Android support local image resources
+
+**Note**: All theme properties are optional. If not provided, the default Octopus theme will be used.
 
 ### API docs
 

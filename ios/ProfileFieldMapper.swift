@@ -5,7 +5,7 @@ struct ProfileFieldMapper {
     guard let fields = appManagedFields else {
       return []
     }
-
+    
     var profileFields: Set<ConnectionMode.SSOConfiguration.ProfileField> = []
     for field in fields {
       if let profileField = fromReactNativeString(field) {
@@ -14,7 +14,7 @@ struct ProfileFieldMapper {
     }
     return profileFields
   }
-
+  
   static func fromReactNativeString(_ fieldName: String?) -> ConnectionMode.SSOConfiguration.ProfileField? {
     switch fieldName {
     case "username":
@@ -27,7 +27,7 @@ struct ProfileFieldMapper {
       return nil
     }
   }
-
+  
   static func toReactNativeString(_ profileField: ConnectionMode.SSOConfiguration.ProfileField?) -> String? {
     switch profileField {
     case .nickname:

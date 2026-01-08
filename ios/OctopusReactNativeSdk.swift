@@ -13,6 +13,8 @@ class OctopusReactNativeSdk: RCTEventEmitter {
   private lazy var eventManager = OctopusEventManager(eventEmitter: self)
   private let sdkInitializer = OctopusSDKInitializer()
   private var ssoAuthenticator: OctopusSSOAuthenticator?
+  private var theme: OctopusTheme?
+  private var logoSource: [String: Any]?
 
   // MARK: - Initialization
 
@@ -21,6 +23,8 @@ class OctopusReactNativeSdk: RCTEventEmitter {
     do {
       self.octopusSDK = try sdkInitializer.initialize(options: options, eventManager: eventManager)
       self.ssoAuthenticator = OctopusSSOAuthenticator(octopusSDK: self.octopusSDK!, eventManager: eventManager)
+      self.theme = sdkInitializer.parseTheme(from: options)
+      self.logoSource = sdkInitializer.getLogoSource(from: options)
       resolve(nil)
     } catch {
       reject("INITIALIZE_ERROR", "Failed to initialize Octopus SDK: \(error.localizedDescription)", error)
@@ -96,7 +100,7 @@ class OctopusReactNativeSdk: RCTEventEmitter {
 
     DispatchQueue.main.async {
       do {
-        try self.uiManager.openUI(octopus: octopus)
+        try self.uiManager.openUI(octopus: octopus, theme: self.theme, logoSource: self.logoSource)
         resolve(nil)
       } catch {
         reject("OPEN_UI_ERROR", error.localizedDescription, error)

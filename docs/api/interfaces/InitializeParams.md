@@ -50,3 +50,11 @@ SSO mode configuration
 > **type**: `"octopus"`
 
 Octopus-managed authentication mode
+
+---
+
+### theme?
+
+> `optional` **theme**: [`OctopusTheme`](OctopusTheme.md)
+
+Optional theme customization for the Octopus UI

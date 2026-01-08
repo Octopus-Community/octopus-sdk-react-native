@@ -1,18 +1,40 @@
 import * as Octopus from '@octopus-community/react-native';
+import { useUserTokenProvider } from '@octopus-community/react-native';
 import {
   Text,
   View,
   StyleSheet,
   Button,
   ActivityIndicator,
+  Image,
+  useColorScheme,
 } from 'react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { useUserTokenProvider } from '../../src/useUserTokenProvider';
+
+// Example: Import your logo as a local asset
+// Use Image.resolveAssetSource() to get the actual asset information
+const resolvedLogo = Image.resolveAssetSource(require('../assets/logo.png'));
+
+// Define color sets for different themes
+const lightThemeColors = {
+  primary: '#3B82F6',
+  primaryLowContrast: '#60A5FA',
+  primaryHighContrast: '#1D4ED8',
+  onPrimary: '#FFFFFF',
+};
+
+const darkThemeColors = {
+  primary: '#60A5FA',
+  primaryLowContrast: '#93C5FD',
+  primaryHighContrast: '#3B82F6',
+  onPrimary: '#000000',
+};
 
 export default function App() {
   const [isInitializationTriggered, setIsInitializationTriggered] =
     useState(false);
   const [isConnectingUser, setIsConnectingUser] = useState(false);
+  const colorScheme = useColorScheme();
 
   useEffect(() => {
     const apiKey = process.env.OCTOPUS_COMMUNITY_API_KEY;
@@ -28,6 +50,13 @@ export default function App() {
       connectionMode: {
         type: 'sso',
         appManagedFields: ['profilePicture'],
+      },
+      theme: {
+        colors: colorScheme === 'dark' ? darkThemeColors : lightThemeColors,
+        // Logo customization using local image
+        logo: {
+          image: resolvedLogo,
+        },
       },
     })
       .then(() => {
@@ -52,7 +81,7 @@ export default function App() {
       editUserSubscription.remove();
       loginRequiredSubscription.remove();
     };
-  }, []);
+  }, [colorScheme]);
 
   const [isMockUserConnected, setIsMockUserConnected] = useState(false);
   useUserTokenProvider(async () => {
