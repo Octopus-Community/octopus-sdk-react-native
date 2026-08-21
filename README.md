@@ -1,4 +1,4 @@
-# @octopus-community/react-native
+# Octopus Community SDK for React Native
 
 [![npm package](https://img.shields.io/npm/v/@octopus-community/react-native.svg)](https://www.npmjs.com/package/@octopus-community/react-native)
 [![Android SDK](https://img.shields.io/badge/Android%20SDK-1.13.2-3DDC84.svg)](https://github.com/Octopus-Community/octopus-sdk-android)
