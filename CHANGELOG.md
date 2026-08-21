@@ -1,4 +1,4 @@
-# @octopus-community/react-native
+# Octopus Community SDK for React Native
 
 ## 1.13.0
 
@@ -564,3 +564,4 @@ page.
 
 - Android Octopus SDK: 1.9.1 → 1.11.0
 - iOS Octopus SDK: 1.9.3 → 1.11.0
+
