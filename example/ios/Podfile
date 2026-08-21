@@ -14,6 +14,96 @@ if linkage != nil
   use_frameworks! :linkage => linkage.to_sym
 end
 
+# fmt 11.0.2 marks some constructors `consteval`. The Clang shipping in Xcode 26 enforces
+# consteval more strictly and rejects them ("call to consteval function ... is not a constant
+# expression"), failing the build while compiling fmt/src/format.cc — before any project file is
+# compiled, so it blocks every iOS verification regardless of the diff.
+#
+# The version cannot simply be bumped: RCT-Folly pins `fmt (= 11.0.2)` exactly (see
+# Podfile.lock), so a `pod 'fmt', '~> 11.1'` override is rejected as a dependency conflict.
+# It also cannot be turned off from the command line: base.h defines FMT_USE_CONSTEVAL
+# unconditionally from its own compiler feature checks, with no `#ifndef` guard, so a
+# `-DFMT_USE_CONSTEVAL=0` does reach the compiler and is then overridden by the header.
+#
+# What is left is patching the vendored header to take fmt's own no-consteval fallback
+# (FMT_USE_CONSTEVAL 0, which makes FMT_CONSTEVAL expand to nothing). That only relaxes
+# compile-time format-string checking — it is ABI-neutral.
+#
+# Remove once the React Native version in use bundles an fmt that compiles cleanly under the
+# Clang in Xcode 26.
+def patch_fmt_use_consteval!(installer)
+  header = File.join(installer.sandbox.pod_dir('fmt'), 'include', 'fmt', 'base.h')
+
+  unless File.exist?(header)
+    # Not fatal: an fmt-less dependency graph has no fmt bug to work around. Still worth saying,
+    # because the other reason to land here is this hook looking in the wrong place.
+    Pod::UI.warn "[fmt] #{header} not found — skipped the Xcode 26 consteval patch. " \
+                 'If the iOS build now fails in fmt/src/format.cc, this hook needs updating ' \
+                 '(example/ios/Podfile).'
+    return
+  end
+
+  original = File.read(header)
+  # Deliberately loose about the `#` indentation and the surrounding whitespace: matching the
+  # exact upstream spelling is what makes a patch like this rot silently on an fmt bump.
+  # The leading `\s*` matters: the verification below tolerates an indented `#`, so without it an
+  # indented definition would raise instead of simply being patched.
+  patched = original.gsub(/^(?<define>\s*#\s*define\s+FMT_USE_CONSTEVAL\s+)1$/, '\k<define>0')
+
+  if patched != original
+    # CocoaPods leaves copied pod sources read-only (0444), so this cannot just write. Mask off
+    # the file-type bits `File.stat` reports — chmod's handling of them is unspecified.
+    mode = File.stat(header).mode & 0o7777
+    made_writable = false
+    begin
+      File.chmod(mode | 0o200, header)
+      made_writable = true
+      File.write(header, patched)
+    ensure
+      # Restoring must not mask the failure that brought us here: an exception raised inside
+      # `ensure` replaces the original one, and the original is the diagnostic worth keeping.
+      if made_writable
+        begin
+          File.chmod(mode, header)
+        rescue SystemCallError => e
+          Pod::UI.warn "[fmt] Could not restore mode #{mode.to_s(8)} on #{header}: #{e.message}"
+        end
+      end
+    end
+    Pod::UI.puts '[fmt] Patched FMT_USE_CONSTEVAL -> 0 for Xcode 26 Clang compatibility'.green
+  end
+
+  # Verify rather than assume: without this, a patch that silently stops applying resurfaces much
+  # later as an opaque consteval error deep inside an xcodebuild run.
+  #
+  # This deliberately checks a *weaker* pattern than the one patched above — "defined to anything
+  # that is not 0", rather than "defined to 1". Re-using the substitution's own pattern would make
+  # the check vacuous: any spelling the substitution failed to match would equally fail to match
+  # the check, and the hook would go quiet exactly when it stopped working.
+  # A `0` is only accepted when it is the whole value: `\b` alone would also accept `0 + 1` and
+  # `0 || 1`, which are truthy. Narrowing what counts as disabled can only make this louder, never
+  # quieter — the safe direction for a guard.
+  definitions = File.read(header).scan(/^\s*#\s*define\s+FMT_USE_CONSTEVAL\b.*$/)
+  leftover = definitions.reject do |line|
+    # Comments are removed before the value is judged, so `0 /* note */` counts as disabled while
+    # `0 /* note */ + 1` does not. Closed block comments go first: stripping `//` first would eat
+    # the `*/` of a block comment that happens to contain a `//`, and hide the tail behind it.
+    value = line.gsub(%r{/\*.*?\*/}, ' ').sub(%r{//.*$}, '').sub(%r{/\*.*$}, ' ')
+    value.match?(/\bFMT_USE_CONSTEVAL\s+0\s*$/)
+  end
+
+  if definitions.empty?
+    # The hook has lost its grip on the header rather than succeeded. Not fatal — an fmt that no
+    # longer needs the macro is a legitimate outcome of the bump this whole patch is waiting for.
+    Pod::UI.warn '[fmt] No FMT_USE_CONSTEVAL definition found in base.h. If the iOS build now ' \
+                 'fails in fmt/src/format.cc, the patch in example/ios/Podfile is stale.'
+  elsif !leftover.empty?
+    raise "[fmt] FMT_USE_CONSTEVAL is still enabled in #{header}: " \
+          "#{leftover.map(&:strip).join(' | ')}. The iOS build would fail while compiling " \
+          'fmt/src/format.cc under the Clang in Xcode 26. Fix the patch in example/ios/Podfile.'
+  end
+end
+
 target 'OctopusReactNativeSdkExample' do
   config = use_native_modules!
 
@@ -31,5 +121,7 @@ target 'OctopusReactNativeSdkExample' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+
+    patch_fmt_use_consteval!(installer)
   end
 end

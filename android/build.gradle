@@ -85,7 +85,10 @@ dependencies {
   implementation "com.facebook.react:react-android"
   implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
   implementation platform("androidx.compose:compose-bom:$compose_bom_version")
+  implementation "androidx.compose.foundation:foundation"
+  implementation "androidx.compose.material3:material3"
   implementation "androidx.navigation:navigation-compose:$android_x_navigation_version"
+  implementation "androidx.browser:browser:1.8.0"
 
   api "com.octopuscommunity:octopus-sdk:$octopus_community_version"
   api "com.octopuscommunity:octopus-sdk-ui:$octopus_community_version"

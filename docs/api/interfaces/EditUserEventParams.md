@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.0.0**](../README.md)
+[**@octopus-community/react-native v1.13.0**](../README.md)
 
 ---
 
@@ -10,6 +10,6 @@
 
 ### fieldToEdit
 
-> **fieldToEdit**: `null` \| [`UserProfileField`](../type-aliases/UserProfileField.md)
+> **fieldToEdit**: [`UserProfileField`](../type-aliases/UserProfileField.md) \| `null`
 
 The user profile field that the user wants to edit

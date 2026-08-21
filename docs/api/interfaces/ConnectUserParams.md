@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.0.0**](../README.md)
+[**@octopus-community/react-native v1.13.0**](../README.md)
 
 ---
 
@@ -15,13 +15,6 @@
 #### biography?
 
 > `optional` **biography**: `string`
-
-#### legalAgeReached?
-
-> `optional` **legalAgeReached**: `boolean`
-
-Whether the user has reached legal age.
-Used for age-appropriate content filtering and compliance.
 
 #### profilePicture?
 

@@ -23,7 +23,7 @@ object ProfileFieldMapper {
     return when (fieldName) {
       "username" -> ProfileField.NICKNAME
       "biography" -> ProfileField.BIO
-      "profilePicture" -> ProfileField.AVATAR
+      "profilePicture" -> ProfileField.PICTURE
       else -> null
     }
   }
@@ -32,7 +32,7 @@ object ProfileFieldMapper {
     return when (profileField) {
       ProfileField.NICKNAME -> "username"
       ProfileField.BIO -> "biography"
-      ProfileField.AVATAR -> "profilePicture"
+      ProfileField.PICTURE -> "profilePicture"
       else -> null
     }
   }

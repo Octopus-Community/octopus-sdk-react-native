@@ -5,7 +5,10 @@ pre-commit:
       glob: "*.{js,ts,jsx,tsx}"
       run: npx eslint {staged_files}
     types:
-      glob: "*.{js,ts, jsx, tsx}"
+      glob: "*.{js,ts,jsx,tsx}"
+      # The glob is only a trigger: tsc must stay project-wide. Passing
+      # {staged_files} would make it ignore tsconfig.json entirely, dropping
+      # strict mode, the jsx setting and every other compiler option.
       run: npx tsc
 commit-msg:
   parallel: true

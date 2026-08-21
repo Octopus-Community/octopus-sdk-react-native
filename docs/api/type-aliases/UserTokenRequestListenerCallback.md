@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.0.0**](../README.md)
+[**@octopus-community/react-native v1.13.0**](../README.md)
 
 ---
 

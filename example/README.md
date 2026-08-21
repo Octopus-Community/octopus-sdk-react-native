@@ -1,8 +1,38 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+This is the **Octopus Community React Native SDK** example app. It demonstrates initialization, SSO, theming, display modes (fullscreen and embedded), and all reactive and analytics APIs.
 
-# Getting Started
+# Getting started
 
 > **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+
+## Environment variables
+
+The example app reads configuration from a `.env` file. Copy the template and fill in your values:
+
+```sh
+cp .env.dist .env
+```
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OCTOPUS_COMMUNITY_API_KEY` | Yes | Your Octopus community API key (used for SDK initialization). |
+| `OCTOPUS_SSO_USER_ID` | For "Connect user" | SSO user ID used when you tap **Connect user** in the Setup tab. |
+| `OCTOPUS_SSO_USER_TOKEN` | For "Connect user" | JWT token for that user (used by the token provider and for connecting). |
+| `OCTOPUS_DEMO_POST_ID` | For the "reactions" scenario | Id of an existing post in your community, used by the Scenarios tab's reaction presets. |
+
+Without `OCTOPUS_COMMUNITY_API_KEY`, the app will log an error and skip initialization. Without the SSO variables, the **Connect user** action in the example will not work correctly.
+
+## What the example demonstrates
+
+The app has six tabs:
+
+- **Setup** — Initialize SDK (API key, connection mode), connect/disconnect user, display mode (fullscreen vs embedded), locale override, URL interception toggle.
+- **Theme** — Configure theme (system/light/dark, color set, fonts, logo, bottom inset); changes apply when you reopen the UI.
+- **SDK Data** — Notifications count (refresh and listener), community access (override, track, listener), custom events, and SDK event log.
+- **Groups** — Sync followed groups in batches (manual group id entry).
+- **Scenarios** — Single-tap QA presets for connection, community access, not-seen notifications, push notifications, custom events, locale, theme, and sync followed groups, each carrying a fixed `testID` for automated QA.
+- **Community** — Open the Octopus UI in fullscreen or embedded mode with the current theme and options.
+
+For full SDK documentation, see the [main README](../README.md) and [API reference](../docs/api/README.md).
 
 ## Step 1: Start Metro
 
@@ -36,16 +66,22 @@ yarn android
 
 For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
 
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
+The first time you create a new project, run the Ruby bundler from the **example** directory to install CocoaPods itself:
 
 ```sh
 bundle install
 ```
 
-Then, and every time you update your native dependencies, run:
+Then, and every time you update your native dependencies, run (from the **example** directory).
 
 ```sh
-bundle exec pod install
+yarn ios:pod
+```
+
+Or manually from the `ios` folder:
+
+```sh
+cd ios && bundle exec pod install
 ```
 
 For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
@@ -73,25 +109,7 @@ When you want to forcefully reload, for example to reset the state of your app, 
 - **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
 - **iOS**: Press <kbd>R</kbd> in iOS Simulator.
 
-## Congratulations! :tada:
-
-You've successfully run and modified your React Native App. :partying_face:
-
-### Now what?
-
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
 
 # Troubleshooting
 
 If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
-
-# Learn More
-
-To learn more about React Native, take a look at the following resources:
-
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.

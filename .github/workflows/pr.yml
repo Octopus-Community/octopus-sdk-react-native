@@ -1,0 +1,249 @@
+name: PR
+
+# ORG_STANDARDS §9.1 puts the PR-gate role on `pull_request` alone. The extra
+# `push: main` trigger is a documented deviation, not an oversight: the release
+# runbook's "main is green" pre-flight (.claude/commands/release.md) reads this
+# workflow's runs on `main`, and nothing else on this repo runs the test suite
+# post-merge. Repointing that gate is a separate decision; until then the push
+# trigger stays. (`merge_group` was dropped here: measured 2026-08-19, `main`
+# has no merge queue, so the trigger never fired.)
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+# Least privilege: every job here only reads the tree. `build-android` writes
+# google-services.json from a secret, which needs no token scope of its own.
+permissions:
+  contents: read
+
+# One in-flight run per PR (or per ref outside a PR). Superseded runs are
+# cancelled — five jobs deep, two of them native builds on the single
+# self-hosted Mac, so a stale run holds the whole queue.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# The self-hosted macOS runner defaults to an ASCII-8BIT locale, which makes
+# CocoaPods' unicode_normalize raise Encoding::CompatibilityError. Force UTF-8
+# (same fix as the TestFlight workflow).
+env:
+  LANG: en_US.UTF-8
+  LC_ALL: en_US.UTF-8
+
+# Break-glass runner switch (same pattern as the Android SDK repo): with no
+# self-hosted runner online a required job does not fail, it QUEUES — silently
+# making `main` un-mergeable with no red check to point at. Two repo Actions
+# variables retarget the jobs to GitHub-hosted runners during a parc outage,
+# with no branch-protection change (the check names stay the same):
+#   PR_BUILD_RUNNER        -> lint, test, build-library, build-android
+#                             (any hosted label works, e.g. `ubuntu-latest`)
+#   PR_BUILD_RUNNER_MACOS  -> build-ios (must be a macOS image, e.g. `macos-latest`)
+# Unset (the nominal state) both fall back to `self-hosted` — a scalar label on
+# purpose, NOT `fromJSON` (a malformed value must not take down the run), and it
+# selects the same pool as `[self-hosted, macOS]` because every self-hosted
+# runner on this repo is a macOS Mac Mini. Delete the variables to come back to
+# the self-hosted pool; never leave a required check hard-pinned to a hosted
+# label (a capped org minutes budget would deadlock it the same silent way).
+jobs:
+  lint:
+    runs-on: ${{ vars.PR_BUILD_RUNNER || 'self-hosted' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Lint files
+        run: yarn test:lint
+
+      - name: Typecheck files
+        run: yarn test:types
+
+  test:
+    runs-on: ${{ vars.PR_BUILD_RUNNER || 'self-hosted' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Run unit tests
+        run: yarn test:unit --maxWorkers=2 --coverage
+
+  build-library:
+    runs-on: ${{ vars.PR_BUILD_RUNNER || 'self-hosted' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Build package
+        run: yarn prepare
+
+      # `yarn prepare` regenerates docs/api via typedoc. Those files are
+      # committed AND on the sync-public.yml allowlist, so stale docs ship
+      # broken links to the public mirror — that is exactly how docs/api drifted
+      # to a v1.9.2 stamp with 10 public API pages missing entirely.
+      # Scoped to `docs` because it is the only *tracked* output of `prepare`
+      # (`lib/` is gitignored), which keeps the gate free of false positives
+      # from CI-only artifacts. `--porcelain` rather than `git diff` on purpose:
+      # a newly documented API arrives as an *untracked* file, and `git diff`
+      # alone would not see it.
+      - name: Check generated docs are up to date
+        run: |
+          if [ -n "$(git status --porcelain -- docs)" ]; then
+            echo "::error::docs/api is out of date. Run 'yarn prepare' and commit the result."
+            git status --porcelain -- docs
+            git diff -- docs
+            exit 1
+          fi
+
+  build-android:
+    runs-on: ${{ vars.PR_BUILD_RUNNER || 'self-hosted' }}
+    env:
+      TURBO_CACHE_DIR: .turbo/android
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Cache turborepo for Android
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ env.TURBO_CACHE_DIR }}
+          key: ${{ runner.os }}-turborepo-android-${{ hashFiles('yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-turborepo-android-
+
+      - name: Check turborepo cache for Android
+        run: |
+          TURBO_CACHE_STATUS=$(node -p "($(yarn turbo run build:android --cache-dir="${{ env.TURBO_CACHE_DIR }}" --dry=json)).tasks.find(t => t.task === 'build:android').cache.status")
+
+          if [[ $TURBO_CACHE_STATUS == "HIT" ]]; then
+            echo "turbo_cache_hit=1" >> "$GITHUB_ENV"
+          fi
+
+      - name: Install JDK
+        if: env.turbo_cache_hit != 1
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      # The self-hosted runner has no preinstalled Android SDK, so install the
+      # command-line tools and accept licenses here (sets ANDROID_HOME). Gradle
+      # then auto-downloads the required platform/build-tools during the build.
+      # v4 defaults `cmdline-tools` to 20.0 (v3 shipped 12.x); we pass no
+      # version input, so this job takes that new default.
+      - name: Set up Android SDK
+        if: env.turbo_cache_hit != 1
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+
+      - name: Cache Gradle
+        if: env.turbo_cache_hit != 1
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            ~/.gradle/wrapper
+            ~/.gradle/caches
+          key: ${{ runner.os }}-gradle-${{ hashFiles('example/android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      # The example applies the google-services Gradle plugin (Firebase/FCM for
+      # Android push), which fails the build without google-services.json. The
+      # real file for the RN sample app is injected from a secret. Empty/unset
+      # secret -> build-android fails with a clear "File ... is missing" error.
+      - name: Write google-services.json
+        if: env.turbo_cache_hit != 1
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: printf '%s' "$GOOGLE_SERVICES_JSON" > example/android/app/google-services.json
+
+      - name: Build example for Android
+        env:
+          JAVA_OPTS: "-XX:MaxHeapSize=6g"
+        run: |
+          yarn turbo run build:android --cache-dir="${{ env.TURBO_CACHE_DIR }}"
+
+  build-ios:
+    runs-on: ${{ vars.PR_BUILD_RUNNER_MACOS || 'self-hosted' }}
+    env:
+      XCODE_VERSION: 26.0.1
+      TURBO_CACHE_DIR: .turbo/ios
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Cache turborepo for iOS
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ env.TURBO_CACHE_DIR }}
+          key: ${{ runner.os }}-turborepo-ios-${{ hashFiles('yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-turborepo-ios-
+
+      - name: Check turborepo cache for iOS
+        run: |
+          TURBO_CACHE_STATUS=$(node -p "($(yarn turbo run build:ios --cache-dir="${{ env.TURBO_CACHE_DIR }}" --dry=json)).tasks.find(t => t.task === 'build:ios').cache.status")
+
+          if [[ $TURBO_CACHE_STATUS == "HIT" ]]; then
+            echo "turbo_cache_hit=1" >> "$GITHUB_ENV"
+          fi
+
+      - name: Use appropriate Xcode version
+        if: env.turbo_cache_hit != 1
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
+        with:
+          xcode-version: latest-stable
+
+      # Deliberately NOT SHA-pinned, unlike every other action here: upstream
+      # says "prefer ruby/setup-ruby@v1", because a pinned commit only offers
+      # the Ruby versions that existed at that commit. Already on Node 24.
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          # Must satisfy every `required_ruby_version` in `example/Gemfile.lock`
+          # (>= 3.2 at the time of writing) — read the lock, not this comment.
+          # Too old a Ruby makes the locked graph unsatisfiable, and bundler then
+          # discards the lock and re-resolves *downwards* instead of failing.
+          ruby-version: 3.4.4
+          # The Gemfile lives in `example/`, and this action looks for it relative
+          # to the working directory. Without this it finds none, falls back to the
+          # bundler shipped with Ruby, and silently ignores the lock's
+          # `BUNDLED WITH` — the same class of silent divergence as the pin above.
+          working-directory: 'example'
+
+      - name: Install cocoapods
+        if: env.turbo_cache_hit != 1
+        env:
+          # Fail loudly on any Gemfile/lock divergence rather than silently
+          # installing something other than what the lock pins.
+          BUNDLE_FROZEN: "true"
+        run: |
+          cd example
+          echo "bundle install"
+          bundle install
+          cd ios
+          echo "bundle exec pod repo update"
+          bundle exec pod repo update --verbose
+          echo "bundle exec pod install"
+          bundle exec pod install
+
+      - name: Build example for iOS
+        run: |
+          yarn turbo run build:ios --cache-dir="${{ env.TURBO_CACHE_DIR }}"
+

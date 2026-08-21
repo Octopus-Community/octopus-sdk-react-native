@@ -1,7 +1,14 @@
 source 'https://rubygems.org'
 
-# You may use http://rbenv.org/ or https://rvm.io/ to install and use this version
-ruby ">= 2.6.10"
+# You may use http://rbenv.org/ or https://rvm.io/ to install and use this version.
+# The floor is not cosmetic, and it has to stay in step with Gemfile.lock: the
+# locked gems carry their own `required_ruby_version`, and below it the locked
+# graph is unsatisfiable. Bundler answers that by re-resolving the whole tree
+# downwards — silently, and as far back as fastlane 0.1.18, whose nokogiri
+# dependency then fails to compile — instead of reporting that the lock cannot
+# be honoured. This floor turns that into an immediate, readable failure.
+# Derive its value from the gems in the lock, not from this comment.
+ruby ">= 3.2"
 
 # Exclude problematic versions of cocoapods and activesupport that causes build failures.
 gem 'cocoapods', '>= 1.13', '!= 1.15.0', '!= 1.15.1'
@@ -14,3 +21,8 @@ gem 'bigdecimal'
 gem 'logger'
 gem 'benchmark'
 gem 'mutex_m'
+
+# Required by fastlane but not resolved into the bundle on Ruby 3.4.
+gem 'multi_json'
+
+gem 'fastlane'

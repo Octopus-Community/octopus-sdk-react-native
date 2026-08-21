@@ -4,6 +4,14 @@
   "out": "./docs/api",
   "readme": "none",
   "formatWithPrettier": true,
+  // Pin the Prettier config explicitly. Left unset, typedoc-plugin-markdown
+  // falls back to `process.cwd()` and hands it to `prettier.resolveConfig`,
+  // which treats its argument as a *file* and searches from the PARENT
+  // directory — so the repo's own `prettier` key in package.json is skipped and
+  // Prettier defaults apply. Worse, it is then checkout-dependent: in a git
+  // worktree nested under the repo the upward search does reach package.json,
+  // so the same commit generates different quote styles locally and in CI.
+  "prettierConfigFile": "./package.json",
   "includeVersion": true,
   "disableSources": true
 }

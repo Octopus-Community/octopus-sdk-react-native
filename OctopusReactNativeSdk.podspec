@@ -1,7 +1,7 @@
 require "json"
 
 package = JSON.parse(File.read(File.join(__dir__, "package.json")))
-octopus_version = '~> 1.5.1'
+octopus_version = '1.13.2'
 
 Pod::Spec.new do |s|
   s.name         = "OctopusReactNativeSdk"

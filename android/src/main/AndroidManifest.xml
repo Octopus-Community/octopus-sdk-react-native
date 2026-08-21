@@ -2,7 +2,8 @@
           package="com.octopuscommunity.octopusreactnativesdk">
   <application>
     <activity
-      android:name=".OctopusUIActivity"
+      android:name=".OctopusActivity"
+      android:windowSoftInputMode="adjustResize"
       android:exported="false"
       android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"/>
   </application>

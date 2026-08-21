@@ -1,6 +1,7 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
+apply plugin: "com.google.gms.google-services"
 
 /**
  * This is the configuration block to customize your React Native Android app.
@@ -60,6 +61,36 @@ react {
 def enableProguardInReleaseBuilds = false
 
 /**
+ * CI versionCode = SAMPLE_VERSION_CODE (this app's own small monotonic base, in
+ * gradle.properties) * 10000 + the workflow run number. Same formula/rationale as
+ * octopus-sdk-android-sources' sample app: every CI upload gets a unique, strictly
+ * increasing versionCode without hand-bumping it per release, and the *10000
+ * multiplier caps the run number at 9999 before it would collide with the next
+ * SAMPLE_VERSION_CODE bucket. CI_VERSION_RUN_NUMBER defaults to 0 for local builds,
+ * so `versionName`/`versionCode` stay sane outside of CI.
+ */
+def sampleVersionCode = (findProperty('SAMPLE_VERSION_CODE') ?: '1').toString().toInteger()
+def ciVersionRunNumber = (System.getenv('CI_VERSION_RUN_NUMBER') ?: '0').toInteger()
+def ciVersionCode = sampleVersionCode * 10000 + ciVersionRunNumber
+
+/**
+ * Resolves a release-signing secret from either a Gradle project property (settable via
+ * `-Pname=value` or the `ORG_GRADLE_PROJECT_name` env var convention) or a plain
+ * environment variable of the same name — CI can set either. Returns null (not an empty
+ * string) when unset, so `hasReleaseSigningSecrets` below is a clean boolean check.
+ */
+def resolveReleaseSigningSecret = { String name ->
+    def value = findProperty(name) ?: System.getenv(name)
+    return (value == null || value.toString().isEmpty()) ? null : value.toString()
+}
+
+def releaseKeystoreFile = resolveReleaseSigningSecret('KEYSTORE_FILE')
+def releaseKeystorePassword = resolveReleaseSigningSecret('KEYSTORE_PASSWORD')
+def releaseKeyAlias = resolveReleaseSigningSecret('KEYSTORE_KEY_ALIAS')
+def releaseKeyPassword = resolveReleaseSigningSecret('KEYSTORE_KEY_PASSWORD')
+def hasReleaseSigningSecrets = releaseKeystoreFile && releaseKeystorePassword && releaseKeyAlias && releaseKeyPassword
+
+/**
  * The preferred build flavor of JavaScriptCore (JSC)
  *
  * For example, to use the international variant, you can use:
@@ -77,12 +108,12 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace "octopuscommunity.octopusreactnativesdk.example"
+    namespace "com.octopuscommunity.sdk.reactnative.sample"
     defaultConfig {
-        applicationId "octopuscommunity.octopusreactnativesdk.example"
+        applicationId "com.octopuscommunity.sdk.reactnative.sample"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
+        versionCode ciVersionCode
         versionName "1.0"
     }
     signingConfigs {
@@ -92,18 +123,35 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        if (hasReleaseSigningSecrets) {
+            release {
+                storeFile file(releaseKeystoreFile)
+                storePassword releaseKeystorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            // Sign with the real release keystore when KEYSTORE_FILE/KEYSTORE_PASSWORD/
+            // KEYSTORE_KEY_ALIAS/KEYSTORE_KEY_PASSWORD are provided (CI). Otherwise fall
+            // back to the debug keystore so a local `./gradlew bundleRelease` / `yarn
+            // android --mode release` never breaks for lack of a real keystore.
+            signingConfig hasReleaseSigningSecrets ? signingConfigs.release : signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
+    }
+    lint {
+        // MainActivity extends ReactActivity -> AppCompatActivity -> Activity, but
+        // Lint Vital fails to follow the chain in release builds (known false positive
+        // in the React Native ecosystem). Without this, `assembleRelease` / `yarn android
+        // --mode release` aborts on Instantiatable, which blocks pm-tools QA in release mode.
+        disable 'Instantiatable'
     }
 }
 

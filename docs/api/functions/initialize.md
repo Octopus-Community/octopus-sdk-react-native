@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.0.0**](../README.md)
+[**@octopus-community/react-native v1.13.0**](../README.md)
 
 ---
 
@@ -10,8 +10,10 @@
 
 Initializes the Octopus SDK with the provided configuration.
 
-This function must be called before using any other Octopus SDK features.
-It sets up the SDK with your API key and configures the authentication mode.
+This function must be called before using any other Octopus SDK features. It sets up the SDK
+with your API key, connection mode (SSO or Octopus-managed authentication), and optional theme
+and UI options. For SSO, you also need to set up a token provider with `useUserTokenProvider` or
+`addUserTokenRequestListener` before calling `connectUser`.
 
 ## Parameters
 
@@ -19,27 +21,28 @@ It sets up the SDK with your API key and configures the authentication mode.
 
 [`InitializeParams`](../interfaces/InitializeParams.md)
 
+See [InitializeParams](../interfaces/InitializeParams.md) (including `theme`, `ui`, `topAppBar`). For theming guide see the main README.
+
 ## Returns
 
 `Promise`\<`void`\>
 
+## See
+
+[connectUser](connectUser.md) – connect a user after initialization (SSO mode).
+
 ## Example
 
 ```typescript
-// Initialize with SSO mode
 await initialize({
-  apiKey: "your-api-key",
+  apiKey: 'your-api-key',
   connectionMode: {
-    type: "sso",
-    appManagedFields: ["username", "profilePicture"],
+    type: 'sso',
+    appManagedFields: ['username', 'profilePicture'],
   },
 });
-
-// Initialize with Octopus authentication
 await initialize({
-  apiKey: "your-api-key",
-  connectionMode: {
-    type: "octopus",
-  },
+  apiKey: 'your-api-key',
+  connectionMode: { type: 'octopus' },
 });
 ```

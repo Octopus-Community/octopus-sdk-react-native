@@ -5,13 +5,28 @@
   "scripts": {
     "android": "react-native run-android",
     "ios": "react-native run-ios",
-    "start": "env-cmd -f .env react-native start --client-logs",
+    "ios:pod": "cd ios && bundle exec pod install",
+    "start": "react-native start",
+    "start:reset": "react-native start --reset-cache",
     "build:android": "react-native build-android --extra-params \"--no-daemon --console=plain -PreactNativeArchitectures=arm64-v8a\"",
-    "build:ios": "react-native build-ios --scheme OctopusReactNativeSdkExample --mode Debug --extra-params \"-sdk iphonesimulator CC=clang CPLUSPLUS=clang++ LD=clang LDPLUSPLUS=clang++ GCC_OPTIMIZATION_LEVEL=0 GCC_PRECOMPILE_PREFIX_HEADER=YES ASSETCATALOG_COMPILER_OPTIMIZATION=time DEBUG_INFORMATION_FORMAT=dwarf COMPILER_INDEX_STORE_ENABLE=NO\""
+    "build:ios": "react-native build-ios --scheme OctopusReactNativeSdkExample --mode Debug --extra-params \"-sdk iphonesimulator CC=clang CPLUSPLUS=clang++ LD=clang LDPLUSPLUS=clang++ GCC_OPTIMIZATION_LEVEL=0 GCC_PRECOMPILE_PREFIX_HEADER=YES ASSETCATALOG_COMPILER_OPTIMIZATION=time DEBUG_INFORMATION_FORMAT=dwarf COMPILER_INDEX_STORE_ENABLE=NO\"",
+    "clean:ios": "cd ios && rm -rf build Pods Podfile.lock && pod cache clean --all && cd ..",
+    "clean:android": "cd android && ./gradlew clean && cd .. && rm -rf android/app/build android/build android/.gradle",
+    "clean:all": "yarn clean:ios && yarn clean:android && rm -rf node_modules/.cache",
+    "android:release": "react-native run-android --mode release",
+    "ios:release": "react-native run-ios --scheme OctopusReactNativeSdkExample --mode Release",
+    "rebuild:ios:release": "yarn clean:ios && cd ios && bundle exec pod install && cd .. && yarn ios:release",
+    "rebuild:android:release": "yarn clean:android && yarn android:release"
   },
   "dependencies": {
-    "react": "19.0.0",
-    "react-native": "0.78.2"
+    "@notifee/react-native": "^9.1.8",
+    "@react-native-firebase/app": "^24.0.0",
+    "@react-native-firebase/messaging": "^24.0.0",
+    "react": "19.1.0",
+    "react-native": "0.81.4",
+    "react-native-edge-to-edge": "^1.8.1",
+    "react-native-safe-area-context": "^5.6.2",
+    "react-native-webview": "^13.12.2"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
@@ -20,13 +35,14 @@
     "@react-native-community/cli": "15.0.1",
     "@react-native-community/cli-platform-android": "15.0.1",
     "@react-native-community/cli-platform-ios": "15.0.1",
-    "@react-native/babel-preset": "0.78.2",
-    "@react-native/metro-config": "0.78.2",
-    "@react-native/typescript-config": "0.78.2",
-    "@types/react": "^19.0.0",
+    "@react-native/babel-preset": "0.81.4",
+    "@react-native/metro-config": "0.81.4",
+    "@react-native/typescript-config": "0.81.4",
+    "@types/react": "^19.1.0",
     "babel-plugin-transform-inline-environment-variables": "^0.4.4",
     "env-cmd": "^10.1.0",
-    "react-native-builder-bob": "^0.40.12"
+    "react-native-builder-bob": "^0.40.12",
+    "react-native-dotenv": "^3.4.11"
   },
   "engines": {
     "node": ">=18"

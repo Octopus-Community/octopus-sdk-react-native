@@ -4,14 +4,19 @@ description: Setup Node.js and install dependencies
 runs:
   using: composite
   steps:
+    # v6 and not v5: setup-node v5 started auto-caching whenever package.json
+    # declares `packageManager` (ours says yarn@3.6.1), which would layer a
+    # second, action-managed cache on top of the explicit restore/save pair
+    # below. v6 narrowed that auto-caching to npm only, so a yarn repo behaves
+    # exactly as it did on v4 — no `package-manager-cache: false` opt-out needed.
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
       with:
         node-version-file: .nvmrc
 
     - name: Restore dependencies
       id: yarn-cache
-      uses: actions/cache/restore@v4
+      uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
       with:
         path: |
           **/node_modules
@@ -28,7 +33,7 @@ runs:
 
     - name: Cache dependencies
       if: steps.yarn-cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v4
+      uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
       with:
         path: |
           **/node_modules

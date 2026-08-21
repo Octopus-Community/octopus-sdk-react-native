@@ -1,34 +1,61 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "pipeline": {
+    // `build:android` and `build:ios` are declared in `example/package.json`, so
+    // every glob below is resolved relative to `example/` — NOT to the repo root.
+    // The SDK's own sources therefore have to be reached with `../`, and a bare
+    // directory name never expands to its files: only an explicit `**` does.
+    // Getting either wrong empties the task hash of all native code, so CI
+    // reports a cache hit and silently skips the build it is meant to gate.
+    // `scripts/__tests__/turboNativeInputs.test.ts` asserts what turbo really
+    // resolves here, because neither mistake is visible in a diff.
+    //
+    // Two things deliberately absent: `yarn.lock`, because turbo already folds
+    // the resolved dependency set into the task hash on its own
+    // (`hashOfExternalDependencies`); and every `!…/build/**`, `!…/Pods/**`,
+    // `!…/.gradle/**` below is belt-and-braces — those paths are gitignored and
+    // turbo never hashes them anyway. Only `!../src/__tests__/**` subtracts
+    // something real.
+    //
+    // On a turbo 2.x upgrade, `../x/**` becomes `$TURBO_ROOT$/x/**`: parent
+    // traversal works and is asserted at 1.13.x, but the supported spelling for
+    // a root-relative input is the 2.x microsyntax.
     "build:android": {
       "env": ["ORG_GRADLE_PROJECT_newArchEnabled"],
       "inputs": [
+        "../package.json",
+        "../android/**",
+        "!../android/build/**",
+        "../src/**",
+        "!../src/__tests__/**",
         "package.json",
-        "android",
-        "!android/build",
-        "src/*.ts",
-        "src/*.tsx",
-        "example/package.json",
-        "example/android",
-        "!example/android/.gradle",
-        "!example/android/build",
-        "!example/android/app/build"
+        "react-native.config.js",
+        "android/**",
+        "!android/.gradle/**",
+        "!android/build/**",
+        "!android/app/build/**",
+        "src/**"
       ],
       "outputs": []
     },
     "build:ios": {
       "env": ["RCT_NEW_ARCH_ENABLED"],
       "inputs": [
+        "../package.json",
+        "../*.podspec",
+        "../ios/**",
+        "!../ios/build/**",
+        "../src/**",
+        "!../src/__tests__/**",
         "package.json",
-        "*.podspec",
-        "ios",
-        "src/*.ts",
-        "src/*.tsx",
-        "example/package.json",
-        "example/ios",
-        "!example/ios/build",
-        "!example/ios/Pods"
+        "react-native.config.js",
+        // The CocoaPods the `Install cocoapods` CI step runs with.
+        "Gemfile",
+        "Gemfile.lock",
+        "ios/**",
+        "!ios/build/**",
+        "!ios/Pods/**",
+        "src/**"
       ],
       "outputs": []
     }
