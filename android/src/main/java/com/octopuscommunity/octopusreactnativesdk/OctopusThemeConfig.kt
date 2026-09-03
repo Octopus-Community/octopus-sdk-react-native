@@ -21,6 +21,20 @@ data class OctopusFontsConfig(
   val fontWeight: Int? = null
 )
 
+/**
+ * One mode's colors out of a dual-mode `theme.colors.{light,dark}` set, kept raw so the
+ * selection can be redone every time the effective mode changes — see
+ * [OctopusThemeConfig.resolvedFor].
+ */
+data class OctopusModeColors(
+  val primary: String?,
+  val primaryLowContrast: String?,
+  val primaryHighContrast: String?,
+  val onPrimary: String?,
+  val link: String?,
+  val background: String?
+)
+
 data class OctopusThemeConfig(
   val primaryColor: String?,
   val primaryLowContrastColor: String?,
@@ -32,5 +46,51 @@ data class OctopusThemeConfig(
   val backgroundColor: String?,
   val logoSource: ReadableMap?,
   val colorScheme: String?, // "light" or "dark"
-  val fonts: OctopusFontsConfig?
-)
+  val fonts: OctopusFontsConfig?,
+  /**
+   * Raw light / dark sets of a dual-mode theme, both non-null or both null. The flat color
+   * slots above hold the set selected at `initialize()` for the scheme known then; a render
+   * calls [resolvedFor] to re-select for the mode in effect *now*.
+   */
+  val lightColors: OctopusModeColors? = null,
+  val darkColors: OctopusModeColors? = null
+) {
+  /**
+   * This config with its flat color slots re-selected for [isDark]. Only a dual-mode theme
+   * changes: a single-mode theme has no other set to pick from and is returned as is.
+   * Called at render time by `OctopusContent`, so a `setThemeMode()` or a system appearance
+   * change after `initialize()` re-selects the matching set instead of keeping the one chosen
+   * once at init — which left the light `primaryLow` behind unread notifications in dark
+   * mode (rn#215). Same fallback as at init: `link` and `background` given for one mode only
+   * apply to both.
+   */
+  fun resolvedFor(isDark: Boolean): OctopusThemeConfig {
+    val light = lightColors ?: return this
+    val dark = darkColors ?: return this
+    val selected = if (isDark) dark else light
+    val other = if (isDark) light else dark
+    return copy(
+      primaryColor = selected.primary,
+      primaryLowContrastColor = selected.primaryLowContrast,
+      primaryHighContrastColor = selected.primaryHighContrast,
+      onPrimaryColor = selected.onPrimary,
+      linkColor = selected.link ?: other.link,
+      backgroundColor = selected.background ?: other.background
+    )
+  }
+
+  companion object {
+    /** A config carrying no customization at all — the base for a `colorScheme`-only update. */
+    val EMPTY = OctopusThemeConfig(
+      primaryColor = null,
+      primaryLowContrastColor = null,
+      primaryHighContrastColor = null,
+      onPrimaryColor = null,
+      linkColor = null,
+      backgroundColor = null,
+      logoSource = null,
+      colorScheme = null,
+      fonts = null
+    )
+  }
+}

@@ -1,6 +1,6 @@
-/* eslint-disable react-native/no-inline-styles */
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
-import { SegmentControl } from '../components/SegmentControl';
+import { View, Text, StyleSheet } from 'react-native';
+import { SegmentControl } from '../../components/SegmentControl';
+import { chromeColors } from '../../theme/branding';
 import type {
   ThemeMode,
   ThemeSet,
@@ -10,19 +10,8 @@ import type {
   BottomInsetPreset,
   LinkBackgroundMode,
   FontOverrideMode,
-} from '../types/theme';
-import { EXAMPLE_FONT_FAMILY, EXAMPLE_FONT_WEIGHT } from '../types/theme';
-
-export type {
-  ThemeMode,
-  ThemeSet,
-  FontType,
-  LogoMode,
-  FontSizeMode,
-  BottomInsetPreset,
-  LinkBackgroundMode,
-  FontOverrideMode,
-};
+} from '../../types/theme';
+import { EXAMPLE_FONT_FAMILY, EXAMPLE_FONT_WEIGHT } from '../../types/theme';
 
 const THEME_MODE_OPTIONS: { label: string; value: ThemeMode }[] = [
   { label: 'System', value: 'system' },
@@ -32,6 +21,7 @@ const THEME_MODE_OPTIONS: { label: string; value: ThemeMode }[] = [
 
 const THEME_SET_OPTIONS: { label: string; value: ThemeSet }[] = [
   { label: 'None', value: 'none' },
+  { label: 'Octopus navy', value: 'octopusNavy' },
   { label: 'Theme 1', value: 'theme1' },
   { label: 'Theme 2', value: 'theme2' },
   { label: 'Theme 3', value: 'theme3' },
@@ -76,7 +66,7 @@ const FONT_OVERRIDE_OPTIONS: { label: string; value: FontOverrideMode }[] = [
   { label: EXAMPLE_FONT_FAMILY, value: 'family' },
 ];
 
-export interface ThemeScreenProps {
+export interface ThemePanelProps {
   themeMode: ThemeMode | null;
   onThemeModeChange: (mode: ThemeMode) => void;
   themeSet: ThemeSet;
@@ -99,9 +89,14 @@ export interface ThemeScreenProps {
 }
 
 /**
- * Theme tab: compact controls for Octopus UI appearance (mode, set, fonts, logo, bottom inset).
+ * Theme controls for the Octopus UI appearance (mode, color set, fonts, logo, link/background,
+ * bottom inset).
+ *
+ * Lives under the Theme scenario card, where the shared catalog puts this capability. A panel,
+ * not a screen: the scenario detail owns the scroll, so this renders as a plain column of
+ * cards.
  */
-export function ThemeScreen({
+export function ThemePanel({
   themeMode,
   onThemeModeChange,
   themeSet,
@@ -121,19 +116,16 @@ export function ThemeScreen({
   isDark,
   primaryColor,
   onPrimaryColor,
-}: ThemeScreenProps) {
-  const textColor = isDark ? '#ffffff' : '#000000';
-  const cardBg = isDark ? '#2a2a2a' : '#f5f5f5';
-  const borderColor = isDark ? '#444444' : '#e8e8e8';
+}: ThemePanelProps) {
+  const chrome = chromeColors(isDark);
+  const textColor = chrome.text;
+  const cardBg = chrome.surface;
+  const borderColor = chrome.border;
 
   const effectiveMode = themeMode ?? 'system';
 
   return (
-    <ScrollView
-      style={[styles.container, isDark && styles.containerDark]}
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator
-    >
+    <View style={styles.panel}>
       <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
         <Text style={[styles.label, { color: textColor }]}>Theme mode</Text>
         <SegmentControl
@@ -198,7 +190,7 @@ export function ThemeScreen({
         <Text style={[styles.label, { color: textColor }]}>
           Link &amp; background
         </Text>
-        <Text style={[styles.hint, { color: isDark ? '#888' : '#666' }]}>
+        <Text style={[styles.hint, { color: chrome.textSecondary }]}>
           Custom URL color in posts/comments and community background. Works
           with any color set, including None.
         </Text>
@@ -214,7 +206,7 @@ export function ThemeScreen({
 
       <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
         <Text style={[styles.label, { color: textColor }]}>Font override</Text>
-        <Text style={[styles.hint, { color: isDark ? '#888' : '#666' }]}>
+        <Text style={[styles.hint, { color: chrome.textSecondary }]}>
           Theme-wide family and weight, applied to every text style. The weight
           needs no native font registration; {EXAMPLE_FONT_FAMILY} is registered
           by iOS itself, and on Android this example ships no res/font/
@@ -233,7 +225,7 @@ export function ThemeScreen({
 
       <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
         <Text style={[styles.label, { color: textColor }]}>Bottom inset</Text>
-        <Text style={[styles.hint, { color: isDark ? '#888' : '#666' }]}>
+        <Text style={[styles.hint, { color: chrome.textSecondary }]}>
           Safe area inset for Octopus UI (iOS pt / Android dp). "Unset" omits
           the option entirely — on Android this resolves the inset from where
           the embedded view is mounted; "0" opts back out of that resolution.
@@ -247,22 +239,13 @@ export function ThemeScreen({
           onPrimaryColor={onPrimaryColor}
         />
       </View>
-
-      <View style={styles.bottomSpacer} />
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  containerDark: {
-    backgroundColor: '#1a1a1a',
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
+  panel: {
+    marginTop: 12,
   },
   card: {
     padding: 12,
@@ -276,11 +259,8 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   hint: {
-    fontSize: 11,
+    fontSize: 12,
     marginBottom: 8,
     lineHeight: 16,
-  },
-  bottomSpacer: {
-    height: 24,
   },
 });

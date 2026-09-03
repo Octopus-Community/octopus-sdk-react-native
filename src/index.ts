@@ -32,6 +32,8 @@ export * from './addCommunityDataListener';
 export * from './debugOverrideProfileFieldsLock';
 export * from './debugOverrideContentOptions';
 export * from './debugOverrideTermsAcceptanceMode';
+export * from './debugOverrideExposeClientUserId';
+export * from './debugGetCommunityConfig';
 export * from './navigateToOctopusCreatePost';
 export * from './types/userProfileField';
 export * from './types/connectUserError';

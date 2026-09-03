@@ -32,6 +32,7 @@
  * about how the SDK is *hosted* (modally presented vs. embedded), not about
  * which entry point mounted it.
  *
- * @see {@link https://github.com/Octopus-Community/octopus-sdk-react-native-private/issues/36 | issue #36}
+ * A standalone `navigationStack` embedded default is tracked as remaining
+ * parity work with the native SDKs.
  */
 export type OctopusNavigationMode = 'automatic' | 'navigationStack';

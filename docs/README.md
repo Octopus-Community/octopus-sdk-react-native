@@ -6,7 +6,8 @@ Documentation for **@octopus-community/react-native**.
 
 | Document | Description |
 |----------|-------------|
-| [Main README](../README.md) | Getting started: installation, iOS/Android setup, initialization, SSO, theming, and example app overview |
+| [Main README](../README.md) | Getting started: installation, iOS/Android setup, initialization, SSO, and example app overview |
+| [Theming](./theming.md) | Colors, dark/light modes, fonts, logo, top app bar, and the full theme reference |
 | [API Reference](api/README.md) | Full TypeScript API: functions, interfaces, types, and enumerations |
 | [Push notifications](./push-notifications.md) | Integration guide for iOS and Android push notifications |
 | [Sync follow groups](./sync-follow-groups.md) | Batch follow/unfollow groups API reference |

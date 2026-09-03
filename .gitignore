@@ -98,7 +98,10 @@ android/generated
 # React Native Nitro Modules
 nitrogen/
 
-example/.env
+# Never commit a filled `.env`, nor any copy or backup of one: the file holds a
+# real community API key. Only the empty template is tracked.
+example/.env*
+!example/.env.dist
 
 # tmp section
 FEATURE_*.md

@@ -397,7 +397,11 @@ export function initialize(params: InitializeParams): Promise<void> {
   const paramsWithColorScheme = {
     ...params,
     theme: processedTheme,
-    colorScheme: colorScheme || undefined,
+    // A force set through setThemeMode() before initialize() is the scheme the native side
+    // must start from — the Android theme config is built from this value, and a system value
+    // here would overwrite the force one native call after it was pushed.
+    colorScheme:
+      colorSchemeManager.getForcedColorScheme() ?? (colorScheme || undefined),
   };
 
   // Set the theme in the color scheme manager for dual-mode support
@@ -413,6 +417,9 @@ export function initialize(params: InitializeParams): Promise<void> {
   attachStateChannels();
 
   return OctopusReactNativeSdk.initialize(paramsWithColorScheme).then(() => {
+    // Re-push an active setThemeMode() force now that the native side exists (iOS holds the
+    // override outside of initialize; a re-initialize() rebuilt the Android config).
+    colorSchemeManager.pushForcedColorScheme();
     // Parity wave — lifecycle: client-side, optimistic mirror consumed synchronously by
     // `isInitialised()` — see `internals/initialisationState.ts`.
     setIsInitialised(true);

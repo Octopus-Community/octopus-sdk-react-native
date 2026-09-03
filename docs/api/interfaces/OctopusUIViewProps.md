@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.13.0**](../README.md)
+[**@octopus-community/react-native v1.13.1**](../README.md)
 
 ---
 
@@ -93,11 +93,9 @@ false;
 > `optional` **navBarLeadingAction**: [`OctopusNavBarLeadingAction`](../type-aliases/OctopusNavBarLeadingAction.md)
 
 Overrides the leading (top-left) icon on the top app bar with a close
-(X) or back arrow, regardless of [showBackButton](#showbackbutton). Subject to the
-same known gap as [showBackButton](#showbackbutton): tapping it is currently inert
-on the embedded root (no JS callback exists yet) — use it to restyle the
-icon the SDK's own navigation already reacts to, not to add a new
-app-level dismissal.
+(X) or back arrow, regardless of [showBackButton](#showbackbutton). Tapping either
+variant on the SDK's root screen fires [onBackRequested](#onbackrequested), same as
+the [showBackButton](#showbackbutton) icon.
 
 When omitted, the native default applies: a back arrow gated by
 [showBackButton](#showbackbutton).
@@ -168,6 +166,36 @@ For consistent cross-platform re-deep-linking, force a remount by adding
 
 ---
 
+### onBackRequested()?
+
+> `optional` **onBackRequested**: () => `void`
+
+Called when the top app bar's leading icon (back arrow or close — see
+[showBackButton](#showbackbutton) and [navBarLeadingAction](#navbarleadingaction)) is tapped on the
+SDK's **root** screen, where the SDK's own internal navigation has
+nothing left to pop. The RN analog of the Flutter `OctopusHomeScreen`
+widget's `onBack` callback: use it to dismiss your own container (pop
+your route, close your modal, switch tab…).
+
+Not called on the SDK's sub-screens — there the icon pops the SDK's
+internal stack itself, exactly like `openUI()`'s fullscreen UI.
+
+#### Returns
+
+`void`
+
+#### Example
+
+```tsx
+<OctopusUIView
+  showBackButton={true}
+  onBackRequested={() => navigation.goBack()}
+  style={StyleSheet.absoluteFill}
+/>
+```
+
+---
+
 ### showBackButton?
 
 > `optional` **showBackButton**: `boolean`
@@ -175,14 +203,10 @@ For consistent cross-platform re-deep-linking, force a remount by adding
 Whether the embedded UI's top app bar shows a back button. Matches the
 Flutter `OctopusHomeScreen` widget's `showBackButton`.
 
-**Known gap**: unlike `openUI()`'s equivalent icon (which closes the
-fullscreen UI), tapping this icon on the embedded root is currently
-inert — there is no callback yet to notify your app, since the embedded
-view has no per-instance channel back to JS (Flutter's Dart-level
-`onBack` callback has no RN equivalent here). Only set this to `true`
-where the SDK's own internal navigation makes the icon meaningful
-(e.g. after pushing to a sub-screen), not to let your app react to the
-tap.
+On the SDK's own sub-screens the icon pops the SDK's internal navigation
+stack; on the SDK's root screen — where there is nothing left to pop —
+tapping it fires [onBackRequested](#onbackrequested), so your app can dismiss or
+navigate away from the embedded view.
 
 #### Default
 

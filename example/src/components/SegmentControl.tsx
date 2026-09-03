@@ -1,6 +1,7 @@
-/* eslint-disable react-native/no-inline-styles */
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import type { ViewStyle } from 'react-native';
+
+import { chromeColors } from '../theme/branding';
 
 export interface SegmentOption<T extends string> {
   label: string;
@@ -8,6 +9,8 @@ export interface SegmentOption<T extends string> {
 }
 
 interface SegmentControlProps<T extends string> {
+  /** Optional catalog `test_id`, applied verbatim on the control's container. */
+  testID?: string;
   options: SegmentOption<T>[];
   value: T;
   onChange: (value: T) => void;
@@ -15,6 +18,11 @@ interface SegmentControlProps<T extends string> {
   primaryColor: string;
   onPrimaryColor: string;
   style?: ViewStyle;
+  /**
+   * Renders the segments non-interactive. Used by the Config screen's Server
+   * control, which displays a build-time value nobody can pick at runtime.
+   */
+  disabled?: boolean;
 }
 
 /**
@@ -22,6 +30,7 @@ interface SegmentControlProps<T extends string> {
  * Used for URL opening mode, bottom inset, theme set, etc.
  */
 export function SegmentControl<T extends string>({
+  testID,
   options,
   value,
   onChange,
@@ -29,12 +38,16 @@ export function SegmentControl<T extends string>({
   primaryColor,
   onPrimaryColor,
   style,
+  disabled = false,
 }: SegmentControlProps<T>) {
+  const chrome = chromeColors(isDark);
   return (
     <View
+      testID={testID}
       style={[
         styles.wrapper,
-        isDark ? styles.wrapperDark : styles.wrapperLight,
+        { backgroundColor: chrome.track },
+        disabled && styles.wrapperDisabled,
         style,
       ]}
     >
@@ -48,12 +61,13 @@ export function SegmentControl<T extends string>({
               isActive && { backgroundColor: primaryColor },
             ]}
             onPress={() => onChange(option.value)}
+            disabled={disabled}
             activeOpacity={0.8}
           >
             <Text
               style={[
                 styles.optionText,
-                { color: isDark ? '#cccccc' : '#666666' },
+                { color: chrome.textSecondary },
                 isActive && { color: onPrimaryColor },
               ]}
               numberOfLines={1}
@@ -73,11 +87,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 2,
   },
-  wrapperLight: {
-    backgroundColor: '#f0f0f0',
-  },
-  wrapperDark: {
-    backgroundColor: '#2a2a2a',
+  wrapperDisabled: {
+    opacity: 0.5,
   },
   option: {
     flex: 1,

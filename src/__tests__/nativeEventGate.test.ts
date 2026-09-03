@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DeviceEventEmitter, NativeEventEmitter } from 'react-native';
+import { functionBody, maskCommentsAndStrings } from './helpers/sourceLexer';
 
 /**
  * Neither native side may gate `sendEvent` on a tally of `addListener` /
@@ -25,126 +26,6 @@ const IOS_EMITTER = 'ios/OctopusEventManager.swift';
 const readFile = (relativePath: string): string =>
   readFileSync(join(ROOT, relativePath), 'utf8');
 
-/**
- * Blanks out comments and string literals, preserving newlines and byte offsets so that
- * brace balance over the remaining real code is unchanged. Handles `//` line comments,
- * block and KDoc comments including the nesting Kotlin and Swift both allow, Kotlin `"""`
- * raw strings, and escaped quotes.
- */
-const maskCommentsAndStrings = (source: string): string => {
-  const out = source.split('');
-  const blank = (from: number, to: number): void => {
-    for (let i = from; i < to && i < out.length; i += 1) {
-      if (out[i] !== '\n') out[i] = ' ';
-    }
-  };
-
-  let i = 0;
-  while (i < source.length) {
-    const two = source.slice(i, i + 2);
-
-    if (two === '//') {
-      const end = source.indexOf('\n', i);
-      const stop = end === -1 ? source.length : end;
-      blank(i, stop);
-      i = stop;
-    } else if (two === '/*') {
-      // Kotlin and Swift both allow NESTED block comments, so track depth instead of
-      // stopping at the first `*/`. Stopping early would leave the tail of an outer
-      // comment looking like live code — enough to make a gate that is entirely
-      // commented out read as present.
-      let depth = 0;
-      let j = i;
-      while (j < source.length) {
-        if (source.startsWith('/*', j)) {
-          depth += 1;
-          j += 2;
-        } else if (source.startsWith('*/', j)) {
-          depth -= 1;
-          j += 2;
-          if (depth === 0) break;
-        } else {
-          j += 1;
-        }
-      }
-      const stop = Math.min(j, source.length);
-      blank(i, stop);
-      i = stop;
-    } else if (source.startsWith('"""', i)) {
-      const end = source.indexOf('"""', i + 3);
-      const stop = end === -1 ? source.length : end + 3;
-      blank(i, stop);
-      i = stop;
-    } else if (source[i] === '"') {
-      let j = i + 1;
-      while (j < source.length && source[j] !== '"' && source[j] !== '\n') {
-        j += source[j] === '\\' ? 2 : 1;
-      }
-      const stop = Math.min(j + 1, source.length);
-      blank(i, stop);
-      i = stop;
-    } else {
-      i += 1;
-    }
-  }
-
-  return out.join('');
-};
-
-/**
- * Returns the brace-balanced body of the named function, so an assertion cannot be
- * satisfied by text living in some other method. Expects already-masked source. Walks past
- * the parameter list by paren depth before looking for the body brace, so a default
- * argument such as `onDone: () -> Unit = {}` is not mistaken for the body.
- */
-const functionBody = (masked: string, signature: RegExp): string => {
-  const match = signature.exec(masked);
-  if (match == null) {
-    throw new Error(
-      `Could not find ${signature} — the guard would pass vacuously.`
-    );
-  }
-
-  let cursor = masked.indexOf('(', match.index);
-  if (cursor === -1) {
-    throw new Error(`Could not find the parameter list of ${signature}.`);
-  }
-  let parens = 0;
-  for (; cursor < masked.length; cursor += 1) {
-    if (masked[cursor] === '(') parens += 1;
-    else if (masked[cursor] === ')') {
-      parens -= 1;
-      if (parens === 0) {
-        cursor += 1;
-        break;
-      }
-    }
-  }
-  if (parens !== 0) {
-    throw new Error(`Unbalanced parameter list in ${signature}.`);
-  }
-
-  const open = masked.indexOf('{', cursor);
-  if (open === -1) {
-    throw new Error(`Could not find the opening brace of ${signature}.`);
-  }
-
-  let depth = 0;
-  for (let i = open; i < masked.length; i += 1) {
-    if (masked[i] === '{') depth += 1;
-    else if (masked[i] === '}') {
-      depth -= 1;
-      if (depth === 0) {
-        return masked
-          .slice(open + 1, i)
-          .replace(/\s+/g, ' ')
-          .trim();
-      }
-    }
-  }
-  throw new Error(`Unbalanced braces after ${signature}.`);
-};
-
 const PLATFORMS = [
   {
     name: 'Android',
@@ -152,18 +33,25 @@ const PLATFORMS = [
     sendEvent: /private\s+fun\s+sendEvent\s*\(/,
     // `getJSModule` throws once the instance is torn down — that is the real hazard.
     liveness: /hasActiveReactInstance\s*\(\s*\)/,
+    forbidden: undefined,
   },
   {
     name: 'iOS',
     file: IOS_EMITTER,
     sendEvent: /private\s+func\s+sendEvent\s*\(/,
-    liveness: /\bisValid\b/,
+    // The gate is bridge *presence*, deliberately NOT `bridge.isValid`: under the New
+    // Architecture (bridgeless) a legacy module gets an RCTBridgeProxy whose `valid`
+    // returns NO by design, so an isValid guard drops every event silently — it is what
+    // broke navigateToProfile (and every state stream) in 1.13.0.
+    liveness: /guard\s+let\s+bridge\s*=\s*bridge\s+else/,
+    // The body is comment/string-masked, so any surviving occurrence is real code.
+    forbidden: /\bisValid\b/,
   },
 ] as const;
 
 describe.each(PLATFORMS)(
   '$name event gate',
-  ({ file, sendEvent, liveness }) => {
+  ({ file, sendEvent, liveness, forbidden }) => {
     it('keeps no listener tally', () => {
       // Masked, so the explanatory comments in these files (which do mention
       // `RCTDeviceEventEmitter.listenerCount`) cannot trip this.
@@ -181,6 +69,9 @@ describe.each(PLATFORMS)(
       expect(body).toMatch(liveness);
       // An unconditional emit would satisfy nothing above but is worth naming explicitly.
       expect(body).toMatch(/\bif\b|\bguard\b/);
+      if (forbidden !== undefined) {
+        expect(body).not.toMatch(forbidden);
+      }
     });
   }
 );

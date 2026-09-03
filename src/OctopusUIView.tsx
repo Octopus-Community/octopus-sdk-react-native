@@ -1,6 +1,7 @@
 import {
   requireNativeComponent,
   StyleSheet,
+  type NativeSyntheticEvent,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
@@ -28,6 +29,9 @@ type NativeProps = {
   titleCentered?: boolean;
   navigationMode?: OctopusNavigationMode;
   navBarLeadingAction?: OctopusNavBarLeadingAction;
+  onBackRequested?: (
+    event: NativeSyntheticEvent<Record<string, never>>
+  ) => void;
 };
 
 export interface OctopusUIViewProps {
@@ -108,18 +112,36 @@ export interface OctopusUIViewProps {
    * Whether the embedded UI's top app bar shows a back button. Matches the
    * Flutter `OctopusHomeScreen` widget's `showBackButton`.
    *
-   * **Known gap**: unlike `openUI()`'s equivalent icon (which closes the
-   * fullscreen UI), tapping this icon on the embedded root is currently
-   * inert — there is no callback yet to notify your app, since the embedded
-   * view has no per-instance channel back to JS (Flutter's Dart-level
-   * `onBack` callback has no RN equivalent here). Only set this to `true`
-   * where the SDK's own internal navigation makes the icon meaningful
-   * (e.g. after pushing to a sub-screen), not to let your app react to the
-   * tap.
+   * On the SDK's own sub-screens the icon pops the SDK's internal navigation
+   * stack; on the SDK's root screen — where there is nothing left to pop —
+   * tapping it fires {@link onBackRequested}, so your app can dismiss or
+   * navigate away from the embedded view.
    *
    * @default false
    */
   showBackButton?: boolean;
+
+  /**
+   * Called when the top app bar's leading icon (back arrow or close — see
+   * {@link showBackButton} and {@link navBarLeadingAction}) is tapped on the
+   * SDK's **root** screen, where the SDK's own internal navigation has
+   * nothing left to pop. The RN analog of the Flutter `OctopusHomeScreen`
+   * widget's `onBack` callback: use it to dismiss your own container (pop
+   * your route, close your modal, switch tab…).
+   *
+   * Not called on the SDK's sub-screens — there the icon pops the SDK's
+   * internal stack itself, exactly like `openUI()`'s fullscreen UI.
+   *
+   * @example
+   * ```tsx
+   * <OctopusUIView
+   *   showBackButton={true}
+   *   onBackRequested={() => navigation.goBack()}
+   *   style={StyleSheet.absoluteFill}
+   * />
+   * ```
+   */
+  onBackRequested?: () => void;
 
   /**
    * When `false`, the embedded UI renders with no top app bar at all — your
@@ -174,11 +196,9 @@ export interface OctopusUIViewProps {
 
   /**
    * Overrides the leading (top-left) icon on the top app bar with a close
-   * (X) or back arrow, regardless of {@link showBackButton}. Subject to the
-   * same known gap as {@link showBackButton}: tapping it is currently inert
-   * on the embedded root (no JS callback exists yet) — use it to restyle the
-   * icon the SDK's own navigation already reacts to, not to add a new
-   * app-level dismissal.
+   * (X) or back arrow, regardless of {@link showBackButton}. Tapping either
+   * variant on the SDK's root screen fires {@link onBackRequested}, same as
+   * the {@link showBackButton} icon.
    *
    * When omitted, the native default applies: a back arrow gated by
    * {@link showBackButton}.
@@ -222,6 +242,7 @@ export function OctopusUIView({
   titleCentered,
   navigationMode = 'navigationStack',
   navBarLeadingAction,
+  onBackRequested,
 }: OctopusUIViewProps) {
   const nativeNotification = notification
     ? { linkPath: notification.linkPath, rawPayload: notification.rawPayload }
@@ -255,6 +276,10 @@ export function OctopusUIView({
       titleCentered={titleCentered}
       navigationMode={navigationMode}
       navBarLeadingAction={navBarLeadingAction}
+      // Only bound when the host listens: registering a native direct-event
+      // handler has a (small) per-view cost, and `undefined` keeps the wire
+      // contract identical to before this prop existed.
+      onBackRequested={onBackRequested ? () => onBackRequested() : undefined}
     />
   );
 }

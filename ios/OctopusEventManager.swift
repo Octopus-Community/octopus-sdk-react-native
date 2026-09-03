@@ -139,10 +139,22 @@ class OctopusEventManager {
   /// event names emitted here: it could reach zero while a listener was still live,
   /// silently starving it.
   ///
-  /// Emitting to a JS side that happens to have no listener is harmless, so the only
-  /// condition worth checking is that the bridge is still usable.
+  /// Emitting to a JS side that happens to have no listener is harmless, so nothing here
+  /// tries to gate on liveness either. In particular **do not** guard on `bridge.isValid`:
+  /// under the New Architecture (bridgeless, the default since RN 0.74) a legacy
+  /// `RCTBridgeModule` is handed an `RCTBridgeProxy`, whose `valid` returns `NO` by design
+  /// for the whole lifetime of the app. Such a guard therefore drops **every** event on
+  /// iOS, silently — it is what broke `navigateToProfile` (and every state stream) in
+  /// 1.13.0. `eventDispatcher()` on the proxy does forward to a working dispatcher, so the
+  /// emission below is the one path that holds on both architectures.
+  ///
+  /// `eventDispatcher()` is optional-chained because the header declares it outside any
+  /// `NS_ASSUME_NONNULL` region (imported as implicitly-unwrapped): on a real `RCTBridge` it
+  /// resolves through `moduleForClass:`, which returns nil once the bridge is invalidated —
+  /// the old `isValid` guard used to shadow exactly that window on old-arch hosts and dev
+  /// reloads, and without the `?` those would trap instead of no-op.
   private func sendEvent(name: String, body: Any?) {
-    guard let bridge = bridge, bridge.isValid else { return }
-    bridge.eventDispatcher().sendAppEvent(withName: name, body: body)
+    guard let bridge = bridge else { return }
+    bridge.eventDispatcher()?.sendAppEvent(withName: name, body: body)
   }
 }

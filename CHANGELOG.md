@@ -1,4 +1,99 @@
-# Octopus Community SDK for React Native
+# @octopus-community/react-native
+
+## 1.13.1
+
+### Patch Changes
+
+- 9325d66: Android: fix the unread-notification highlight (and every other palette slot the host did not
+  set) coming out near-black on a light community when the device is in dark mode. The wrapper
+  picked its light/dark base palette from the system setting alone, so a host passing a light
+  `theme.colors.background` on a dark-mode device got the dark palette's `primaryLow` (`#303030`)
+  behind unread notifications and gray text tuned for a dark surface, painted over its light
+  background. The base palette now follows the host background's luminance when one is given —
+  the same rule the native Android SDK applies since 1.12.1 to hosts that pass no palette, which
+  this wrapper bypasses by always passing an explicit one. Hosts that set no `background` are
+  unaffected; a dual-mode theme (`colors.light` / `colors.dark`) whose background agrees with the
+  mode it is declared for is unaffected too. An explicit `primaryLowContrast` still wins.
+- f2a0630: Android: fix `setThemeMode()` and system appearance changes leaving a dual-mode theme on the
+  set picked at `initialize()`. The wrapper selected the `theme.colors.light` / `dark` set once,
+  for the scheme known at init, and a later mode change only moved the base palette — so a host
+  in dark mode kept its light `primaryLowContrast` behind unread notifications (#215). Both sets
+  are now kept and the matching one is re-selected at render time for the mode in effect; the
+  selection also applies live to an Octopus screen already open, and a `setThemeMode()` with no
+  `theme` at all now forces the base palette instead of being dropped.
+- 9325d66: Android: the wrapper's standalone `compileSdk`/`targetSdk` fallback (used only when the host app sets no `rootProject.ext.compileSdkVersion`) is now 36, with the matching AGP 8.11.0. Consumers overriding these through `rootProject.ext` are unaffected.
+- 9325d66: Add a source-level test harness pinning the iOS bottom-inset invariants introduced with the
+  embedded bottom-inset normalization; no runtime change. The new files live under
+  `src/__tests__`, which npm's `files` allowlist excludes from the published package, but the
+  public mirror's `sync-public.yml` allowlists `src` recursively with no `__tests__` exclude, so
+  they do reach `octopus-sdk-react-native` on the next sync.
+- 9325d66: Add `debugGetCommunityConfig`, a debug-only read of the community config the backend
+  currently serves (GetConfig), on both platforms. It resolves the effective flags the SDK UI
+  consumes — `exposeClientUserId`, `forceLoginOnStrongActions`, `displayAccountAge`,
+  `termsAcceptanceMode` — or `null` while no config has been fetched yet. Not part of the
+  stable public API surface and not for use in production apps — it exists so a test app can
+  show the live server state next to the API key it runs on. The example app gains a matching
+  "Server state (debug)" card on the Home tab displaying the effective API key and these
+  values, with a Refresh button.
+- 9325d66: Add `debugOverrideExposeClientUserId`, a debug-only binding over the native SDKs' internal
+  test override for the `exposeClientUserId` community flag (Unified Profile activation), on
+  both platforms. Pass a boolean to force the flag locally, or `null` to restore the
+  backend-provided config. Not part of the stable public API surface and not for use in
+  production apps — it exists so Unified Profile profile-tap routing can be exercised before
+  the backend serves the flag. The example app gains a matching "Force exposeClientUserId"
+  toggle in the Config screen's Host callbacks section.
+- 9325d66: Add an `onBackRequested` callback prop to `OctopusUIView`, fired when the embedded top app
+  bar's leading icon (back arrow or close) is tapped on the SDK's root screen — where the
+  SDK's internal navigation has nothing left to pop. This closes the previously documented
+  "inert tap" gap on `showBackButton` and `navBarLeadingAction`: hosts can now dismiss their
+  own container (pop a route, close a modal) from the embedded view, the RN analog of the
+  Flutter `OctopusHomeScreen` widget's `onBack` callback. On the SDK's sub-screens the icon
+  still pops the SDK's internal stack itself; hosts that pass no callback keep the previous
+  behaviour unchanged.
+- 9325d66: Add an "Embedded Back Button" scenario to the example app, the QA surface for the embedded
+  view's `showBackButton` / `navBarLeadingAction` / `onBackRequested` trio — until now no
+  screen of the sample mounted any of the three, so the root-screen back tap had no route to
+  exercise it on a device. Run opens a host route holding an embedded `OctopusUIView`, and the
+  callback pops that route back to the scenario, which is the effect a host is expected to
+  implement. No runtime change to the package itself; the example is on the public mirror's
+  allowlist, so it reaches `octopus-sdk-react-native` on the next sync.
+- 9325d66: iOS embedded view: when the host passes no `ui.bottomSafeAreaInset` at all, apply the
+  same additive 10 pt bottom padding the Flutter bridge has always applied in that state,
+  instead of forwarding 0 — which left the native `> 0` inset gate off and glued the
+  profile bubble and create-post button to the very bottom of `<OctopusUIView>`. An
+  explicit `0` still means "reserve nothing" (edge-to-edge opt-out), and explicit positive
+  values keep the existing live total→additive normalization.
+- 9325d66: Fix all native→JS events being silently dropped on iOS under the New Architecture
+  (bridgeless, the React Native default since 0.74). `sendEvent` gated emission on
+  `bridge.isValid`, but a legacy `RCTBridgeModule` is handed an `RCTBridgeProxy` there,
+  whose `valid` returns `NO` by design for the whole lifetime of the app — so
+  `navigateToProfile` (Unified Profile routing) and every state stream
+  (`isInitialisedChanged`, `connectionStateChanged`, `profileChanged`,
+  `notSeenNotificationsCountChanged`, …) never reached JS. Regressed in 1.13.0.
+- 9325d66: Add a golden round-trip test pinning the `sdkEvent` wire contract: every member of the
+  `SDKEvent` union and every `ScreenType` gets a fully-populated golden, an exhaustive inverse
+  that TypeScript refuses to let drift, and a source-level anchor asserting the golden key sets
+  against the tags the Android and iOS event serializers actually emit. No runtime change. The
+  new file lives under `src/__tests__`, which npm's `files` allowlist excludes from the
+  published package, but the public mirror's `sync-public.yml` allowlists `src` recursively with
+  no `__tests__` exclude, so it does reach `octopus-sdk-react-native` on the next sync.
+- f2a0630: iOS: `setThemeMode('light' | 'dark')` now has a visible effect. The forced scheme is applied
+  as an interface-style override on the SDK's own screens — fullscreen and embedded, live — so
+  the theme's adaptive colors resolve against it while the host app's appearance stays untouched;
+  `setThemeMode('system')` hands control back to the trait collection.
+- 9325d66: Internal test-configuration change only — no runtime behaviour, and no public API, changes.
+  The repository's Jest and ESLint scans now skip the `.claude/` directory, so local agent
+  worktrees no longer contribute duplicated suites and file-name collisions to the test run.
+- 9325d66: Add a data-driven Lifecycle scenario to the example app, exercising `switchCommunity` at
+  runtime. The target communities are the key sets the build injects through
+  `OCTOPUS_NAMED_API_KEYS`, so the scenario enumerates none of them itself: a key added to
+  the build's table becomes a preset with no edit to the sample, and a build that offers
+  nothing to switch to — no named key set, or only the one already in force — falls back to a
+  free-text field to paste a key into. A switch clears the session
+  state that belonged to the community being left, remounts every embedded `OctopusUIView`
+  (which the SDK requires after a switch), and is folded back into the sample's own
+  configuration so the Home dashboard and the Settings summary keep naming the community the
+  SDK is actually on. Package API unchanged.
 
 ## 1.13.0
 
@@ -564,4 +659,3 @@ page.
 
 - Android Octopus SDK: 1.9.1 → 1.11.0
 - iOS Octopus SDK: 1.9.3 → 1.11.0
-

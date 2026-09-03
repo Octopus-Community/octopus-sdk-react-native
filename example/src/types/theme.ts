@@ -3,7 +3,15 @@
  */
 
 export type ThemeMode = 'system' | 'light' | 'dark';
-export type ThemeSet = 'theme1' | 'theme2' | 'theme3' | 'none';
+/**
+ * Which colour set is handed to `initialize()`.
+ *
+ * `octopusNavy` is the preset the Config screen offers next to `none`: the sample's own navy,
+ * applied to the SDK so a tester can see a themed community without walking into the Theme
+ * scenario. `theme1`–`theme3` stay the scenario's own arbitrary sets, which exist to prove the
+ * SDK repaints at all rather than to look like anything.
+ */
+export type ThemeSet = 'octopusNavy' | 'theme1' | 'theme2' | 'theme3' | 'none';
 export type FontType = 'default' | 'serif' | 'monospace';
 export type LogoMode = 'enabled' | 'disabled';
 export type FontSizeMode = 'default' | 'small' | 'large';

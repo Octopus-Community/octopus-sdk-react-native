@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.13.0**](../README.md)
+[**@octopus-community/react-native v1.13.1**](../README.md)
 
 ---
 
@@ -41,6 +41,5 @@ Applies to both entry points — `openUI({ navigationMode })` and
 about how the SDK is _hosted_ (modally presented vs. embedded), not about
 which entry point mounted it.
 
-## See
-
-[issue #36](https://github.com/Octopus-Community/octopus-sdk-react-native-private/issues/36)
+A standalone `navigationStack` embedded default is tracked as remaining
+parity work with the native SDKs.

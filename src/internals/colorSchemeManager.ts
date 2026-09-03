@@ -5,15 +5,14 @@ import type { OctopusTheme } from '../initialize';
 let isListening = false;
 let currentColorScheme: string | null | undefined = null;
 
-// Parity wave — navigation & theme (themeMode)
 // Set via ColorSchemeManager.setForcedThemeMode (the setThemeMode() TS API). While non-null,
-// updateNativeColorScheme sends this instead of the system-observed value. The system-change
-// listeners below keep firing and keep calling updateNativeColorScheme as before — they do not
-// skip the native call while a force is active, they just get overridden by the `||` in
-// updateNativeColorScheme, so each system event still re-sends the (still-forced) value. The
-// manager keeps listening (so a later setForcedThemeMode(null) can resume without
-// re-subscribing) — the "stops reacting" part is only true of the *value* sent, not of whether
-// the bridge is called.
+// updateNativeColorScheme sends this instead of the system-observed value, flagged as forced.
+// The system-change listeners below keep firing and keep calling updateNativeColorScheme as
+// before — they do not skip the native call while a force is active, they just get overridden
+// by the `||` in updateNativeColorScheme, so each system event still re-sends the
+// (still-forced) value. The manager keeps listening (so a later setForcedThemeMode(null) can
+// resume without re-subscribing) — the "stops reacting" part is only true of the *value* sent,
+// not of whether the bridge is called.
 let forcedColorScheme: 'light' | 'dark' | null = null;
 
 /**
@@ -60,10 +59,9 @@ export class ColorSchemeManager {
       ({ colorScheme }) => {
         currentColorScheme = colorScheme;
         // While a themeMode force is active (setThemeMode), this still calls
-        // updateNativeColorScheme on every system change — it has to, so `currentColorScheme`
-        // is ready the moment the force is released — but the forced value keeps winning
-        // there (the `||` fallback), so the system value never actually reaches the native
-        // side while forced. See updateNativeColorScheme.
+        // updateNativeColorScheme on every system change, but the forced value is all that
+        // goes out, so the system value never reaches the native side while forced. See
+        // updateNativeColorScheme.
         this.updateNativeColorScheme();
       }
     );
@@ -82,6 +80,28 @@ export class ColorSchemeManager {
         }
       }
     );
+  }
+
+  /**
+   * The scheme currently forced through `setThemeMode()`, or `null` when the Octopus UI
+   * follows the system. `initialize()` reads it so a force set *before* initialization is the
+   * scheme the native side starts from, rather than the system value.
+   */
+  getForcedColorScheme(): 'light' | 'dark' | null {
+    return forcedColorScheme;
+  }
+
+  /**
+   * Re-sends the active force, if any, to the native side. Called by `initialize()` once the
+   * native module has initialized: a `setThemeMode()` made before that had no native side to
+   * reach (iOS keeps the override outside of its initialize path, and a re-`initialize()`
+   * rebuilds the Android theme config from scratch), so the force is pushed again here.
+   * Without a force nothing is sent.
+   */
+  pushForcedColorScheme(): void {
+    if (forcedColorScheme) {
+      this.updateNativeColorScheme();
+    }
   }
 
   /**
@@ -120,21 +140,23 @@ export class ColorSchemeManager {
   }
 
   /**
-   * Update the native modules with the current color scheme
-   * Note: This is only called when the app becomes active (foreground).
-   * When the Octopus UI is open, the React Native app is backgrounded,
-   * so theme updates are not possible during UI display.
+   * Update the native modules with the forced color scheme, or with `undefined` (flagged as
+   * not forced) when the Octopus UI follows the system.
+   *
+   * Both natives apply it live to an open Octopus UI. Android resolves `undefined` from its
+   * own configuration at render time (the Octopus screens are recreated / reconfigured by the
+   * OS on an appearance change, which is more reliable than the value JS observed) and
+   * re-selects a dual-mode set from the result; iOS maps `undefined` to `.unspecified` and
+   * drops its interface-style override. Neither platform is ever pinned to a system value JS
+   * observed at some earlier instant.
    */
   private updateNativeColorScheme(): void {
-    // Both platforms handle theme updates when the app becomes active
-    // iOS uses adaptive colors, Android applies the theme when UI reopens
-    //
-    // A forced scheme (setThemeMode) always wins over the system-observed one — that's the
-    // entire point of forcing it — and this is the single call site both the system listeners
-    // above and setForcedThemeMode funnel through, so neither path can push a stale value.
+    // This is the single call site both the system listeners above and setForcedThemeMode
+    // funnel through, so no path can push a system value while a force is active.
     try {
       OctopusReactNativeSdk.updateColorScheme(
-        forcedColorScheme || currentColorScheme || undefined
+        forcedColorScheme ?? undefined,
+        forcedColorScheme != null
       );
     } catch (error) {
       this.stopListening();

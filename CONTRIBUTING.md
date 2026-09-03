@@ -148,6 +148,15 @@ The `package.json` file contains various scripts for common tasks:
 - `yarn example android`: run the example app on Android.
 - `yarn example ios`: run the example app on iOS.
 
+The example app reads its credentials from `example/.env` (see `example/.env.dist` for the
+expected keys). Octopus-internal contributors can generate that file and launch in one step
+with `scripts/run-sample.sh` (`android` by default, or `ios` / `env-only`), which fills every
+key — demo API keys, named Config-picker keys, and the four pre-signed SSO tokens — from the
+internal shared secrets file. That script is internal-only and deliberately excluded from the
+public mirror; external contributors fill `example/.env` by hand from `.env.dist`. Values are
+inlined at Babel time, so restart a running Metro with `yarn example start:reset` after
+regenerating the file.
+
 ### Sending a pull request
 
 > **Working on your first pull request?** You can learn how from this _free_ series: [How to Contribute to an Open Source Project on GitHub](https://app.egghead.io/playlists/how-to-contribute-to-an-open-source-project-on-github).

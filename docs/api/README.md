@@ -1,8 +1,8 @@
-**@octopus-community/react-native v1.13.0**
+**@octopus-community/react-native v1.13.1**
 
 ---
 
-# @octopus-community/react-native v1.13.0
+# @octopus-community/react-native v1.13.1
 
 ## Enumerations
 
@@ -111,6 +111,7 @@
 - [NotSeenNotificationsCountListenerCallback](type-aliases/NotSeenNotificationsCountListenerCallback.md)
 - [OctopusClientPostAttachment](type-aliases/OctopusClientPostAttachment.md)
 - [OctopusConnectionState](type-aliases/OctopusConnectionState.md)
+- [OctopusDebugCommunityConfig](type-aliases/OctopusDebugCommunityConfig.md)
 - [OctopusFontType](type-aliases/OctopusFontType.md)
 - [OctopusInitialScreen](type-aliases/OctopusInitialScreen.md)
 - [OctopusNavBarLeadingAction](type-aliases/OctopusNavBarLeadingAction.md)
@@ -157,7 +158,9 @@
 - [addUserTokenRequestListener](functions/addUserTokenRequestListener.md)
 - [closeUI](functions/closeUI.md)
 - [connectUser](functions/connectUser.md)
+- [debugGetCommunityConfig](functions/debugGetCommunityConfig.md)
 - [debugOverrideContentOptions](functions/debugOverrideContentOptions.md)
+- [debugOverrideExposeClientUserId](functions/debugOverrideExposeClientUserId.md)
 - [debugOverrideProfileFieldsLock](functions/debugOverrideProfileFieldsLock.md)
 - [debugOverrideTermsAcceptanceMode](functions/debugOverrideTermsAcceptanceMode.md)
 - [disconnectUser](functions/disconnectUser.md)

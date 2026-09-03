@@ -14,23 +14,62 @@ cp .env.dist .env
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `OCTOPUS_COMMUNITY_API_KEY` | Yes | Your Octopus community API key (used for SDK initialization). |
-| `OCTOPUS_SSO_USER_ID` | For "Connect user" | SSO user ID used when you tap **Connect user** in the Setup tab. |
-| `OCTOPUS_SSO_USER_TOKEN` | For "Connect user" | JWT token for that user (used by the token provider and for connecting). |
-| `OCTOPUS_DEMO_POST_ID` | For the "reactions" scenario | Id of an existing post in your community, used by the Scenarios tab's reaction presets. |
+| `OCTOPUS_COMMUNITY_API_KEY` | Yes | Your Octopus community API key. Offered as **Demo** on the Config screen. |
+| `OCTOPUS_NAMED_API_KEYS` | No | Several labelled key sets to choose between, as `id~label~key` entries joined by `;`. When set, the Config screen lists them instead of the single Demo entry. |
+| `OCTOPUS_SSO_USER_ID` | No | Default user id (the JWT `sub`) prefilled on the Config screen; falls back to `react-native-sample-user`. |
+| `OCTOPUS_SSO_USER_TOKEN` | For **Connect** | Pre-baked JWT for that user with no entitlements — Connection preset 1, and the **Connect user** button in Settings. |
+| `OCTOPUS_SSO_USER_TOKEN_PREMIUM` | For preset 2 | Same user, Premium entitlement. |
+| `OCTOPUS_SSO_USER_TOKEN_MODERATOR` | For preset 3 | Same user, Moderator entitlement. |
+| `OCTOPUS_SSO_USER_TOKEN_PREMIUM_MODERATOR` | For preset 4 | Same user, both entitlements. |
+| `OCTOPUS_DEMO_POST_ID` | For the "reactions" scenario | Id of an existing post in your community, used by the reaction presets. |
+| `OCTOPUS_API_HOST` | No | The backend this build talks to, passed to `initialize()` as `apiServer`. Left unset, it resolves to the **demo** backend; only naming `api.8pus.io` reaches production — see below. |
+| `OCTOPUS_INTERNAL` | No | `true` marks this build as an Octopus-internal one. Changes nothing the SDK does; it only re-enables the production banner — see below. |
 
-Without `OCTOPUS_COMMUNITY_API_KEY`, the app will log an error and skip initialization. Without the SSO variables, the **Connect user** action in the example will not work correctly.
+The app never signs a token itself: each entitlement variant is a JWT the build injects, and a
+preset with no token stays disabled and names the variable that is missing.
+
+An empty `.env` still launches the app: it opens on the Config screen, which says what is missing.
+**Start** is the one thing it gates — with no key resolvable, neither injected nor pasted, the
+button stays disabled. That refusal is deliberate: `initialize()` accepts an empty key (the Android
+bridge only rejects `null`, and neither native SDK validates the value), so a keyless start would
+report *Initialized* while every call to the backend failed. A key pasted on that screen is kept
+for that session only — never written to device storage — so it is re-entered on the next launch.
+
+> ### Production warning
+>
+> `OCTOPUS_API_HOST` really does reroute the SDK: the value is passed to `initialize()` as
+> `apiServer`, which both native SDKs honour on their published artifacts — no native pin swap
+> needed. Left unset it resolves to the **demo** backend, so an unconfigured checkout cannot write
+> test content into real communities. Reaching production takes naming it: `api.8pus.io`. There,
+> connecting, following and posting hit real communities.
+>
+> A red banner says so on every screen the sample renders — including its Debug and
+> embedded-WebView modals, but not inside the SDK's own fullscreen UI, which is native — **when,
+> and only when, the build also sets `OCTOPUS_INTERNAL=true`**. The banner is an internal safety
+> net, not a product feature: pointing this sample at production with your own key is the nominal
+> integration case, and it has no reason to shout an Octopus host at you. Nothing sets the marker
+> for you — an Octopus developer sets it once in their own `.env`. The Android and Flutter samples
+> gate their banner on the same marker.
 
 ## What the example demonstrates
 
-The app has six tabs:
+The app opens on a **Config** screen — pick an API key, an auth mode, a user id and a theme, then
+**Start** — and then shows four tabs:
 
-- **Setup** — Initialize SDK (API key, connection mode), connect/disconnect user, display mode (fullscreen vs embedded), locale override, URL interception toggle.
-- **Theme** — Configure theme (system/light/dark, color set, fonts, logo, bottom inset); changes apply when you reopen the UI.
-- **SDK Data** — Notifications count (refresh and listener), community access (override, track, listener), custom events, and SDK event log.
-- **Groups** — Sync followed groups in batches (manual group id entry).
-- **Scenarios** — Single-tap QA presets for connection, community access, not-seen notifications, push notifications, custom events, locale, theme, and sync followed groups, each carrying a fixed `testID` for automated QA.
+The auth mode decides who owns the login: **SSO** connects the app's own user with an injected JWT
+(`connectionMode: { type: 'sso' }`), **Octopus** lets the SDK run its own login flow
+(`{ type: 'octopus' }`). In Octopus mode there is no host user, so the Connection presets and the
+`clientUserId` lookups are disabled and say why.
+
+- **Home** — Read-only dashboard: SDK status, which API key and server are in use, connection state, unseen-notification count, community access.
+- **Scenarios** — The searchable index of capabilities. Each scenario opens its own page with single-tap QA presets carrying fixed `testID`s, its result panel, and the free-form controls for that capability: theming lives in the Theme scenario, batch group sync in Sync Followed Groups, the free-text custom event in Custom Events, the push token in Push Notifications.
+- **Settings** — Connect/disconnect, display mode (fullscreen vs embedded), URL interception, profile-tap handling, locale override, **Back to Config** (disconnects, tears the SDK state down and returns to the Config screen), and the **Debug console**.
 - **Community** — Open the Octopus UI in fullscreen or embedded mode with the current theme and options.
+
+The **Debug console** (Settings → *Open debug console*) is one merged, newest-first log of the SDK
+event stream and of every API call the app fired, copyable as plain text — it replaces the old SDK
+event-log card. Rows are stamped in local time so they line up with what the operator just saw; the
+clipboard export uses ISO-8601 UTC.
 
 For full SDK documentation, see the [main README](../README.md) and [API reference](../docs/api/README.md).
 

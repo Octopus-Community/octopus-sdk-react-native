@@ -1,4 +1,5 @@
 @_spi(OctopusInternalTesting) import Octopus
+import OctopusCore
 import OctopusUI
 import SwiftUI
 import UIKit
@@ -314,16 +315,18 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
   /// backfill, `showBackButton: true` would render no icon at all on the embedded view.
   /// Matches the Flutter iOS bridge's own backfill for the same reason.
   ///
-  /// The tap closure is empty (inert): the embedded container has no per-instance channel
-  /// back to JS to notify on tap — a known, documented gap (see `OctopusUIView`'s TSDoc and
-  /// the matching Android `OctopusUIViewManager` comment).
+  /// The tap closure forwards to the view's `onBackRequested` direct event (issue #36) — the
+  /// RN analog of Flutter's Dart-level `onBack`, wired per-view through
+  /// `OctopusEmbeddedContainerView`. The native SDK only invokes it on its root screen (its
+  /// internal navigation pops sub-screens itself), so the event fires exactly when the host
+  /// is the only party left able to react.
   private func embeddedNavBarLeadingAction(
-    raw: String?, showBackButton: Bool
+    raw: String?, showBackButton: Bool, onTap: @escaping () -> Void
   ) -> OctopusNavBarLeadingAction? {
-    if let action = decodeNavBarLeadingAction(raw, onTap: {}) {
+    if let action = decodeNavBarLeadingAction(raw, onTap: onTap) {
       return action
     }
-    return showBackButton ? .back(onTap: {}) : nil
+    return showBackButton ? .back(onTap: onTap) : nil
   }
 
   /// Merges a per-view top-app-bar override onto the global `topAppBar` config from
@@ -410,7 +413,8 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
     navBarPrimaryColor: NSNumber? = nil,
     titleCentered: NSNumber? = nil,
     navigationMode: String? = nil,
-    navBarLeadingAction: String? = nil
+    navBarLeadingAction: String? = nil,
+    onBackTap: (() -> Void)? = nil
   ) {
     guard let octopus = octopusSDK else { return }
     if interceptUrls {
@@ -501,15 +505,24 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
       initialScreen: initialScreen,
       navigationMode: decodeNavigationMode(navigationMode),
       navBarLeadingAction: embeddedNavBarLeadingAction(
-        raw: navBarLeadingAction, showBackButton: showBackButton
+        raw: navBarLeadingAction, showBackButton: showBackButton, onTap: { onBackTap?() }
       )
     )
   }
 
-  @objc(updateColorScheme:withResolver:withRejecter:)
-  func updateColorScheme(colorScheme: String?, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) -> Void {
-    // iOS uses adaptive colors that automatically respond to system appearance changes
-    // No manual updates needed - the theme is applied when UI opens
+  @objc(updateColorScheme:forced:withResolver:withRejecter:)
+  func updateColorScheme(colorScheme: String?, forced: Bool, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) -> Void {
+    // The theme's adaptive colors follow the trait collection on their own, so the system path
+    // needs nothing here. A scheme forced through setThemeMode() is applied as an
+    // interface-style override on the SDK's own hosting controllers — live, and without
+    // touching the host app's appearance.
+    let style: UIUserInterfaceStyle
+    switch (forced, colorScheme) {
+    case (true, "dark"): style = .dark
+    case (true, "light"): style = .light
+    default: style = .unspecified
+    }
+    DispatchQueue.main.async { self.uiManager.setForcedInterfaceStyle(style) }
     resolve(nil)
   }
 
@@ -572,7 +585,7 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
     let props = dictionaryToStringMap(properties) ?? [:]
     let customEvent = CustomEvent(
       name: trimmedName,
-      properties: props.mapValues { CustomEvent.PropertyValue(value: $0) }
+      properties: props.mapValues { Octopus.CustomEvent.PropertyValue(value: $0) }
     )
     Task {
       do {
@@ -876,6 +889,62 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
     Task { @MainActor in
       octopus.debugOverrideTermsAcceptanceMode(mapped)
       resolve(nil)
+    }
+  }
+
+  @objc(debugOverrideExposeClientUserId:withResolver:withRejecter:)
+  func debugOverrideExposeClientUserId(
+    enabled: NSDictionary?,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) -> Void {
+    guard let octopus = octopusSDK else {
+      reject("OVERRIDE_ERROR", "SDK not initialized. Call initialize() first.", nil)
+      return
+    }
+    // Tri-state travels as `{ value } | nil` — a primitive bool cannot carry
+    // the "clear the override" case across the bridge.
+    let mapped = (enabled?["value"] as? NSNumber)?.boolValue
+    Task { @MainActor in
+      octopus.debugOverrideExposeClientUserId(mapped)
+      resolve(nil)
+    }
+  }
+
+  /// Debug-only read of the community config the backend currently serves (GetConfig), so the
+  /// sample can display the live server state next to the API key it runs on. Resolves `nil`
+  /// while no config has been fetched yet. Values reflect any local `debugOverride*` too —
+  /// they read the same effective config the UI consumes.
+  ///
+  /// `OctopusSDK.core` is `package`-visible (reserved for the native UI lib), so this read
+  /// goes through `Mirror`; acceptable for a debug affordance, never for shipping API.
+  @objc(debugGetCommunityConfig:withRejecter:)
+  func debugGetCommunityConfig(
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) -> Void {
+    guard let octopus = octopusSDK else {
+      reject("CONFIG_ERROR", "SDK not initialized. Call initialize() first.", nil)
+      return
+    }
+    Task { @MainActor in
+      guard
+        let core = Mirror(reflecting: octopus).children
+          .first(where: { $0.label == "core" })?.value as? OctopusSDKCore
+      else {
+        reject("CONFIG_ERROR", "Could not reach the SDK core", nil)
+        return
+      }
+      guard let config = core.configRepository.communityConfig else {
+        resolve(nil)
+        return
+      }
+      resolve([
+        "exposeClientUserId": config.exposeClientUserId,
+        "forceLoginOnStrongActions": config.forceLoginOnStrongActions,
+        "displayAccountAge": config.displayAccountAge,
+        "termsAcceptanceMode": String(describing: config.termsAcceptanceMode),
+      ])
     }
   }
 
@@ -1195,7 +1264,7 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
       reject("CLIENT_POST_ERROR", "SDK not initialized. Call initialize() first.", nil)
       return
     }
-    let decoded: ClientPost
+    let decoded: Octopus.ClientPost
     do {
       decoded = try ClientObjectMappers.decodeClientPost((clientPost as? [String: Any]) ?? [:])
     } catch {

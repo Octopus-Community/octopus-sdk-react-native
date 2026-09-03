@@ -15,5 +15,6 @@ RCT_EXPORT_VIEW_PROPERTY(navBarPrimaryColor, NSNumber)
 RCT_EXPORT_VIEW_PROPERTY(titleCentered, NSNumber)
 RCT_EXPORT_VIEW_PROPERTY(navigationMode, NSString)
 RCT_EXPORT_VIEW_PROPERTY(navBarLeadingAction, NSString)
+RCT_EXPORT_VIEW_PROPERTY(onBackRequested, RCTDirectEventBlock)
 
 @end

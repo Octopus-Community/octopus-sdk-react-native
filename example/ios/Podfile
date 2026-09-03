@@ -119,7 +119,11 @@ target 'OctopusReactNativeSdkExample' do
       installer,
       config[:reactNativePath],
       :mac_catalyst_enabled => false,
-      # :ccache_enabled => true
+      # Opt-in, not hardcoded: `true` would break `pod install`-then-build for
+      # anyone (runner or dev) without a ccache binary, since the wrappers it
+      # writes into the xcconfigs shell out to `ccache`. CI sets CCACHE_ENABLED
+      # only after positively detecting the binary (see pr.yml, build-ios).
+      :ccache_enabled => ENV['CCACHE_ENABLED'] == 'true'
     )
 
     patch_fmt_use_consteval!(installer)

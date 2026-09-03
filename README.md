@@ -1,8 +1,8 @@
 # Octopus Community SDK for React Native
 
 [![npm package](https://img.shields.io/npm/v/@octopus-community/react-native.svg)](https://www.npmjs.com/package/@octopus-community/react-native)
-[![Android SDK](https://img.shields.io/badge/Android%20SDK-1.13.2-3DDC84.svg)](https://github.com/Octopus-Community/octopus-sdk-android)
-[![iOS SDK](https://img.shields.io/badge/iOS%20SDK-1.13.2-147EFB.svg)](https://github.com/Octopus-Community/octopus-sdk-swift)
+[![Android SDK](https://img.shields.io/badge/Android_SDK-1.13.2-34a853?logo=android&logoColor=white)](https://github.com/Octopus-Community/octopus-sdk-android)
+[![iOS SDK](https://img.shields.io/badge/iOS_SDK-1.13.2-f05138?logo=apple&logoColor=white)](https://github.com/Octopus-Community/octopus-sdk-swift)
 
 React Native module for the Octopus Community [Android](https://github.com/Octopus-Community/octopus-sdk-android) and [Swift](https://github.com/Octopus-Community/octopus-sdk-swift) SDKs.
 
@@ -291,14 +291,14 @@ For details about the Typescript API, head to the [API docs](./docs/api/README.m
 
 ### Example app
 
-The [example app](./example) demonstrates the full SDK surface. From the root, run `yarn example start` then `yarn example ios` or `yarn example android`. It uses a tabbed UI:
+The [example app](./example) demonstrates the full SDK surface. From the root, run `yarn example start` then `yarn example ios` or `yarn example android`. It opens on a Config screen (API key, auth mode — SSO or Octopus — user id, theme, then **Start**; **Start** stays disabled until a key resolves) and then shows four tabs:
 
 | Tab | Purpose |
 |-----|---------|
-| **Setup** | Initialize the SDK (API key, SSO/Octopus mode), connect/disconnect user, display mode (fullscreen vs embed), locale override, URL interception toggle |
+| **Home** | Read-only dashboard: SDK status, API key source, server, connection state, unseen count, community access |
+| **Scenarios** | Searchable index of capabilities; each opens a page with single-tap QA presets, its result panel, and that capability's controls (theming, batch group sync, custom events, push token) |
+| **Settings** | Connect/disconnect, display mode (fullscreen vs embed), URL interception, profile taps, locale override, Back to Config, Debug console |
 | **Community** | Open the Octopus UI (fullscreen or embedded) with the current theme and options |
-| **Theme** | Theming: system/light/dark, color set, fonts, logo, bottom inset; see changes when reopening the UI |
-| **SDK Data** | Notifications count (refresh, listener), community access (override, track, listener), custom events, SDK event log |
 
 See [example/README.md](./example/README.md) for environment variables (API key, SSO user/token) and run instructions. The example is the best reference for implementing SSO, theming, reactive events, and URL interception in your app.
 

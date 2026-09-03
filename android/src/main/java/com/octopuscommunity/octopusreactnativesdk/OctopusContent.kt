@@ -7,6 +7,8 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Log
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -18,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalContext
@@ -132,18 +135,30 @@ internal fun OctopusContent(
 ) {
   val context = LocalContext.current
 
-  // Get theme config once when UI is created - no need for polling
-  val themeConfig = OctopusThemeManager.getThemeConfig()
+  // Snapshot-state read: a setThemeMode() / system change or a re-initialize() while this UI is
+  // on screen recomposes it with the new config.
+  val storedThemeConfig = OctopusThemeManager.getThemeConfig()
 
   // Function to detect if system is in dark mode
   fun isSystemInDarkTheme(): Boolean {
     return (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
   }
 
+  // The scheme JS sent (forced by setThemeMode, else the one it observes) wins; the Activity's
+  // configuration is the fallback. A dual-mode theme is re-selected for that mode here, at
+  // render time — parseThemeConfig picked a set once at initialize(), which is exactly what
+  // went stale after a mode change (rn#215).
+  val isDarkMode = when (storedThemeConfig?.colorScheme) {
+    "dark" -> true
+    "light" -> false
+    else -> isSystemInDarkTheme()
+  }
+  val themeConfig = storedThemeConfig?.resolvedFor(isDarkMode)
+
   // Handle logo loading using built-in Android capabilities
   var logoPainter by remember { mutableStateOf<Painter?>(null) }
 
-  LaunchedEffect(themeConfig) {
+  LaunchedEffect(themeConfig?.logoSource) {
     themeConfig?.logoSource?.let { logoSource ->
       val uri = logoSource.getString("uri")
       if (uri != null) {
@@ -203,10 +218,23 @@ internal fun OctopusContent(
 
   // Resolve the final color scheme (base + custom overrides) once, so it can be
   // reused for both the theme colors and the colored nav-bar background.
-  val baseColorScheme = when (themeConfig?.colorScheme) {
-    "dark" -> octopusDarkColorScheme()
-    "light" -> octopusLightColorScheme()
-    else -> if (isSystemInDarkTheme()) octopusDarkColorScheme() else octopusLightColorScheme()
+  //
+  // The base palette is picked from the *host background* when there is one, and only
+  // otherwise from the requested / system color scheme. This mirrors the native SDK's own
+  // fallback resolution (Android SDK 1.12.1+, `ColorScheme.toOctopusColorScheme`), which
+  // this wrapper bypasses by always handing `OctopusTheme` an explicit palette: keyed on
+  // the system setting alone, a light-only host running on a device in dark mode got the
+  // dark palette — near-black `primaryLow` behind unread notifications, gray-based text
+  // tuned for a dark surface — painted over its light background. Tracking the background
+  // keeps every slot the host did not set in contrast with the surface it is drawn on.
+  // Hosts passing a background per mode are unaffected: their background already agrees
+  // with the scheme it was declared for.
+  val hostBackground = themeConfig?.backgroundColor?.let { Color(it.toColorInt()) }
+  val baseColorScheme = when {
+    hostBackground != null ->
+      if (hostBackground.luminance() < 0.5f) octopusDarkColorScheme() else octopusLightColorScheme()
+    isDarkMode -> octopusDarkColorScheme()
+    else -> octopusLightColorScheme()
   }
   val resolvedColorScheme = baseColorScheme.copy(
     primary = themeConfig?.primaryColor?.let { Color(it.toColorInt()) } ?: baseColorScheme.primary,
@@ -214,7 +242,7 @@ internal fun OctopusContent(
     primaryHigh = themeConfig?.primaryHighContrastColor?.let { Color(it.toColorInt()) } ?: baseColorScheme.primaryHigh,
     onPrimary = themeConfig?.onPrimaryColor?.let { Color(it.toColorInt()) } ?: baseColorScheme.onPrimary,
     link = themeConfig?.linkColor?.let { Color(it.toColorInt()) } ?: baseColorScheme.link,
-    background = themeConfig?.backgroundColor?.let { Color(it.toColorInt()) } ?: baseColorScheme.background
+    background = hostBackground ?: baseColorScheme.background
   )
 
   // The top app bar title has no dedicated typography role of its own: the SDK renders it
@@ -335,8 +363,24 @@ internal fun OctopusContent(
       }
       octopusComposables(
         navController = navController,
+        // Propagate the host bottom content padding to the SDK sub-screens too
+        // (post/comment detail, create-post, …), not just the main feed above. The
+        // embedded platform view consumes the system-bar insets, so without this the
+        // post-detail's bottom comment composer renders inside the gesture nav area
+        // and gets clipped — same gap Flutter fixed in flutter#147 (issue #54).
         container = { _, content ->
-          OctopusTheme(content = content)
+          OctopusTheme {
+            // Gate on > 0 like Flutter does: an explicit host 0 must stay a true
+            // no-op, not a zero-padding Box wrapping the screen.
+            val subScreenBottomPadding = bottomContentPadding?.takeIf { it > 0.dp }
+            if (subScreenBottomPadding != null) {
+              Box(Modifier.padding(bottom = subScreenBottomPadding)) {
+                content()
+              }
+            } else {
+              content()
+            }
+          }
         },
         onBack = onBack,
         onNavigateToLogin = {

@@ -28,11 +28,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.core.view.ViewCompat
+import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableMap
+import com.facebook.react.bridge.WritableMap
+import com.facebook.react.common.MapBuilder
 import com.facebook.react.uimanager.SimpleViewManager
 import com.facebook.react.uimanager.ThemedReactContext
+import com.facebook.react.uimanager.UIManagerHelper
 import com.facebook.react.uimanager.annotations.ReactProp
+import com.facebook.react.uimanager.events.Event
 import com.octopuscommunity.sdk.domain.model.CreatePostScreenInfo
 import com.octopuscommunity.sdk.ui.components.NavigationIconType
 
@@ -128,10 +133,42 @@ class OctopusViewWrapper(context: Context) : FrameLayout(context) {
     }
 }
 
+/**
+ * Direct event dispatched when the embedded top app bar's leading icon (back arrow or
+ * close) is tapped on the SDK's root screen — the case the SDK's own internal navigation
+ * has nothing to pop for. Registered under the `top`-prefixed [EVENT_NAME] (RN convention
+ * for direct events, cf. `topAccessibilityAction` in `BaseViewManager` — Fabric's C++ layer
+ * normalizes the event name to this form and JS looks it up verbatim under interop, so a
+ * bare `onBackRequested` key throws) with `registrationName = "onBackRequested"`, so JS
+ * still receives it as a plain `onBackRequested` view prop callback — the RN analog of
+ * Flutter's Dart-level `onBack` (issue #36).
+ */
+private class OctopusBackRequestedEvent(surfaceId: Int, viewId: Int) :
+    Event<OctopusBackRequestedEvent>(surfaceId, viewId) {
+    override fun getEventName(): String = EVENT_NAME
+    override fun getEventData(): WritableMap = Arguments.createMap()
+
+    // Discrete tap signal, not a stream of updates — never coalesce it away.
+    override fun canCoalesce(): Boolean = false
+
+    companion object {
+        const val EVENT_NAME = "topBackRequested"
+        const val REGISTRATION_NAME = "onBackRequested"
+    }
+}
+
 class OctopusUIViewManager(private val reactContext: ReactApplicationContext) :
     SimpleViewManager<OctopusViewWrapper>() {
 
     override fun getName(): String = REACT_CLASS_NAME
+
+    override fun getExportedCustomDirectEventTypeConstants(): MutableMap<String, Any> =
+        (super.getExportedCustomDirectEventTypeConstants() ?: mutableMapOf()).apply {
+            put(
+                OctopusBackRequestedEvent.EVENT_NAME,
+                MapBuilder.of("registrationName", OctopusBackRequestedEvent.REGISTRATION_NAME)
+            )
+        }
 
     override fun createViewInstance(reactContext: ThemedReactContext): OctopusViewWrapper {
         val wrapper = OctopusViewWrapper(reactContext)
@@ -196,7 +233,11 @@ class OctopusUIViewManager(private val reactContext: ReactApplicationContext) :
                     titleCenteredOverride = wrapper.titleCentered.value,
                     navBarPrimaryColorOverride = wrapper.navBarPrimaryColor.value,
                     showNavBar = wrapper.showNavBar.value,
-                    navBarLeadingAction = wrapper.navBarLeadingAction.value
+                    navBarLeadingAction = wrapper.navBarLeadingAction.value,
+                    // OctopusContent only invokes this on the SDK's ROOT screen — its
+                    // internal NavHost pops sub-screens itself — so the event fires exactly
+                    // when the host is the only party left able to react (issue #36).
+                    onBack = { dispatchBackRequested(wrapper) }
                 )
             }
         }
@@ -324,6 +365,19 @@ class OctopusUIViewManager(private val reactContext: ReactApplicationContext) :
             "back" -> NavigationIconType.Back
             else -> null
         }
+    }
+
+    /**
+     * Bridges the SDK's root-screen back tap to JS as the `onBackRequested` direct event.
+     * Dispatched through [UIManagerHelper] so the same code path serves both the legacy
+     * renderer and Fabric interop; a missing dispatcher (view already unmounted) drops the
+     * tap silently, which is the correct terminal behaviour for a dismissal signal.
+     */
+    private fun dispatchBackRequested(view: OctopusViewWrapper) {
+        val themedContext = view.context as? ThemedReactContext ?: return
+        UIManagerHelper.getEventDispatcherForReactTag(themedContext, view.id)?.dispatchEvent(
+            OctopusBackRequestedEvent(UIManagerHelper.getSurfaceId(themedContext), view.id)
+        )
     }
 
     companion object Companion {

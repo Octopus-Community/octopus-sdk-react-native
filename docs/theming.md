@@ -48,7 +48,25 @@ await initialize({
 
 ## Dark/Light Mode Management
 
-The SDK automatically handles system appearance changes, but you can also force specific modes:
+The SDK automatically handles system appearance changes, but you can also force specific modes —
+for the Octopus UI alone with `setThemeMode()`, or for your whole app through React Native's
+`Appearance` API.
+
+### Forcing the Octopus UI only — `setThemeMode()`
+```ts
+import { setThemeMode } from '@octopus-community/react-native';
+
+// The Octopus UI renders in dark mode whatever the device setting; your own screens are untouched
+setThemeMode('dark');
+
+// Back to following the system appearance
+setThemeMode('system');
+```
+
+Works before or after `initialize()`, and applies live to an Octopus screen already open or an
+`<OctopusUIView>` already mounted, on both platforms. With a [dual-mode theme](#dual-mode-color-themes),
+the set matching the forced mode is selected — and re-selected every time the mode changes, forced
+or system-driven.
 
 ### System Mode (Default)
 ```ts
@@ -165,6 +183,12 @@ await initialize({
 
 Themes are applied when the Octopus UI is opened. The SDK automatically detects the current system appearance (light/dark mode) and applies the appropriate theme configuration.
 
+On Android, when the theme carries a `background`, the light or dark base palette (the colors you
+did not set: grays, text, the unread-notification highlight, …) is chosen from that background's
+luminance rather than from the system appearance — a light background always gets the light
+palette, even on a device in dark mode. This is the same rule the native Android SDK applies, and
+it keeps every default color readable on the surface it is actually drawn on.
+
 ## Complete Theme Example
 
 Here's a comprehensive example showing all theming options:
@@ -258,7 +282,8 @@ const switchToGreenTheme = async () => {
   it does not change how a link is opened. Omit it for the native default.
 - `background`: Background color of the community screens. Omit it for the native
   default (the Octopus light/dark scheme background on Android, the system background
-  on iOS).
+  on iOS). On Android it also selects the light or dark base palette by its luminance
+  (see [Theme Application](#theme-application)).
 
 Every color is optional and independent: a theme carrying only `link`, or only
 `background`, is applied as-is. A color that is not a parseable hex string is dropped —
@@ -338,11 +363,11 @@ Superseded by `fonts.fontFamily` when that resolves — see above.
   family name for the whole theme via `fonts.fontFamily`
 
 **Platform Behavior:**
-- **iOS**: Uses adaptive colors that automatically respond to system appearance changes
-- **Android**: Theme is applied when the UI opens and reflects the current system appearance
+- **iOS**: Uses adaptive colors that automatically respond to system appearance changes; a mode forced with `setThemeMode()` is applied as an interface-style override scoped to the SDK's own screens
+- **Android**: The mode (forced, else the device configuration) is resolved at render time and a dual-mode theme is re-selected for it on every change, live — unless a `background` is set, in which case the base palette follows the background's luminance
 - **Theme Changes**: Require re-initializing the SDK with new theme configuration
-- **System Mode**: Automatically follows device light/dark mode settings
-- **Forced Mode**: Use `Appearance.setColorScheme('light'|'dark')` to override system settings
+- **System Mode**: Automatically follows device light/dark mode settings (Android: only when no `background` is set)
+- **Forced Mode**: `setThemeMode('light'|'dark')` for the Octopus UI only, or `Appearance.setColorScheme('light'|'dark')` for your whole app
 
 **Note**: All theme properties are optional. If not provided, the default Octopus theme will be used.
 

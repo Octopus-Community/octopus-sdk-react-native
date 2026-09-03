@@ -1,6 +1,6 @@
 {
   "name": "@octopus-community/react-native",
-  "version": "1.13.0",
+  "version": "1.13.1",
   "description": "React Native module for the Octopus Community SDK",
   "source": "./src/index.ts",
   "main": "./lib/module/index.js",
@@ -103,8 +103,17 @@
     "preset": "react-native",
     "modulePathIgnorePatterns": [
       "<rootDir>/example/node_modules",
-      "<rootDir>/lib/"
-    ]
+      "<rootDir>/lib/",
+      "<rootDir>/.claude/"
+    ],
+    "testPathIgnorePatterns": [
+      "<rootDir>/node_modules/",
+      "<rootDir>/src/__tests__/helpers/",
+      "<rootDir>/.claude/"
+    ],
+    "moduleNameMapper": {
+      "^@react-native-async-storage/async-storage$": "<rootDir>/example/src/testing/asyncStorageMock.ts"
+    }
   },
   "commitlint": {
     "extends": [

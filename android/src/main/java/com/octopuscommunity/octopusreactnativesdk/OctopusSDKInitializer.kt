@@ -69,6 +69,8 @@ class OctopusSDKInitializer {
     var backgroundColor: String? = null
     var logoSource: ReadableMap? = null
     var fontsConfig: OctopusFontsConfig? = null
+    var lightSet: OctopusModeColors? = null
+    var darkSet: OctopusModeColors? = null
 
     // Parse colors from theme if available
     themeMap?.let { theme ->
@@ -79,7 +81,11 @@ class OctopusSDKInitializer {
         val darkColors = colors.getMap("dark")
 
         if (lightColors != null && darkColors != null) {
-          // Dual-mode theme - select colors based on current color scheme
+          // Dual-mode theme. Both raw sets are kept on the config so the render can re-select
+          // for the mode in effect then (OctopusThemeConfig.resolvedFor); the flat slots below
+          // are the selection for the scheme known now, kept for the first render.
+          lightSet = modeColors(lightColors)
+          darkSet = modeColors(darkColors)
           val selectedColors = if (colorScheme == "dark") darkColors else lightColors
           val otherColors = if (colorScheme == "dark") lightColors else darkColors
           primaryColor = colorFrom(selectedColors, "primary")
@@ -146,7 +152,9 @@ class OctopusSDKInitializer {
         backgroundColor = backgroundColor,
         logoSource = logoSource,
         colorScheme = colorScheme,
-        fonts = fontsConfig
+        fonts = fontsConfig,
+        lightColors = lightSet,
+        darkColors = darkSet
       )
     }
 
@@ -265,6 +273,15 @@ class OctopusSDKInitializer {
       null
     }
   }
+
+  private fun modeColors(colors: ReadableMap) = OctopusModeColors(
+    primary = colorFrom(colors, "primary"),
+    primaryLowContrast = colorFrom(colors, "primaryLowContrast"),
+    primaryHighContrast = colorFrom(colors, "primaryHighContrast"),
+    onPrimary = colorFrom(colors, "onPrimary"),
+    link = colorFrom(colors, "link"),
+    background = colorFrom(colors, "background")
+  )
 
   private fun colorFrom(colors: ReadableMap, key: String): String? =
     parseColor(if (colors.hasKey(key)) colors.getString(key) else null)

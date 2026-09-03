@@ -60,4 +60,22 @@ describe('OctopusUIView navigation & theme prop marshalling', () => {
       nativeProps({ navBarLeadingAction: 'close' }).navBarLeadingAction
     ).toBe('close');
   });
+
+  it('binds no native onBackRequested handler when the host passes none', () => {
+    // `undefined` keeps the wire contract identical to before the prop
+    // existed — no direct-event registration for hosts that don't listen.
+    expect(nativeProps({}).onBackRequested).toBeUndefined();
+  });
+
+  it('invokes onBackRequested without leaking the native event object', () => {
+    const onBackRequested = jest.fn();
+    const handler = nativeProps({ onBackRequested }).onBackRequested as (
+      event: unknown
+    ) => void;
+    handler({ nativeEvent: {} });
+    expect(onBackRequested).toHaveBeenCalledTimes(1);
+    // The public callback takes no arguments: the native synthetic event is
+    // an implementation detail of the bridge, not part of the API.
+    expect(onBackRequested).toHaveBeenCalledWith();
+  });
 });

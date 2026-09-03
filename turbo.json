@@ -14,12 +14,21 @@
     // the resolved dependency set into the task hash on its own
     // (`hashOfExternalDependencies`); and every `!…/build/**`, `!…/Pods/**`,
     // `!…/.gradle/**` below is belt-and-braces — those paths are gitignored and
-    // turbo never hashes them anyway. Only `!../src/__tests__/**` subtracts
-    // something real.
+    // turbo never hashes them anyway. Only the two `!…/src/__tests__/**` lines
+    // subtract something real: unit tests live inside both hashed source trees
+    // (the SDK's and the example app's), and a test-only edit must not
+    // invalidate a native build.
     //
     // On a turbo 2.x upgrade, `../x/**` becomes `$TURBO_ROOT$/x/**`: parent
     // traversal works and is asserted at 1.13.x, but the supported spelling for
     // a root-relative input is the 2.x microsyntax.
+    //
+    // `outputs: []` on both tasks is intentional, not an omission: CI consumes
+    // nothing from these builds — the job exists to prove the example still
+    // compiles — so the only value of a cache HIT is skipping the build
+    // entirely, which an empty outputs list already provides. Declaring the
+    // built .app/.apk as outputs would push hundreds of MB per hash into
+    // .turbo/ and through actions/cache for artifacts nobody reads.
     "build:android": {
       "env": ["ORG_GRADLE_PROJECT_newArchEnabled"],
       "inputs": [
@@ -34,7 +43,8 @@
         "!android/.gradle/**",
         "!android/build/**",
         "!android/app/build/**",
-        "src/**"
+        "src/**",
+        "!src/__tests__/**"
       ],
       "outputs": []
     },
@@ -55,7 +65,8 @@
         "ios/**",
         "!ios/build/**",
         "!ios/Pods/**",
-        "src/**"
+        "src/**",
+        "!src/__tests__/**"
       ],
       "outputs": []
     }

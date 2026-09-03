@@ -1,156 +1,150 @@
-/* eslint-disable react-native/no-inline-styles */
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Platform,
-} from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MaterialIcons } from '@react-native-vector-icons/material-icons/static';
 
-/** Tab identifiers for the example app: Setup, Theme, SDK Data, Groups, Scenarios, Community */
-export type TabId =
-  | 'setup'
-  | 'theme'
-  | 'sdkData'
-  | 'groups'
-  | 'scenarios'
-  | 'community';
+import { OCTOPUS_BRAND } from '../theme/branding';
+
+/** The Material Icons glyph names this bar draws — same four the reference samples use. */
+type TabIconName = React.ComponentProps<typeof MaterialIcons>['name'];
+
+/** Tab identifiers for the example app: Home, Scenarios, Community, Settings. */
+export type TabId = 'home' | 'scenarios' | 'community' | 'settings';
 
 export interface TabBarProps {
   activeTab: TabId;
   onTabChange: (tab: TabId) => void;
-  isDark: boolean;
-  primaryColor: string;
-  onPrimaryColor: string;
+  /** The bar's own background — the unread badge draws a ring in it to detach from the icon. */
+  badgeRingColor: string;
+  /** Tint of the selected item's icon and label. */
+  activeColor: string;
+  /** Tint of every unselected item. */
+  inactiveColor: string;
   notSeenNotificationsCount?: number;
 }
 
-const TABS: { id: TabId; label: string }[] = [
-  { id: 'setup', label: 'Setup' },
-  { id: 'theme', label: 'Theme' },
-  { id: 'sdkData', label: 'SDK Data' },
-  { id: 'groups', label: 'Groups' },
-  { id: 'scenarios', label: 'Scenarios' },
-  { id: 'community', label: 'Community' },
+/**
+ * `testId` is the shared cross-platform handle from the scenario catalog's `shell.tabs` map
+ * (kept in the internal QA tooling's shared config), applied verbatim so the QA pipeline drives
+ * the same id here as on the other samples. The catalog names exactly these four tabs and the
+ * example ships exactly these four — every other capability is a scenario card, and the event
+ * log is the Debug console (reached from Settings, `debug-open-button`).
+ *
+ * `icon` is the glyph the shared sample design identity assigns to that tab — Material
+ * filled `home` / `science` / `forum` / `settings`, the same four on Android, Flutter and
+ * here, so a tester recognises the same bar on every sample. `forum` rather than `people`
+ * for Community: the tab opens a discussion surface, not a member list.
+ */
+const TABS: {
+  id: TabId;
+  label: string;
+  testId: string;
+  icon: TabIconName;
+}[] = [
+  { id: 'home', label: 'Home', testId: 'home-tab', icon: 'home' },
+  {
+    id: 'scenarios',
+    label: 'Scenarios',
+    testId: 'scenarios-tab',
+    icon: 'science',
+  },
+  {
+    id: 'community',
+    label: 'Community',
+    testId: 'community-tab',
+    icon: 'forum',
+  },
+  {
+    id: 'settings',
+    label: 'Settings',
+    testId: 'settings-tab',
+    icon: 'settings',
+  },
 ];
-
-const MAIN_TABS = TABS.slice(0, 5);
-const COMMUNITY_TAB: (typeof TABS)[0] = TABS[5]!;
 
 function TabButton({
   tab,
   isActive,
-  showBadge,
-  notSeenNotificationsCount,
+  badgeCount,
   onPress,
-  isDark,
-  primaryColor,
-  onPrimaryColor,
-  style,
+  badgeRingColor,
+  activeColor,
+  inactiveColor,
 }: {
   tab: (typeof TABS)[0];
   isActive: boolean;
-  showBadge: boolean;
-  notSeenNotificationsCount: number;
+  /** 0 hides the badge — only the Community tab ever passes a non-zero count. */
+  badgeCount: number;
   onPress: () => void;
-  isDark: boolean;
-  primaryColor: string;
-  onPrimaryColor: string;
-  style?: object;
+  badgeRingColor: string;
+  activeColor: string;
+  inactiveColor: string;
 }) {
+  const tint = isActive ? activeColor : inactiveColor;
   return (
     <TouchableOpacity
-      style={[styles.tab, style]}
+      testID={tab.testId}
+      style={styles.tab}
       onPress={onPress}
       activeOpacity={0.7}
       accessibilityRole="tab"
       accessibilityState={{ selected: isActive }}
       accessibilityLabel={`${tab.label} tab`}
     >
-      <View
-        style={[styles.tabInner, isActive && { backgroundColor: primaryColor }]}
-      >
-        <View style={styles.tabLabelRow}>
-          <Text
-            style={[
-              styles.tabLabel,
-              { color: isDark ? '#cccccc' : '#666666' },
-              isActive && { color: onPrimaryColor },
-            ]}
-          >
-            {tab.label}
-          </Text>
-          {showBadge && (
-            <View style={[styles.badge, isDark && styles.badgeDark]}>
-              <Text style={styles.badgeText}>
-                {notSeenNotificationsCount > 99
-                  ? '99+'
-                  : notSeenNotificationsCount}
-              </Text>
-            </View>
-          )}
-        </View>
+      <View style={styles.iconSlot}>
+        <MaterialIcons name={tab.icon} size={24} color={tint} />
+        {badgeCount > 0 && (
+          <View style={[styles.badge, { borderColor: badgeRingColor }]}>
+            <Text style={styles.badgeText}>
+              {badgeCount > 99 ? '99+' : badgeCount}
+            </Text>
+          </View>
+        )}
       </View>
+      <Text
+        style={[styles.tabLabel, { color: tint }]}
+        numberOfLines={1}
+        maxFontSizeMultiplier={1.3}
+      >
+        {tab.label}
+      </Text>
     </TouchableOpacity>
   );
 }
 
 /**
- * Bottom tab bar: Setup, Theme, SDK Data on configurable width; Community centered in the rest.
+ * Bottom tab bar — four items of equal width, icon over label: the standard shape on both
+ * platforms, and the one the reference samples already have (Material 3 `NavigationBar` on
+ * Android, `BottomNavigationBar` on Flutter).
+ *
+ * The bottom safe area is padded here rather than by a `SafeAreaView` edge, because the
+ * bar's own background has to run all the way to the screen edge — so the inset is padding
+ * *inside* it, not a gap above it.
  */
 export function TabBar({
   activeTab,
   onTabChange,
-  isDark,
-  primaryColor,
-  onPrimaryColor,
+  badgeRingColor,
+  activeColor,
+  inactiveColor,
   notSeenNotificationsCount = 0,
 }: TabBarProps) {
-  const mainTabsWidthFraction = 0.7;
-  const rightFraction = 1 - mainTabsWidthFraction;
+  const insets = useSafeAreaInsets();
   return (
     <View
-      style={[
-        styles.container,
-        isDark ? styles.containerDark : styles.containerLight,
-      ]}
+      style={[styles.container, { paddingBottom: Math.max(insets.bottom, 10) }]}
     >
-      <View style={[styles.mainTabsRow, { flex: mainTabsWidthFraction }]}>
-        {MAIN_TABS.map((tab) => (
-          <TabButton
-            key={tab.id}
-            tab={tab}
-            isActive={activeTab === tab.id}
-            showBadge={false}
-            notSeenNotificationsCount={0}
-            onPress={() => onTabChange(tab.id)}
-            isDark={isDark}
-            primaryColor={primaryColor}
-            onPrimaryColor={onPrimaryColor}
-          />
-        ))}
-      </View>
-      <View
-        style={[
-          styles.separator,
-          isDark ? styles.separatorDark : styles.separatorLight,
-        ]}
-      />
-      <View style={[styles.communityTabSlot, { flex: rightFraction }]}>
+      {TABS.map((tab) => (
         <TabButton
-          tab={COMMUNITY_TAB}
-          isActive={activeTab === COMMUNITY_TAB.id}
-          showBadge={
-            COMMUNITY_TAB.id === 'community' && notSeenNotificationsCount > 0
-          }
-          notSeenNotificationsCount={notSeenNotificationsCount}
-          onPress={() => onTabChange(COMMUNITY_TAB.id)}
-          isDark={isDark}
-          primaryColor={primaryColor}
-          onPrimaryColor={onPrimaryColor}
-          style={styles.communityTab}
+          key={tab.id}
+          tab={tab}
+          isActive={activeTab === tab.id}
+          badgeCount={tab.id === 'community' ? notSeenNotificationsCount : 0}
+          onPress={() => onTabChange(tab.id)}
+          badgeRingColor={badgeRingColor}
+          activeColor={activeColor}
+          inactiveColor={inactiveColor}
         />
-      </View>
+      ))}
     </View>
   );
 }
@@ -158,68 +152,34 @@ export function TabBar({
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    paddingVertical: 8,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 24,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
+    alignItems: 'flex-start',
     width: '100%',
-  },
-  containerLight: {
-    backgroundColor: '#f8f8f8',
-    borderTopColor: '#e0e0e0',
-  },
-  containerDark: {
-    backgroundColor: '#1a1a1a',
-    borderTopColor: '#333333',
-  },
-  mainTabsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-  },
-  separator: {
-    width: StyleSheet.hairlineWidth,
-    alignSelf: 'stretch',
-    marginVertical: 8,
-    borderRadius: 1,
-  },
-  separatorLight: {
-    backgroundColor: '#e0e0e0',
-  },
-  separatorDark: {
-    backgroundColor: '#333333',
-  },
-  communityTabSlot: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  communityTab: {
-    flex: 0,
+    paddingTop: 8,
   },
   tab: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 4,
+    gap: 3,
   },
-  tabInner: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 8,
-    minWidth: 80,
+  // Anchors the badge to the icon rather than to the label, which is where every platform's
+  // stock bottom bar puts it.
+  iconSlot: {
+    width: 32,
+    height: 24,
     alignItems: 'center',
-    overflow: 'hidden',
+    justifyContent: 'center',
   },
   tabLabel: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  tabLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+    fontSize: 12,
+    fontWeight: '600',
   },
   badge: {
-    backgroundColor: '#FF3B30',
+    position: 'absolute',
+    top: -4,
+    left: 16,
+    backgroundColor: OCTOPUS_BRAND.error,
     borderRadius: 8,
     minWidth: 16,
     height: 16,
@@ -227,14 +187,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#f8f8f8',
-  },
-  badgeDark: {
-    borderColor: '#1a1a1a',
   },
   badgeText: {
     color: '#FFFFFF',
-    fontSize: 10,
+    // 11 rather than the 12 floor: the M3 Badge spec's size for a numeric counter.
+    fontSize: 11,
     fontWeight: '700',
   },
 });

@@ -24,6 +24,13 @@ import UIKit
   @objc var navigationMode: NSString? = nil
   @objc var navBarLeadingAction: NSString? = nil
 
+  /// Direct event fired when the embedded top app bar's leading icon (back arrow or close)
+  /// is tapped on the SDK's root screen — the RN analog of Flutter's Dart-level `onBack`
+  /// (issue #36). Unlike the props above, this is NOT read once in `didMoveToWindow()`: the
+  /// tap closure handed to the SDK reads it at tap time (weakly, through the container), so
+  /// React can rebind the JS handler on re-render without a remount.
+  @objc var onBackRequested: RCTDirectEventBlock? = nil
+
   private var hasEmbedded = false
 
   /// Total bottom padding (points) the host asked for through
@@ -162,7 +169,9 @@ import UIKit
       navBarPrimaryColor: navBarPrimaryColor,
       titleCentered: titleCentered,
       navigationMode: navigationMode as String?,
-      navBarLeadingAction: navBarLeadingAction as String?
+      navBarLeadingAction: navBarLeadingAction as String?,
+      // Read at tap time, not captured now: React rebinds the block on every re-render.
+      onBackTap: { [weak self] in self?.onBackRequested?([:]) }
     )
     hasEmbedded = true
   }

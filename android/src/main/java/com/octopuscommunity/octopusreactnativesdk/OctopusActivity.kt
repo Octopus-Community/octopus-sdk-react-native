@@ -106,10 +106,11 @@ class OctopusActivity : ComponentActivity() {
         linkPath = linkPath,
         createPostInfo = createPostInfo,
         initialScreen = initialScreen,
-        // Parity wave — navigation & theme. Fully functional here (unlike the embedded view's
-        // known inert-tap gap): the fullscreen Activity's `onBack` above already fires on this
-        // icon regardless of variant, since OctopusHomeScreen's own leadingNavigationIcon
-        // resolution routes both Back and Close taps through the same `onBack` callback.
+        // Parity wave — navigation & theme. The fullscreen Activity's `onBack` above already
+        // fires on this icon regardless of variant, since OctopusHomeScreen's own
+        // leadingNavigationIcon resolution routes both Back and Close taps through the same
+        // `onBack` callback — the embedded view reaches the same behaviour through its
+        // `onBackRequested` direct event (see OctopusUIViewManager, issue #36).
         navBarLeadingAction = navBarLeadingAction
       )
     }

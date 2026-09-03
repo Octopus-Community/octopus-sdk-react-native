@@ -63,7 +63,7 @@ def enableProguardInReleaseBuilds = false
 /**
  * CI versionCode = SAMPLE_VERSION_CODE (this app's own small monotonic base, in
  * gradle.properties) * 10000 + the workflow run number. Same formula/rationale as
- * octopus-sdk-android-sources' sample app: every CI upload gets a unique, strictly
+ * the Android SDK's own sample app: every CI upload gets a unique, strictly
  * increasing versionCode without hand-bumping it per release, and the *10000
  * multiplier caps the run number at 9999 before it would collide with the next
  * SAMPLE_VERSION_CODE bucket. CI_VERSION_RUN_NUMBER defaults to 0 for local builds,
@@ -72,6 +72,13 @@ def enableProguardInReleaseBuilds = false
 def sampleVersionCode = (findProperty('SAMPLE_VERSION_CODE') ?: '1').toString().toInteger()
 def ciVersionRunNumber = (System.getenv('CI_VERSION_RUN_NUMBER') ?: '0').toInteger()
 def ciVersionCode = sampleVersionCode * 10000 + ciVersionRunNumber
+
+/**
+ * The sample's versionName follows the wrapper version (root package.json), so the
+ * Play listing tells testers which SDK build they are running — versionCode above
+ * stays the CI-monotonic counter.
+ */
+def wrapperVersionName = new groovy.json.JsonSlurper().parseText(file('../../../package.json').text).version
 
 /**
  * Resolves a release-signing secret from either a Gradle project property (settable via
@@ -114,7 +121,7 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode ciVersionCode
-        versionName "1.0"
+        versionName wrapperVersionName
     }
     signingConfigs {
         debug {
@@ -150,7 +157,7 @@ android {
         // MainActivity extends ReactActivity -> AppCompatActivity -> Activity, but
         // Lint Vital fails to follow the chain in release builds (known false positive
         // in the React Native ecosystem). Without this, `assembleRelease` / `yarn android
-        // --mode release` aborts on Instantiatable, which blocks pm-tools QA in release mode.
+        // --mode release` aborts on Instantiatable, which blocks on-device QA in release mode.
         disable 'Instantiatable'
     }
 }
@@ -158,6 +165,11 @@ android {
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
+
+    // Play's in-app update API, used by the sample-local AppUpdateModule to tell
+    // testers when a newer build is on the track they installed from. Sample only:
+    // nothing in the published SDK depends on Play services.
+    implementation("com.google.android.play:app-update:2.1.0")
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")

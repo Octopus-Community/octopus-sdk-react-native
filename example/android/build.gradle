@@ -1,9 +1,13 @@
 buildscript {
     ext {
-        buildToolsVersion = "35.0.0"
+        buildToolsVersion = "36.0.0"
         minSdkVersion = 24
-        compileSdkVersion = 35
-        targetSdkVersion = 35
+        // Android 16 / API 36: Play rejects any AAB targeting 35 or lower since
+        // the 2026-08-31 deadline ("Target SDK of artifact is too low"), which
+        // broke the Internal Testing upload on `main`. RN 0.81's own template
+        // already defaults to 36.
+        compileSdkVersion = 36
+        targetSdkVersion = 36
         ndkVersion = "27.1.12297006"
         kotlinVersion = "2.0.21"
     }

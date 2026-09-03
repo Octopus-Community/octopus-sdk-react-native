@@ -5,7 +5,35 @@ import UIKit
 import React
 
 class OctopusUIManager {
+  /// Additive bottom padding an *embedded* view applies when the host passed no
+  /// `ui.bottomSafeAreaInset` at all — the same historical 10 pt default the Flutter
+  /// bridge applies in that state (`SafeHostingContainerView`), so the profile bubble
+  /// and create-post button never sit flush against the bottom of the embedded view.
+  /// An explicit 0 from the host still means "reserve nothing" and bypasses it.
+  static let embeddedDefaultBottomInset: CGFloat = 10
+
   private weak var presentedViewController: UIViewController?
+
+  /// Hosting controllers created by `addEmbeddedView` and still alive, so a later
+  /// `setForcedInterfaceStyle` reaches every mounted `<OctopusUIView>`, not only the
+  /// fullscreen one.
+  private let embeddedHostingControllers = NSHashTable<UIViewController>.weakObjects()
+
+  /// The interface style `setThemeMode()` forces, `.unspecified` while following the system.
+  /// Applied to every hosting controller at creation and, live, to the ones already on screen.
+  /// The theme's adaptive colors resolve against the controller's trait collection, so
+  /// overriding it re-selects the dual-mode set with no theme rebuild — and it is scoped to
+  /// the SDK's own controllers, the host app's appearance is untouched.
+  private var forcedInterfaceStyle: UIUserInterfaceStyle = .unspecified
+
+  func setForcedInterfaceStyle(_ style: UIUserInterfaceStyle) {
+    forcedInterfaceStyle = style
+    OctopusInterfaceStyleStore.shared.colorScheme = style.forcedColorScheme
+    presentedViewController?.overrideUserInterfaceStyle = style
+    for controller in embeddedHostingControllers.allObjects {
+      controller.overrideUserInterfaceStyle = style
+    }
+  }
 
   func openUI(
     octopus: OctopusSDK,
@@ -30,23 +58,28 @@ class OctopusUIManager {
     let initialTheme = (theme != nil || fontConfiguration != nil) ? customTheme : nil
 
     let hostingController = UIHostingController(
-      rootView: makeHomeScreenView(octopus: octopus, theme: initialTheme, bottomSafeAreaInset: bottomSafeAreaInset, notificationUserInfo: notificationUserInfo, topAppBar: topAppBar, initialScreen: initialScreen, navigationMode: navigationMode, navBarLeadingAction: navBarLeadingAction)
+      rootView: OctopusThemedRoot {
+        makeHomeScreenView(octopus: octopus, theme: initialTheme, bottomSafeAreaInset: bottomSafeAreaInset, notificationUserInfo: notificationUserInfo, topAppBar: topAppBar, initialScreen: initialScreen, navigationMode: navigationMode, navBarLeadingAction: navBarLeadingAction)
+      }
     )
     hostingController.modalPresentationStyle = .fullScreen
+    hostingController.overrideUserInterfaceStyle = forcedInterfaceStyle
 
     // Apply theme if provided
     if let _ = theme {
       // Apply theme immediately (without logo) to avoid delay
-      hostingController.rootView = makeHomeScreenView(
-        octopus: octopus,
-        theme: customTheme,
-        bottomSafeAreaInset: bottomSafeAreaInset,
-        notificationUserInfo: notificationUserInfo,
-        topAppBar: topAppBar,
-        initialScreen: initialScreen,
-        navigationMode: navigationMode,
-        navBarLeadingAction: navBarLeadingAction
-      )
+      hostingController.rootView = OctopusThemedRoot {
+        self.makeHomeScreenView(
+          octopus: octopus,
+          theme: customTheme,
+          bottomSafeAreaInset: bottomSafeAreaInset,
+          notificationUserInfo: notificationUserInfo,
+          topAppBar: topAppBar,
+          initialScreen: initialScreen,
+          navigationMode: navigationMode,
+          navBarLeadingAction: navBarLeadingAction
+        )
+      }
 
       // Then load logo asynchronously and update theme if logo loads
       if let logoSource = logoSource {
@@ -58,16 +91,18 @@ class OctopusUIManager {
                 fonts: customTheme.fonts,
                 assets: OctopusUI.OctopusTheme.Assets(logo: logoImage)
               )
-              hostingController?.rootView = self.makeHomeScreenView(
-                octopus: octopus,
-                theme: updatedTheme,
-                bottomSafeAreaInset: bottomSafeAreaInset,
-                notificationUserInfo: notificationUserInfo,
-                topAppBar: topAppBar,
-                initialScreen: initialScreen,
-                navigationMode: navigationMode,
-                navBarLeadingAction: navBarLeadingAction
-              )
+              hostingController?.rootView = OctopusThemedRoot {
+                self.makeHomeScreenView(
+                  octopus: octopus,
+                  theme: updatedTheme,
+                  bottomSafeAreaInset: bottomSafeAreaInset,
+                  notificationUserInfo: notificationUserInfo,
+                  topAppBar: topAppBar,
+                  initialScreen: initialScreen,
+                  navigationMode: navigationMode,
+                  navBarLeadingAction: navBarLeadingAction
+                )
+              }
             } else {
               // Theme is already applied, no need to do anything
             }
@@ -84,16 +119,18 @@ class OctopusUIManager {
               fonts: OctopusUI.OctopusTheme.Fonts(),
               assets: OctopusUI.OctopusTheme.Assets(logo: logoImage)
             )
-            hostingController?.rootView = self.makeHomeScreenView(
-              octopus: octopus,
-              theme: logoTheme,
-              bottomSafeAreaInset: bottomSafeAreaInset,
-              notificationUserInfo: notificationUserInfo,
-              topAppBar: topAppBar,
-              initialScreen: initialScreen,
-              navigationMode: navigationMode,
-              navBarLeadingAction: navBarLeadingAction
-            )
+            hostingController?.rootView = OctopusThemedRoot {
+              self.makeHomeScreenView(
+                octopus: octopus,
+                theme: logoTheme,
+                bottomSafeAreaInset: bottomSafeAreaInset,
+                notificationUserInfo: notificationUserInfo,
+                topAppBar: topAppBar,
+                initialScreen: initialScreen,
+                navigationMode: navigationMode,
+                navBarLeadingAction: navBarLeadingAction
+              )
+            }
           }
         }
       }
@@ -205,22 +242,31 @@ class OctopusUIManager {
     navBarLeadingAction: OctopusNavBarLeadingAction? = nil
   ) {
     let customTheme = createCustomTheme(baseTheme: theme, fontConfiguration: fontConfiguration)
-    let bottomSafeAreaInset = uiConfiguration?.bottomSafeAreaInset
+    let requestedBottomInset = uiConfiguration?.bottomSafeAreaInset
     let initialTheme = (theme != nil || fontConfiguration != nil) ? customTheme : nil
 
     // For an embedded view the host-facing `bottomSafeAreaInset` is a *total* bottom
     // padding — that is what the Android bridge renders, since it consumes the system
     // insets before mounting — while the native iOS SDK applies its value *on top of* the
     // safe area the view already sits in. Only the container knows that safe area, so it
-    // owns the conversion and keeps it current as its geometry changes. No request, or a
-    // non-positive one, keeps the historical behaviour: 0 forwarded, native gate off.
+    // owns the conversion and keeps it current as its geometry changes.
+    //
+    // Three host states, matching the Flutter bridge (`SafeHostingContainerView`):
+    //  - a value > 0 is a *total*: the container normalizes it live below;
+    //  - an explicit 0 is the edge-to-edge opt-out: 0 forwarded, native gate off;
+    //  - no key at all means "the host expressed no preference": the embedded view
+    //    then keeps the additive 10 pt default the Flutter bridge has always applied,
+    //    instead of forwarding 0 — which leaves the native `> 0` gate off and glues
+    //    the profile bubble and create-post button to the very bottom of the view.
+    //    The 10 pt is constant and additive (no normalization), exactly as on Flutter.
     // The `.profile` initial screen mounts `OctopusProfileScreen`, which pins its own bottom
     // inset to 0 and therefore ignores the store entirely — see `makeHomeScreenView`. The
     // normalization below still runs (harmlessly) so a host that later remounts on the home
     // screen finds an already-converged value.
+    let bottomSafeAreaInset = requestedBottomInset ?? Self.embeddedDefaultBottomInset
     let bottomInsetStore: OctopusBottomInsetStore? = {
       guard let container = containerView as? OctopusEmbeddedContainerView,
-            let requested = bottomSafeAreaInset,
+            let requested = requestedBottomInset,
             requested > 0
       else { return nil }
       container.startNormalizingBottomInset(totalRequested: requested)
@@ -228,8 +274,12 @@ class OctopusUIManager {
     }()
 
     let hostingController = UIHostingController(
-      rootView: makeHomeScreenView(octopus: octopus, theme: initialTheme, bottomSafeAreaInset: bottomSafeAreaInset, bottomInsetStore: bottomInsetStore, notificationUserInfo: notificationUserInfo, topAppBar: topAppBar, initialScreen: initialScreen, navigationMode: navigationMode, navBarLeadingAction: navBarLeadingAction)
+      rootView: OctopusThemedRoot {
+        makeHomeScreenView(octopus: octopus, theme: initialTheme, bottomSafeAreaInset: bottomSafeAreaInset, bottomInsetStore: bottomInsetStore, notificationUserInfo: notificationUserInfo, topAppBar: topAppBar, initialScreen: initialScreen, navigationMode: navigationMode, navBarLeadingAction: navBarLeadingAction)
+      }
     )
+    hostingController.overrideUserInterfaceStyle = forcedInterfaceStyle
+    embeddedHostingControllers.add(hostingController)
     hostingController.view.backgroundColor = .clear
     containerView.addSubview(hostingController.view)
     hostingController.view.translatesAutoresizingMaskIntoConstraints = false
@@ -254,17 +304,19 @@ class OctopusUIManager {
               fonts: customTheme.fonts,
               assets: OctopusUI.OctopusTheme.Assets(logo: logoImage)
             )
-            hostingController?.rootView = self.makeHomeScreenView(
-              octopus: octopus,
-              theme: updatedTheme,
-              bottomSafeAreaInset: bottomSafeAreaInset,
-              bottomInsetStore: bottomInsetStore,
-              notificationUserInfo: notificationUserInfo,
-              topAppBar: topAppBar,
-              initialScreen: initialScreen,
-              navigationMode: navigationMode,
-              navBarLeadingAction: navBarLeadingAction
-            )
+            hostingController?.rootView = OctopusThemedRoot {
+              self.makeHomeScreenView(
+                octopus: octopus,
+                theme: updatedTheme,
+                bottomSafeAreaInset: bottomSafeAreaInset,
+                bottomInsetStore: bottomInsetStore,
+                notificationUserInfo: notificationUserInfo,
+                topAppBar: topAppBar,
+                initialScreen: initialScreen,
+                navigationMode: navigationMode,
+                navBarLeadingAction: navBarLeadingAction
+              )
+            }
           }
         }
       }
@@ -277,17 +329,19 @@ class OctopusUIManager {
               fonts: OctopusUI.OctopusTheme.Fonts(),
               assets: OctopusUI.OctopusTheme.Assets(logo: logoImage)
             )
-            hostingController?.rootView = self.makeHomeScreenView(
-              octopus: octopus,
-              theme: logoTheme,
-              bottomSafeAreaInset: bottomSafeAreaInset,
-              bottomInsetStore: bottomInsetStore,
-              notificationUserInfo: notificationUserInfo,
-              topAppBar: topAppBar,
-              initialScreen: initialScreen,
-              navigationMode: navigationMode,
-              navBarLeadingAction: navBarLeadingAction
-            )
+            hostingController?.rootView = OctopusThemedRoot {
+              self.makeHomeScreenView(
+                octopus: octopus,
+                theme: logoTheme,
+                bottomSafeAreaInset: bottomSafeAreaInset,
+                bottomInsetStore: bottomInsetStore,
+                notificationUserInfo: notificationUserInfo,
+                topAppBar: topAppBar,
+                initialScreen: initialScreen,
+                navigationMode: navigationMode,
+                navBarLeadingAction: navBarLeadingAction
+              )
+            }
           }
         }
       }
@@ -531,5 +585,46 @@ extension UIView {
       return nextResponder.findViewController()
     }
     return nil
+  }
+}
+
+// MARK: - Forced color scheme (setThemeMode)
+
+/// The color scheme `setThemeMode()` forces, `nil` while following the system. Observed by
+/// `OctopusThemedRoot` so a change re-renders every SDK root already on screen.
+final class OctopusInterfaceStyleStore: ObservableObject {
+  static let shared = OctopusInterfaceStyleStore()
+  @Published var colorScheme: ColorScheme?
+}
+
+/// Wraps an SDK root view and pins its SwiftUI `colorScheme` environment to the forced scheme.
+/// `overrideUserInterfaceStyle` on the hosting controller covers the controller's own hierarchy
+/// but not what it *presents* — UIKit presentations do not inherit the override — whereas the
+/// SwiftUI environment does flow into sheets and full-screen covers the SDK opens (post
+/// composer, image viewer…). Both are applied so the forced scheme holds everywhere the SDK
+/// draws. Same modifier in both states — `nil` falls back to the ambient scheme — so toggling
+/// never changes the view identity and never resets navigation state.
+struct OctopusThemedRoot<Content: View>: View {
+  @ObservedObject private var store = OctopusInterfaceStyleStore.shared
+  @Environment(\.colorScheme) private var ambientColorScheme
+  private let content: Content
+
+  init(@ViewBuilder content: () -> Content) {
+    self.content = content()
+  }
+
+  var body: some View {
+    content.environment(\.colorScheme, store.colorScheme ?? ambientColorScheme)
+  }
+}
+
+extension UIUserInterfaceStyle {
+  /// `.light` / `.dark` as a SwiftUI scheme, `nil` for `.unspecified` (follow the system).
+  var forcedColorScheme: ColorScheme? {
+    switch self {
+    case .light: return .light
+    case .dark: return .dark
+    default: return nil
+    }
   }
 }

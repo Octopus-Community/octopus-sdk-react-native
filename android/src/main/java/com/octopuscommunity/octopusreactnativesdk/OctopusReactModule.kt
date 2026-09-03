@@ -163,13 +163,14 @@ class OctopusReactModule(reactContext: ReactApplicationContext) :
   }
 
   @ReactMethod
-  fun updateColorScheme(colorScheme: String?, promise: Promise) {
-    // Update the theme config with the new color scheme
-    val currentThemeConfig = OctopusThemeManager.getThemeConfig()
-    if (currentThemeConfig != null) {
-      val updatedThemeConfig = currentThemeConfig.copy(colorScheme = colorScheme)
-      OctopusThemeManager.setThemeConfig(updatedThemeConfig)
-    }
+  fun updateColorScheme(colorScheme: String?, forced: Boolean, promise: Promise) {
+    // `colorScheme` is the effective scheme (forced by setThemeMode, else the one JS observes);
+    // `forced` is what iOS keys its interface-style override on — Android renders from the
+    // effective scheme either way, and OctopusContent re-selects a dual-mode set from it.
+    // No theme configured yet is not a reason to drop the update: a setThemeMode() with no
+    // `theme` at initialize() must still force the base palette, so the config is created.
+    val base = OctopusThemeManager.getThemeConfig() ?: OctopusThemeConfig.EMPTY
+    OctopusThemeManager.setThemeConfig(base.copy(colorScheme = colorScheme))
     promise.resolve(null)
   }
 
@@ -495,6 +496,57 @@ class OctopusReactModule(reactContext: ReactApplicationContext) :
         e.message ?: "Failed to override terms acceptance mode",
         e
       )
+    }
+  }
+
+  @OptIn(InternalOctopusApi::class)
+  @ReactMethod
+  fun debugOverrideExposeClientUserId(enabled: ReadableMap?, promise: Promise) {
+    // Tri-state travels as `{ value } | null` — a primitive boolean cannot carry
+    // the "clear the override" case across the bridge.
+    val value = enabled?.takeIf { it.hasKey("value") }?.getBoolean("value")
+    try {
+      OctopusSDK.debugOverrideExposeClientUserId(value)
+      promise.resolve(null)
+    } catch (e: Exception) {
+      promise.reject(
+        "OVERRIDE_ERROR",
+        e.message ?: "Failed to override exposeClientUserId",
+        e
+      )
+    }
+  }
+
+  /**
+   * Debug-only read of the community config the backend currently serves (GetConfig), so the
+   * sample can display the live server state next to the API key it runs on. Resolves `null`
+   * while no config has been fetched yet. Values reflect any local `debugOverride*` too — this
+   * reads the same effective config the UI consumes.
+   */
+  @ReactMethod
+  fun debugGetCommunityConfig(promise: Promise) {
+    coroutineScope.launch {
+      try {
+        val config = OctopusSDK.communityConfigRepository.getCommunityConfig()
+        if (config == null) {
+          promise.resolve(null)
+          return@launch
+        }
+        promise.resolve(
+          Arguments.createMap().apply {
+            putBoolean("exposeClientUserId", config.exposeClientUserId)
+            putBoolean("forceLoginOnStrongActions", config.forceLoginOnStrongActions)
+            putBoolean("displayAccountAge", config.displayAccountAge)
+            putString("termsAcceptanceMode", config.termsAcceptanceMode.name)
+          }
+        )
+      } catch (e: Exception) {
+        promise.reject(
+          "CONFIG_ERROR",
+          e.message ?: "Failed to read community config",
+          e
+        )
+      }
     }
   }
 

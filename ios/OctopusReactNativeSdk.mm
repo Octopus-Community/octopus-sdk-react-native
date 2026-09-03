@@ -33,6 +33,7 @@ RCT_EXTERN_METHOD(disconnectUser:(RCTPromiseResolveBlock)resolve
                   withRejecter:(RCTPromiseRejectBlock)reject)
 
 RCT_EXTERN_METHOD(updateColorScheme:(NSString *)colorScheme
+                  forced:(BOOL)forced
                   withResolver:(RCTPromiseResolveBlock)resolve
                   withRejecter:(RCTPromiseRejectBlock)reject)
 
@@ -100,6 +101,13 @@ RCT_EXTERN_METHOD(debugOverrideContentOptions:(NSDictionary *)options
 
 RCT_EXTERN_METHOD(debugOverrideTermsAcceptanceMode:(NSString *)mode
                   withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(debugOverrideExposeClientUserId:(NSDictionary *)enabled
+                  withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(debugGetCommunityConfig:(RCTPromiseResolveBlock)resolve
                   withRejecter:(RCTPromiseRejectBlock)reject)
 
 RCT_EXTERN_METHOD(navigateToOctopusCreatePost:(NSDictionary *)options

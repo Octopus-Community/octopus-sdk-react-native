@@ -16,9 +16,9 @@ import androidx.core.view.WindowInsetsCompat
  *
  * The read is deliberately geometric, not the raw window inset value: an `<OctopusUIView>` the
  * host has already lifted above the navigation bar (its own bottom padding, its own bar
- * underneath) must resolve to zero and keep reserving nothing — the Android analogue of
- * Flutter's `padding` vs `viewPadding` distinction for the same problem (see
- * octopus-sdk-flutter-private PR #183). The ambient inset value reported by
+ * underneath) must resolve to zero and keep reserving nothing — the Android analogue of the
+ * Flutter SDK's `padding` vs `viewPadding` distinction for the same problem. The ambient
+ * inset value reported by
  * [WindowInsetsCompat] is the same everywhere in the window regardless of where a view sits, so
  * telling those two cases apart requires comparing the view's own screen rectangle against the
  * navigation-bar band instead.
