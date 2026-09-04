@@ -93,7 +93,6 @@ export interface SettingsScreenProps {
   onResetData: () => void;
   isDark: boolean;
   primaryColor: string;
-  onPrimaryColor: string;
   /** Shown in Account for 5s when editUser/loginRequired callback is fired in embed mode */
   userCallbackMessage: string | null;
 }

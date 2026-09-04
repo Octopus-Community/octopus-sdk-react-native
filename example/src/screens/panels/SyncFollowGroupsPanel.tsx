@@ -82,7 +82,7 @@ export function SyncFollowGroupsPanel({
           disabled={disabled}
           activeOpacity={0.8}
         >
-          <Text style={[panelStyles.buttonText, { color: primaryColor }]}>
+          <Text style={[panelStyles.buttonText, { color: c.accent }]}>
             Follow
           </Text>
         </TouchableOpacity>
@@ -96,7 +96,7 @@ export function SyncFollowGroupsPanel({
           disabled={disabled}
           activeOpacity={0.8}
         >
-          <Text style={[panelStyles.buttonText, { color: primaryColor }]}>
+          <Text style={[panelStyles.buttonText, { color: c.accent }]}>
             Unfollow
           </Text>
         </TouchableOpacity>

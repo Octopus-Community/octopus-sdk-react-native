@@ -119,6 +119,8 @@ export interface OpenUIOptions {
  *   `initialScreen` to open on a specific screen (a post, a group, one
  *   member's posts or profile, or the post editor).
  * @returns A promise that resolves when the UI has been opened.
+ * @throws An error whose `code` is `OPEN_UI_ERROR` (as a promise rejection) when
+ *   the SDK is not initialized — call `initialize()` first. Both platforms.
  * @throws A plain `Error` synchronously when `initialScreen` is structurally
  *   invalid (blank `postId` / `groupId`, or an `activity` member violating the
  *   exactly-one-id contract), and a {@link NavigateToOctopusCreatePostError}

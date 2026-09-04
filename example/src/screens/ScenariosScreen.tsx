@@ -417,7 +417,7 @@ function ApiChips({
           key={api}
           style={[styles.apiChip, { backgroundColor: chrome.tint }]}
         >
-          <Text style={[styles.apiChipText, { color: chrome.control }]}>
+          <Text style={[styles.apiChipText, { color: chrome.accent }]}>
             {api}
           </Text>
         </View>
@@ -1946,6 +1946,7 @@ export function ScenariosScreen({
             label="Back to scenario"
             onPress={onCloseEmbeddedBackRoute}
             primaryColor={primaryColor}
+            isDark={isDark}
           />
         </View>
         <View style={styles.embeddedBackHost}>
@@ -1997,6 +1998,7 @@ export function ScenariosScreen({
               label="Back to scenarios"
               onPress={onCloseClientProfilePreset}
               primaryColor={primaryColor}
+              isDark={isDark}
             />
           </View>
         </View>
@@ -2109,8 +2111,10 @@ export function ScenariosScreen({
         activeOpacity={0.7}
         accessibilityRole="button"
       >
-        <MaterialIcons name="arrow-back" size={20} color={primaryColor} />
-        <Text style={[styles.backLabel, { color: primaryColor }]}>
+        {/* `chrome.accent`, not the `primaryColor` control fill: Accent blue is never a
+            label or icon ink on a light background (3.50:1). */}
+        <MaterialIcons name="arrow-back" size={20} color={chrome.accent} />
+        <Text style={[styles.backLabel, { color: chrome.accent }]}>
           Scenarios
         </Text>
       </TouchableOpacity>

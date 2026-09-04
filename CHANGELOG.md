@@ -1,5 +1,30 @@
 # @octopus-community/react-native
 
+## 1.13.2
+
+### Patch Changes
+
+- fdf0359: Android: bump the wrapped native Octopus SDK to 1.13.3, which fixes `OctopusActivity` crashing
+  on text-selection "process text" actions and on the fullscreen image viewer when
+  `overrideDefaultLocale` is set. No native API change. iOS stays on 1.13.2 (no 1.13.3 was
+  released there); the two native pins now only need to agree on `MAJOR.MINOR`, so a platform
+  that needs a fix the other does not can be re-pinned on its own. The README compatibility
+  table names each platform's pin instead of one shared number.
+- 4d0ed0c: Fix the `OctopusUIOptions.bottomSafeAreaInset` TSDoc, which still described the absent-value
+  behaviour of an embedded `<OctopusUIView>` as Android-only. Since 1.13.1, iOS applies an
+  additional 10 pt when the option is left out, and an explicit `0` still reserves nothing;
+  the documentation now describes both platforms' defaults.
+- ab9deda: Fix an Android crash (`UninitializedPropertyAccessException` in `OctopusSDK.getKoinApp`) when
+  Android restores the fullscreen Octopus UI in a process where the SDK was never initialised —
+  after a process death (low memory, another crash, "Don't keep activities") with the Octopus UI in
+  the foreground. `OctopusActivity` now finishes itself instead of rendering, handing control back
+  to the host app as the OS restored it. On Android, the embedded `<OctopusUIView>` renders an
+  empty placeholder until `initialize()` has resolved and fills in on its own once it has, so
+  mounting it before initialization completes no longer crashes (on iOS such a view stays empty, as
+  before — call `initialize()` first). Also on Android, `openUI()` called before `initialize()` now
+  rejects with `OPEN_UI_ERROR` and the same message as iOS, instead of resolving and then crashing
+  the host app the same way.
+
 ## 1.13.1
 
 ### Patch Changes

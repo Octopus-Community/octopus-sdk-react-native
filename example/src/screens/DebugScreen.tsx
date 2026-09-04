@@ -143,6 +143,9 @@ export function DebugScreen({
         onPrimaryColor={onPrimaryColor}
       />
 
+      {/* `primaryColor` (the control fill) draws the 1pt outline, where 3:1 is the floor;
+          the label draws in `chrome.accent`, because the fill blue only holds 3.50:1 as
+          ink on a light background. */}
       <View style={styles.actionsRow}>
         <TouchableOpacity
           testID="debug-copy-button"
@@ -150,7 +153,7 @@ export function DebugScreen({
           onPress={handleCopy}
           activeOpacity={0.8}
         >
-          <Text style={[styles.actionText, { color: primaryColor }]}>
+          <Text style={[styles.actionText, { color: chrome.accent }]}>
             {copied ? 'Copied' : 'Copy as JSON'}
           </Text>
         </TouchableOpacity>
@@ -160,7 +163,7 @@ export function DebugScreen({
           onPress={() => debugLog.clear()}
           activeOpacity={0.8}
         >
-          <Text style={[styles.actionText, { color: primaryColor }]}>
+          <Text style={[styles.actionText, { color: chrome.accent }]}>
             Clear
           </Text>
         </TouchableOpacity>

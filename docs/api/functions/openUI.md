@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.13.1**](../README.md)
+[**@octopus-community/react-native v1.13.2**](../README.md)
 
 ---
 
@@ -29,6 +29,11 @@ member's posts or profile, or the post editor).
 `Promise`\<`void`\>
 
 A promise that resolves when the UI has been opened.
+
+## Throws
+
+An error whose `code` is `OPEN_UI_ERROR` (as a promise rejection) when
+the SDK is not initialized — call `initialize()` first. Both platforms.
 
 ## Throws
 

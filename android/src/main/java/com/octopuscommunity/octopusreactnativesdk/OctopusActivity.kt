@@ -12,6 +12,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
+import com.octopuscommunity.sdk.OctopusSDK
 import com.octopuscommunity.sdk.domain.model.CreatePostScreenInfo
 import com.octopuscommunity.sdk.domain.model.OctopusPrefilledPost
 import com.octopuscommunity.sdk.ui.components.NavigationIconType
@@ -19,6 +20,7 @@ import com.octopuscommunity.sdk.ui.components.NavigationIconType
 class OctopusActivity : ComponentActivity() {
 
   companion object {
+    private const val TAG = "OctopusActivity"
     const val EXTRA_INTERCEPT_URLS = "interceptUrls"
     const val EXTRA_INTERCEPT_PROFILE_TAPS = "interceptProfileTaps"
     const val EXTRA_LINK_PATH = "linkPath"
@@ -42,8 +44,25 @@ class OctopusActivity : ComponentActivity() {
     }
   }
 
+  // Set by registerCloseUIReceiver(). onCreate can finish before reaching it (see the
+  // initialisation guard below), and unregistering a receiver that was never registered throws.
+  private var isCloseUIReceiverRegistered = false
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    if (!OctopusSDK.isInitialised) {
+      // The SDK is initialised from JS only (`initialize()`), never at Application startup. When
+      // Android restores the task after a process death (low memory, a crash, "Don't keep
+      // activities") with this Activity in the foreground, the new process starts directly here,
+      // before React has had any chance to run `initialize()` — and OctopusContent would
+      // dereference the SDK's uninitialised Koin container, a `lateinit` with no fallback
+      // (`UninitializedPropertyAccessException` in `OctopusSDK.getKoinApp`, issue #234).
+      // Finishing hands control back to the host app as the OS restored it beneath this
+      // Activity. Nothing below has run yet, so onDestroy has nothing to undo.
+      Log.w(TAG, "OctopusActivity started while the SDK is not initialised — finishing")
+      finish()
+      return
+    }
     enableEdgeToEdge()
     registerCloseUIReceiver()
     val interceptUrls = intent.getBooleanExtra(EXTRA_INTERCEPT_URLS, false)
@@ -84,7 +103,7 @@ class OctopusActivity : ComponentActivity() {
         // The bridge method already validated this payload before launching this Activity —
         // a failure here means the two builds disagree, which should not happen. Fail open on
         // an empty editor rather than crash the host app.
-        Log.w("OctopusActivity", "Unexpected prefilled-post validation failure", e)
+        Log.w(TAG, "Unexpected prefilled-post validation failure", e)
         null
       }
     } else {
@@ -125,7 +144,7 @@ class OctopusActivity : ComponentActivity() {
    * cost of it silently reading a raw extra name — add the mapping here when adding a field.
    */
   private fun decodeInitialScreen(type: String?): BridgeInitialScreen? =
-    decodeBridgeInitialScreen(type = type, tag = "OctopusActivity") { key ->
+    decodeBridgeInitialScreen(type = type, tag = TAG) { key ->
       intent.getStringExtra(
         when (key) {
           "postId" -> EXTRA_INITIAL_SCREEN_POST_ID
@@ -139,7 +158,10 @@ class OctopusActivity : ComponentActivity() {
 
   override fun onDestroy() {
     super.onDestroy()
-    unregisterReceiver(closeUIReceiver)
+    if (isCloseUIReceiverRegistered) {
+      unregisterReceiver(closeUIReceiver)
+      isCloseUIReceiverRegistered = false
+    }
   }
 
   private fun registerCloseUIReceiver() {
@@ -150,5 +172,6 @@ class OctopusActivity : ComponentActivity() {
       @Suppress("UnspecifiedRegisterReceiverFlag")
       registerReceiver(closeUIReceiver, intentFilter)
     }
+    isCloseUIReceiverRegistered = true
   }
 }

@@ -6,11 +6,20 @@ import android.util.Log
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableMap
+import com.octopuscommunity.sdk.OctopusSDK
 import com.octopuscommunity.sdk.domain.model.OctopusPrefilledPost
 
 class OctopusUIController(private val reactContext: ReactApplicationContext) {
 
   fun openUI(options: ReadableMap?, promise: Promise) {
+    // Same contract as iOS (`OPEN_UI_ERROR`, same message): a host that calls openUI() before
+    // initialize() gets a rejection it can act on rather than a resolved promise and an Activity
+    // that finishes itself on arrival. The guard in OctopusActivity.onCreate stays regardless —
+    // it covers the task-restore path, where no promise exists to reject (issue #234).
+    if (!OctopusSDK.isInitialised) {
+      promise.reject("OPEN_UI_ERROR", "SDK not initialized. Call initialize() first.", null)
+      return
+    }
     try {
       val intent = Intent(reactContext, OctopusActivity::class.java)
       intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

@@ -576,7 +576,11 @@ export function ConfigScreen({
         </View>
 
         {/* The one filled CTA of the sample, so the one place the brand's pressed
-            tone is visible — hence a Pressable rather than a fading Touchable. */}
+            tone is visible — hence a Pressable rather than a fading Touchable.
+
+            Its fill is `chrome.accent`, so its ink is `chrome.onAccent` — never the
+            `onPrimaryColor` prop, which is `onControl`, the ink for a `control` fill.
+            Crossed, they gave 1.08:1 on the light navy. */}
         <Pressable
           testID="config-start-button"
           style={({ pressed }) => [
@@ -597,7 +601,7 @@ export function ConfigScreen({
             })
           }
         >
-          <Text style={[styles.startButtonText, { color: onPrimaryColor }]}>
+          <Text style={[styles.startButtonText, { color: chrome.onAccent }]}>
             {mode === 'onboarding' ? 'Start SDK' : 'Apply'}
           </Text>
         </Pressable>

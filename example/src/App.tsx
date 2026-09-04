@@ -29,7 +29,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppBar } from './components/AppBar';
 import { TabBar, type TabId } from './components/TabBar';
-import { chromeColors, OCTOPUS_BRAND } from './theme/branding';
+import { chromeColors, OCTOPUS_SDK_THEME } from './theme/branding';
 import {
   runAppUpdateCheck,
   subscribeToAppUpdate,
@@ -129,19 +129,14 @@ const COMMUNITY_LOCALE_LABELS: Record<CommunityLocaleOverride, string> = {
 // The sample's own navy, handed to the SDK — the one preset that is a *design*, not a probe.
 // It is what the Config screen offers opposite "SDK default", so the community can be made to
 // look like the host around it without opening the Theme scenario.
-const lightOctopusNavyColors = {
-  primary: OCTOPUS_BRAND.navy,
-  primaryLowContrast: OCTOPUS_BRAND.accent,
-  primaryHighContrast: '#16273D',
-  onPrimary: '#FFFFFF',
-};
+//
+// Values are `OCTOPUS_SDK_THEME` — the SDK brand theme block of the shared sample design
+// contract, a token group deliberately disjoint from the sample's own chrome palette in the
+// same file, same as the Theme scenario's own probe sets below, so a future change to one
+// doesn't silently repaint the other.
+const lightOctopusNavyColors = OCTOPUS_SDK_THEME.light;
 
-const darkOctopusNavyColors = {
-  primary: OCTOPUS_BRAND.accent,
-  primaryLowContrast: '#7FB8FF',
-  primaryHighContrast: '#0F6FD6',
-  onPrimary: '#FFFFFF',
-};
+const darkOctopusNavyColors = OCTOPUS_SDK_THEME.dark;
 
 // Theme color sets for SDK initialization
 const lightTheme1Colors = {
@@ -328,7 +323,12 @@ export default function App() {
     typeof setTimeout
   > | null>(null);
 
-  /** Surfaces a transient message on the settings tab. Stable, so effects can depend on it. */
+  /**
+   * Surfaces a transient message on the Settings tab — the tab that carries "Connect user",
+   * which is why the SDK's host callbacks land there. The text must say what the SDK asked
+   * and what to do next: a bare listener name reads as a bug to a tester who just tapped
+   * Activity as a guest and got sent to Settings. Stable, so effects can depend on it.
+   */
   const showUserCallbackMessage = useCallback((message: string) => {
     if (userCallbackMessageTimeoutRef.current) {
       clearTimeout(userCallbackMessageTimeoutRef.current);
@@ -339,7 +339,7 @@ export default function App() {
     userCallbackMessageTimeoutRef.current = setTimeout(() => {
       setUserCallbackMessage(null);
       userCallbackMessageTimeoutRef.current = null;
-    }, 5000);
+    }, 8000);
   }, []);
 
   const systemColorScheme = useColorScheme();
@@ -535,7 +535,7 @@ export default function App() {
           });
         }
         showUserCallbackMessage(
-          `navigateToProfileListener called (${clientUserId})`
+          `Profile tap — the SDK handed the profile to the app (navigateToProfile listener), clientUserId: ${clientUserId}. A real host would open its own profile screen here.`
         );
       }
     );
@@ -652,7 +652,9 @@ export default function App() {
       if (displayMode === 'fullscreen') {
         Octopus.closeUI().catch(() => {});
       }
-      showUserCallbackMessage('editUserListener called');
+      showUserCallbackMessage(
+        'Profile edit requested — the SDK handed profile editing to the app (editUser listener).'
+      );
     });
     // onAuthenticationRequired (Config §5) — disabled means the sample keeps the
     // subscription (the SDK always emits it) but never acts on it, which is the
@@ -662,7 +664,9 @@ export default function App() {
       if (displayMode === 'fullscreen') {
         Octopus.closeUI().catch(() => {});
       }
-      showUserCallbackMessage('loginRequiredListener called');
+      showUserCallbackMessage(
+        'Login required — the SDK asked the app to sign the user in (loginRequired listener). Connect a user below to continue.'
+      );
     });
     return () => {
       subEdit.remove();
@@ -1135,11 +1139,16 @@ export default function App() {
   // repaints the Octopus UI, and the sample's shell around it stays put — which is what an
   // integration actually looks like.
   const chrome = chromeColors(isDark);
-  // Active-control color for switches/segments/spinners across the sample — the charte
-  // reserves `accent` (navy in light mode) for buttons only and keeps this one blue in
-  // both appearances.
+  // Active-control FILL for switches/segments/spinners across the sample — the design
+  // contract reserves `accent` (navy in light mode) for buttons and for ink, and keeps
+  // this one blue per appearance. Its ink is `onControl`, not `onAccent`: white fails the
+  // 4.5:1 floor on this fill in both themes.
+  //
+  // Fill only. A label or an icon on a light background never draws in it (3.50:1) — that
+  // ink is `chrome.accent`, and the two must not be crossed: `onControl` belongs on a
+  // `control` fill, `onAccent` on an `accent` fill.
   const primaryColor = chrome.control;
-  const onPrimaryColor = chrome.onAccent;
+  const onPrimaryColor = chrome.onControl;
   const backgroundColor = chrome.background;
   const tabBarBg = chrome.navSurface;
 
@@ -1338,7 +1347,6 @@ export default function App() {
                 onResetData={handleResetData}
                 isDark={isDark}
                 primaryColor={primaryColor}
-                onPrimaryColor={onPrimaryColor}
                 userCallbackMessage={userCallbackMessage}
               />
             )}
@@ -1435,6 +1443,7 @@ export default function App() {
             badgeRingColor={chrome.navSurface}
             activeColor={chrome.navActive}
             inactiveColor={chrome.navInactive}
+            indicatorColor={chrome.navIndicator}
             notSeenNotificationsCount={notSeenNotificationsCount}
           />
         </View>

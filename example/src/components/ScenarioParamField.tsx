@@ -44,8 +44,10 @@ function FieldShell({
         <Text style={[styles.fieldLabel, { color: chrome.textSecondary }]}>
           {label}
         </Text>
+        {/* `tintBorder` is a border token — as ink on a light surface it is the fill-only
+            accent blue at 3.50:1, so the text draws in `chrome.accent`. */}
         <View style={[styles.typeChip, { backgroundColor: chrome.tint }]}>
-          <Text style={[styles.typeChipText, { color: chrome.tintBorder }]}>
+          <Text style={[styles.typeChipText, { color: chrome.accent }]}>
             {type}
           </Text>
         </View>
@@ -160,7 +162,7 @@ export function SetParamField({
               <Text
                 style={[
                   styles.optionChipText,
-                  { color: active ? chrome.tintBorder : chrome.textSecondary },
+                  { color: active ? chrome.accent : chrome.textSecondary },
                 ]}
               >
                 {option.label}
@@ -219,7 +221,7 @@ export function EnumParamField({
               <Text
                 style={[
                   styles.optionChipText,
-                  { color: active ? chrome.tintBorder : chrome.textSecondary },
+                  { color: active ? chrome.accent : chrome.textSecondary },
                 ]}
               >
                 {option.label}

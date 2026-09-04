@@ -1,5 +1,5 @@
 /**
- * The sample app's OWN chrome palette — the shared sample design identity (charte refresh-2026).
+ * The sample app's OWN chrome palette — the shared sample design identity (refresh-2026).
  *
  * This is deliberately independent of the theme the Theme scenario hands to the SDK. The
  * sample is a host app: its shell (app bar, tab bar, cards, buttons) is the host's brand,
@@ -17,10 +17,35 @@
  * family on both platforms.
  */
 export const OCTOPUS_BRAND = {
-  /** App bar, primary buttons (light mode), titles. */
+  /** App bar, primary buttons (light mode), titles. Also the light-theme nav accent (§3). */
   navy: '#0F1B2D',
-  /** Active-control accent — switches, selected segments, selected tab, section labels. Also the primary button color in dark mode. */
+  /**
+   * Active-control fill — switches, selected segments, section labels, and the primary
+   * button color in dark mode. Fill-only per the shared sample design contract: 3.50:1 on
+   * white, so it must never be a label or icon colour, and its own ink is {@link accentInk}
+   * rather than white — see `onControl` below. The selected tab uses {@link navy} (light) /
+   * {@link accentDark} (dark) instead — see `navActive` below.
+   */
   accent: '#1D88FE',
+  /**
+   * Dark-theme nav accent (the shared sample design contract) — the selected tab's
+   * icon/label and the `navIndicator` tint behind it, and the active-control fill in dark
+   * mode (see `control` below).
+   *
+   * `accent` itself falls short as an ink there. Measured, once, for every dark surface it
+   * would land on: 5.28:1 on the page (`#0B1421`), 4.56:1 on the card (`#142238`), 4.02:1
+   * on the raised surface (`#1B2C46`) — below the 4.5:1 floor — and 3.69:1 over its own
+   * 16% tint on the card, which also fails. Hence this separate, lighter value for dark
+   * theme.
+   */
+  accentDark: '#6FB2FF',
+  /**
+   * Ink drawn on the accent fill — {@link accent} (light) / {@link accentDark} (dark) — in
+   * place of white, which fails on both: 3.50:1 on {@link accent}, 2.21:1 on the lighter
+   * {@link accentDark}. AccentInk holds 4.56:1 on the light accent and 7.21:1 on the dark
+   * one. See `onControl` below.
+   */
+  accentInk: '#142238',
   /** Danger text / destructive accents — light mode. */
   danger: '#9E243F',
   /** Danger text / destructive accents — dark mode. */
@@ -41,7 +66,7 @@ export const OCTOPUS_BRAND = {
   /** Dark-mode card / field surface. */
   darkSurface: '#142238',
   /** Dark-mode inset field surface (inputs, code blocks' lighter sibling). */
-  darkSurfaceRaised: '#1B2C45',
+  darkSurfaceRaised: '#1B2C46',
   /** Light-mode page background. */
   lightBackground: '#F5F7FA',
   /** Light-mode inset field surface. */
@@ -60,6 +85,34 @@ export const OCTOPUS_BRAND = {
  * navy bar instead (see `AppBar`); this hue stays for the launcher badge only.
  */
 export const OCTOPUS_PLATFORM_SLOT_COLOR = '#7C3577';
+
+/**
+ * The colour set the sample hands to the **SDK** as its navy preset — the shared sample
+ * design contract's SDK brand theme block (§4), not the sample's own chrome.
+ *
+ * Deliberately a second, disjoint token group: `OCTOPUS_BRAND` above paints the host's
+ * shell, this one paints the Octopus UI inside it. They happen to share hues, and they
+ * must stay free to diverge — a change to one repainting the other is exactly the bug the
+ * split exists to prevent. Kept here rather than inline in `App.tsx` so the contract's
+ * values live in one file with the rest of the palette.
+ *
+ * `onPrimary` is measured against `primary`: 17.28:1 white on the light navy, 7.21:1
+ * AccentInk on the dark AccentDark.
+ */
+export const OCTOPUS_SDK_THEME = {
+  light: {
+    primary: '#0F1B2D',
+    primaryLowContrast: '#DCE9FC',
+    primaryHighContrast: '#1D88FE',
+    onPrimary: '#FFFFFF',
+  },
+  dark: {
+    primary: '#6FB2FF',
+    primaryLowContrast: '#142238',
+    primaryHighContrast: '#DCE9FC',
+    onPrimary: '#142238',
+  },
+} as const;
 
 /** Every chrome color the sample's own screens draw with. */
 export interface ChromeColors {
@@ -89,6 +142,12 @@ export interface ChromeColors {
   onAccent: string;
   /** Active state of a control — switch track, selected radio, checked box. */
   control: string;
+  /**
+   * Text/glyphs drawn on {@link control} — {@link OCTOPUS_BRAND.accentInk}, not
+   * {@link onAccent}: white ink fails on `control`'s fill in both themes — 3.50:1 on
+   * `accent` (light), 2.21:1 on `accentDark` (dark), against the 4.5:1 floor.
+   */
+  onControl: string;
   /** Segmented-control track, under the selected pill. */
   track: string;
   /** App bar background. */
@@ -97,10 +156,19 @@ export interface ChromeColors {
   onAppBar: string;
   /** Tab bar surface. */
   navSurface: string;
-  /** Selected tab tint. */
+  /**
+   * Selected tab's icon/label tint (the shared sample design contract):
+   * {@link OCTOPUS_BRAND.navy} in light theme, {@link OCTOPUS_BRAND.accentDark} in dark —
+   * never the fill-only `accent` blue.
+   */
   navActive: string;
   /** Unselected tab tint. */
   navInactive: string;
+  /**
+   * Selected tab's indicator — {@link navActive} at 15% alpha, posed explicitly rather
+   * than left to a framework default (the shared sample design contract).
+   */
+  navIndicator: string;
   /** Danger text. */
   danger: string;
   /** Danger band / danger-zone surface. */
@@ -115,7 +183,7 @@ export interface ChromeColors {
   warnBorder: string;
   /** Success text and dots. */
   success: string;
-  /** Guest / read-only status accent — same value in light and dark (charte). */
+  /** Guest / read-only status accent — same value in light and dark (design contract). */
   guestAccent: string;
   /** Dark code block — a raw SDK result. */
   codeSurface: string;
@@ -139,12 +207,19 @@ const LIGHT: ChromeColors = {
   accentPressed: '#16273D',
   onAccent: '#FFFFFF',
   control: OCTOPUS_BRAND.accent,
+  // AccentInk, not white: white only holds 3.50:1 on this fill.
+  onControl: OCTOPUS_BRAND.accentInk,
   track: OCTOPUS_BRAND.lightSurfaceRaised,
   appBar: OCTOPUS_BRAND.navy,
   onAppBar: '#FFFFFF',
   navSurface: '#FFFFFF',
-  navActive: OCTOPUS_BRAND.accent,
+  // Navy, not the fill-only accent blue (the shared sample design contract — Accent is
+  // never a label/icon colour in light theme). 17.28:1 on the white nav bar.
+  navActive: OCTOPUS_BRAND.navy,
   navInactive: '#6B7685',
+  // Navy at 15% over the bar's own (white) container — navy still holds 12.70:1 as a
+  // label over that tint, the tightest real path for the indicator.
+  navIndicator: 'rgba(15,27,45,0.15)',
   danger: OCTOPUS_BRAND.danger,
   dangerSurface: OCTOPUS_BRAND.dangerSurface,
   dangerBorder: OCTOPUS_BRAND.dangerBorder,
@@ -162,25 +237,33 @@ const DARK: ChromeColors = {
   surface: OCTOPUS_BRAND.darkSurface,
   surfaceRaised: OCTOPUS_BRAND.darkSurfaceRaised,
   tint: 'rgba(29,136,254,0.16)',
-  tintBorder: '#7FB8FF',
+  tintBorder: OCTOPUS_BRAND.accentDark,
   border: 'rgba(255,255,255,0.07)',
   text: '#F2F5F9',
   textSecondary: '#9AA7B8',
   textPlaceholder: '#5C6B7C',
   // The navy app bar is unreadable as a button fill on the dark page, so dark mode
   // promotes the accent blue to the CTA — the same swap the shared identity prescribes.
-  accent: OCTOPUS_BRAND.accent,
-  accentPressed: '#0F6FD6',
-  onAccent: '#FFFFFF',
-  control: OCTOPUS_BRAND.accent,
+  // AccentDark, not the plain accent blue, for the reason measured on `accentDark` above.
+  accent: OCTOPUS_BRAND.accentDark,
+  accentPressed: '#4E9BEE',
+  onAccent: OCTOPUS_BRAND.accentInk,
+  control: OCTOPUS_BRAND.accentDark,
+  // AccentInk, not white — white only holds 2.21:1 on AccentDark fill; AccentInk holds 7.21:1.
+  onControl: OCTOPUS_BRAND.accentInk,
   // Deliberately lighter than the card it sits on: at the same value the track
   // disappears and an unselected segment loses its affordance.
   track: '#33415A',
   appBar: OCTOPUS_BRAND.darkBackground,
   onAppBar: '#FFFFFF',
   navSurface: '#0F1B2D',
-  navActive: OCTOPUS_BRAND.accent,
+  // AccentDark, not the plain accent blue (see `accentDark` above for `accent`'s measured
+  // shortfall on dark surfaces): AccentDark holds 7.81:1 on this nav bar and 5.88:1 as a
+  // label over its own 15% indicator tint (the shared sample design contract).
+  navActive: OCTOPUS_BRAND.accentDark,
   navInactive: '#9AA7B8',
+  // AccentDark at 15% over the bar's own (navy) container.
+  navIndicator: 'rgba(111,178,255,0.15)',
   danger: OCTOPUS_BRAND.dangerDark,
   dangerSurface: '#2A0F16',
   dangerBorder: '#5E2331',

@@ -19,6 +19,11 @@ export interface TabBarProps {
   activeColor: string;
   /** Tint of every unselected item. */
   inactiveColor: string;
+  /**
+   * Fill behind the selected item's icon — `activeColor` at 15% alpha, posed explicitly
+   * per the shared sample design contract rather than left unset.
+   */
+  indicatorColor: string;
   notSeenNotificationsCount?: number;
 }
 
@@ -69,6 +74,7 @@ function TabButton({
   badgeRingColor,
   activeColor,
   inactiveColor,
+  indicatorColor,
 }: {
   tab: (typeof TABS)[0];
   isActive: boolean;
@@ -78,6 +84,7 @@ function TabButton({
   badgeRingColor: string;
   activeColor: string;
   inactiveColor: string;
+  indicatorColor: string;
 }) {
   const tint = isActive ? activeColor : inactiveColor;
   return (
@@ -91,6 +98,11 @@ function TabButton({
       accessibilityLabel={`${tab.label} tab`}
     >
       <View style={styles.iconSlot}>
+        {isActive && (
+          <View
+            style={[styles.indicator, { backgroundColor: indicatorColor }]}
+          />
+        )}
         <MaterialIcons name={tab.icon} size={24} color={tint} />
         {badgeCount > 0 && (
           <View style={[styles.badge, { borderColor: badgeRingColor }]}>
@@ -126,6 +138,7 @@ export function TabBar({
   badgeRingColor,
   activeColor,
   inactiveColor,
+  indicatorColor,
   notSeenNotificationsCount = 0,
 }: TabBarProps) {
   const insets = useSafeAreaInsets();
@@ -143,6 +156,7 @@ export function TabBar({
           badgeRingColor={badgeRingColor}
           activeColor={activeColor}
           inactiveColor={inactiveColor}
+          indicatorColor={indicatorColor}
         />
       ))}
     </View>
@@ -164,12 +178,22 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   // Anchors the badge to the icon rather than to the label, which is where every platform's
-  // stock bottom bar puts it.
+  // stock bottom bar puts it. Widened to 40 to match `indicator` below — at 32 the 40pt
+  // indicator overflowed its slot by 4pt on each side.
   iconSlot: {
-    width: 32,
+    width: 40,
     height: 24,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // The selected item's indicator pill, centered behind the icon. Sized wider than tall
+  // like the Material 3 reference indicator; the icon itself already meets the ≥24dp floor
+  // and this decorative fill doesn't need to be a separate touch target.
+  indicator: {
+    position: 'absolute',
+    width: 40,
+    height: 24,
+    borderRadius: 12,
   },
   tabLabel: {
     fontSize: 12,
@@ -178,7 +202,9 @@ const styles = StyleSheet.create({
   badge: {
     position: 'absolute',
     top: -4,
-    left: 16,
+    // Keeps the ring pinned to the icon's top-right corner: `iconSlot` widened to 40
+    // (from 32) to fit `indicator`, so the icon's own inset grew by 4 and this follows.
+    left: 20,
     backgroundColor: OCTOPUS_BRAND.error,
     borderRadius: 8,
     minWidth: 16,

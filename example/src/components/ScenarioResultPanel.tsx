@@ -101,8 +101,12 @@ export function ScenarioResultPanel({
         ) : null}
       </View>
       {isSuccess && !isPresentation ? (
-        <View style={styles.codeBlock}>
-          <Text style={styles.codeText}>{state.message}</Text>
+        <View
+          style={[styles.codeBlock, { backgroundColor: chrome.codeSurface }]}
+        >
+          <Text style={[styles.codeText, { color: chrome.onCodeSurface }]}>
+            {state.message}
+          </Text>
         </View>
       ) : (
         <Text style={[styles.text, { color: chrome.text }]}>
@@ -155,17 +159,15 @@ const styles = StyleSheet.create({
   duration: {
     fontSize: 11,
   },
-  // Fixed dark aesthetic regardless of app theme — spec 09's "bloc code sombre", same in
-  // light and dark mode by design (a code snippet, not themed chrome).
+  // Background comes from `chrome.codeSurface` at the call site, ink from
+  // `chrome.onCodeSurface` (both theme-aware); these are shape only.
   codeBlock: {
     borderRadius: 10,
     padding: 8,
-    backgroundColor: '#142238',
   },
   codeText: {
     fontFamily: 'monospace',
     fontSize: 10,
-    color: '#EEF1F5',
   },
   text: {
     fontSize: 12,

@@ -5,12 +5,20 @@ import {
   ActivityIndicator,
 } from 'react-native';
 
+import { chromeColors } from '../theme/branding';
+
 export interface PresetButtonProps {
   /** Verbatim `test_id` from the scenarios catalog — QA drives the tap off this. */
   testID: string;
   label: string;
   onPress: () => void;
+  /** The outline and the spinner — a UI colour, where 3:1 is the floor. */
   primaryColor: string;
+  /**
+   * Needed for the label's own ink: it draws in `chrome.accent`, not in
+   * {@link primaryColor}, whose fill blue only holds 3.50:1 as text on a light surface.
+   */
+  isDark: boolean;
   disabled?: boolean;
   loading?: boolean;
 }
@@ -24,10 +32,12 @@ export function PresetButton({
   label,
   onPress,
   primaryColor,
+  isDark,
   disabled = false,
   loading = false,
 }: PresetButtonProps) {
   const isDisabled = disabled || loading;
+  const chrome = chromeColors(isDark);
   return (
     <TouchableOpacity
       testID={testID}
@@ -44,7 +54,7 @@ export function PresetButton({
         <ActivityIndicator color={primaryColor} size="small" />
       ) : (
         <Text
-          style={[styles.buttonText, { color: primaryColor }]}
+          style={[styles.buttonText, { color: chrome.accent }]}
           numberOfLines={2}
         >
           {label}

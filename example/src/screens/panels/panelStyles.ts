@@ -14,6 +14,9 @@ export function panelColors(isDark: boolean) {
     border: chrome.border,
     inputBg: chrome.surfaceRaised,
     placeholder: chrome.textPlaceholder,
+    /** Ink for an outline button's label. Never the control fill a panel gets as
+     *  `primaryColor`: that blue only holds 3.50:1 as text on a light surface. */
+    accent: chrome.accent,
   };
 }
 

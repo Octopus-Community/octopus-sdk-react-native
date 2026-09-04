@@ -674,11 +674,14 @@ class OctopusReactModule(reactContext: ReactApplicationContext) :
   // Parity wave — groups & entitlements
 
   /**
-   * The four methods below are the only ones on this module that guard on
+   * The four methods below are the only ones in this file that guard on
    * [OctopusSDK.isInitialised] before calling into the native SDK, rejecting with a dedicated
    * `NOT_INITIALIZED` code rather than falling through to the call's generic per-method
    * fallback (`FETCH_GROUPS_ERROR`, `GROUP_FOLLOW_UNFOLLOW_ERROR`,
-   * `REFRESH_ENTITLEMENTS_ERROR`). This matches the iOS side of this same parity wave and the
+   * `REFRESH_ENTITLEMENTS_ERROR`). `openUI` guards too, in [OctopusUIController], but rejects
+   * with `OPEN_UI_ERROR` — the code iOS already used for that case (issue #234).
+   *
+   * The `NOT_INITIALIZED` choice matches the iOS side of this same parity wave and the
    * Flutter plugin's own `NOT_INITIALIZED` guard, and avoids a host that catches
    * `USER_NOT_CONNECTED`/`NOT_CONNECTED` — documented as "no user is connected" — reacting to a
    * missing `initialize()` call by prompting for login instead.

@@ -148,7 +148,7 @@ export function CustomEventPanel({
           {sending ? (
             <ActivityIndicator color={primaryColor} size="small" />
           ) : (
-            <Text style={[panelStyles.buttonText, { color: primaryColor }]}>
+            <Text style={[panelStyles.buttonText, { color: c.accent }]}>
               Send event
             </Text>
           )}

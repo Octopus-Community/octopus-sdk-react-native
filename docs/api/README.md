@@ -1,8 +1,8 @@
-**@octopus-community/react-native v1.13.1**
+**@octopus-community/react-native v1.13.2**
 
 ---
 
-# @octopus-community/react-native v1.13.1
+# @octopus-community/react-native v1.13.2
 
 ## Enumerations
 

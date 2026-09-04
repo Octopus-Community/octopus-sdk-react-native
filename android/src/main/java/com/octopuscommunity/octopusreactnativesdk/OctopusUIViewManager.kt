@@ -5,6 +5,7 @@ import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.captionBar
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -23,6 +24,8 @@ import androidx.compose.foundation.layout.tappableElement
 import androidx.compose.foundation.layout.waterfall
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
@@ -38,6 +41,7 @@ import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.UIManagerHelper
 import com.facebook.react.uimanager.annotations.ReactProp
 import com.facebook.react.uimanager.events.Event
+import com.octopuscommunity.sdk.OctopusSDK
 import com.octopuscommunity.sdk.domain.model.CreatePostScreenInfo
 import com.octopuscommunity.sdk.ui.components.NavigationIconType
 
@@ -174,6 +178,23 @@ class OctopusUIViewManager(private val reactContext: ReactApplicationContext) :
         val wrapper = OctopusViewWrapper(reactContext)
         wrapper.composeView.setContent {
             MaterialTheme {
+                // Composition gate on the SDK's initialisation state. OctopusContent dereferences
+                // the SDK's Koin container — a `lateinit` with no fallback — as soon as it enters
+                // the composition, so a host that mounts <OctopusUIView> before `initialize()`
+                // resolves crashed with an `UninitializedPropertyAccessException` in
+                // `OctopusSDK.getKoinApp` (issue #234, the embedded twin of the
+                // OctopusActivity.onCreate guard). The same gate also takes the content out of
+                // the composition while the SDK is stopped (`stop()`, or the teardown at the
+                // start of a re-`initialize()`), so nothing is left reading a retired container.
+                // Collected as Compose state rather than read once at construction, so the view
+                // fills in on its own when initialization completes. Unlike the wrapper's
+                // snapshot fields this is NOT per-view state, and legitimately so: the flow is
+                // process-static SDK state, not a prop, and every mounted view must agree with it.
+                val isInitialised by OctopusSDK.isInitialisedFlow.collectAsState()
+                if (!isInitialised) {
+                    Box(Modifier.fillMaxSize())
+                    return@MaterialTheme
+                }
                 // Notification-wins precedence, applied here rather than in the prop setters
                 // because @ReactProp calls arrive in an arbitrary order: reading both values
                 // inside the composition is the only order-independent place to compare them.

@@ -1,7 +1,7 @@
 # Octopus Community SDK for React Native
 
 [![npm package](https://img.shields.io/npm/v/@octopus-community/react-native.svg)](https://www.npmjs.com/package/@octopus-community/react-native)
-[![Android SDK](https://img.shields.io/badge/Android_SDK-1.13.2-34a853?logo=android&logoColor=white)](https://github.com/Octopus-Community/octopus-sdk-android)
+[![Android SDK](https://img.shields.io/badge/Android_SDK-1.13.3-34a853?logo=android&logoColor=white)](https://github.com/Octopus-Community/octopus-sdk-android)
 [![iOS SDK](https://img.shields.io/badge/iOS_SDK-1.13.2-f05138?logo=apple&logoColor=white)](https://github.com/Octopus-Community/octopus-sdk-swift)
 
 React Native module for the Octopus Community [Android](https://github.com/Octopus-Community/octopus-sdk-android) and [Swift](https://github.com/Octopus-Community/octopus-sdk-swift) SDKs.
@@ -61,9 +61,9 @@ Due to a bug in Xcode 15, you might need to set `ENABLE_USER_SCRIPT_SANDBOXING` 
 
 ### Compatibility table
 
-| React Native version(s) | Android       | iOS   | Old arch | New arch      | Octopus native SDK |
-| ----------------------- | ------------- | ----- | -------- | ------------- | ------------------ |
-| v0.81.x (tested 0.81.4) | 7.0+ (API 24) | 15.1+ | ✅       | Interop layer | 1.13.2             |
+| React Native version(s) | Android       | iOS   | Old arch | New arch      | Octopus native SDK          |
+| ----------------------- | ------------- | ----- | -------- | ------------- | --------------------------- |
+| v0.81.x (tested 0.81.4) | 7.0+ (API 24) | 15.1+ | ✅       | Interop layer | Android 1.13.3 · iOS 1.13.2 |
 
 * Older React Native versions (e.g. v0.78+) may work but are untested
 * New architecture is supported via the React Native interoperability layer
@@ -77,8 +77,10 @@ Due to a bug in Xcode 15, you might need to set `ENABLE_USER_SCRIPT_SANDBOXING` 
 
 This package's `MAJOR.MINOR` tracks the wrapped native Octopus SDKs, so the two
 numbers can be read together: package 1.13.x wraps native 1.13.x. The patch
-levels are independent — package 1.13.0 wrapping Android 1.13.2 and iOS 1.13.2 is
-normal, and the table above names the exact pins.
+levels are independent — package 1.13.0 wrapping Android 1.13.3 and iOS 1.13.2 is
+normal, and the table above names the exact pins. That also means the two native
+pins agree on `MAJOR.MINOR` but not necessarily on `PATCH`: when one platform
+ships a fix the other does not need, only that platform's pin moves.
 
 One consequence to plan for: because the minor tracks the natives, a **breaking
 TypeScript change can arrive in a minor** — each one gets a section with a
