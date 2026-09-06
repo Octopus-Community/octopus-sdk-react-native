@@ -132,6 +132,11 @@ export interface OctopusUIViewProps {
    * Not called on the SDK's sub-screens — there the icon pops the SDK's
    * internal stack itself, exactly like `openUI()`'s fullscreen UI.
    *
+   * The fullscreen entry point has the same callback as an option —
+   * {@link OpenUIOptions.onBackRequested} — with one difference: there the SDK
+   * owns the container and closes it for you, so the callback is a
+   * notification rather than a request to dismiss.
+   *
    * @example
    * ```tsx
    * <OctopusUIView

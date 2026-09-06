@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.13.2**](../README.md)
+[**@octopus-community/react-native v1.13.3**](../README.md)
 
 ---
 
@@ -20,9 +20,10 @@ Optional configuration. Use `interceptUrls: true` to receive
 URL taps via `addNavigateToUrlListener` instead of having the SDK open them,
 `interceptProfileTaps: true` to receive profile taps via
 `addNavigateToProfileListener` instead of having the SDK open its own profile
-screens, `notification` to open directly on deep-linked content, and
+screens, `notification` to open directly on deep-linked content,
 `initialScreen` to open on a specific screen (a post, a group, one
-member's posts or profile, or the post editor).
+member's posts or profile, or the post editor), and `onBackRequested` to
+be told when the user leaves the UI from its root screen.
 
 ## Returns
 

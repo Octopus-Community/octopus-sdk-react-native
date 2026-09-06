@@ -7,15 +7,16 @@
  * Supported on both platforms (native Android SDK 1.12.1+ via
  * `leadingNavigationIcon`, native iOS SDK 1.12.2+ via `navBarLeadingAction`).
  *
- * **Tap behavior differs by entry point.** Issue #36 asks for the tap to
- * fire the SDK's existing back event to JS rather than dismissing anything
- * by itself:
- * - `<OctopusUIView>` — on the SDK's root screen, tapping either variant
- *   now fires the {@link OctopusUIViewProps.onBackRequested} prop, same as
- *   the default back arrow (`showBackButton`). Sub-screens still pop the
- *   SDK's own internal navigation stack first.
- * - `openUI()` — the tap still dismisses the fullscreen UI directly
- *   (native-side), without emitting anything to JS. Wiring that path
- *   through is tracked as remaining parity work with the native SDKs.
+ * **Tapping either variant on the SDK's root screen — where the SDK's own
+ * navigation has nothing left to pop — notifies JS on both entry points**
+ * (issue #36):
+ * - `<OctopusUIView>` — fires the {@link OctopusUIViewProps.onBackRequested}
+ *   prop, same as the default back arrow (`showBackButton`). The embedded
+ *   container is yours, so nothing is dismissed for you.
+ * - `openUI()` — fires the {@link OpenUIOptions.onBackRequested} callback and
+ *   closes the fullscreen UI, which the SDK owns. No `closeUI()` needed.
+ *
+ * Sub-screens behave the same on both: the icon pops the SDK's own internal
+ * navigation stack and nothing is emitted.
  */
 export type OctopusNavBarLeadingAction = 'close' | 'back';

@@ -148,6 +148,24 @@ class OctopusEventEmitter(private val reactContext: ReactContext) {
     sendEvent("connectionStateChanged", params)
   }
 
+  // Parity wave — navigation & theme (fullscreen back event, issue #36)
+
+  /**
+   * The fullscreen UI's root-screen back tap, forwarded to the `onBackRequested` callback JS
+   * registered through `openUI({ onBackRequested })` (see `internals/fullscreenBackRequested.ts`).
+   *
+   * Always emitted, like every other channel here: this class keeps no listener tally — see the
+   * KDoc on [sendEvent] for why it cannot. The Activity finishes itself either way, so a JS side
+   * with no callback registered simply drops it.
+   *
+   * The embedded view does NOT come through here: it carries its own per-view direct event
+   * instead (`OctopusUIViewManager`), which is what lets one embedded view's callback fire
+   * without reaching another's.
+   */
+  fun emitFullscreenBackRequested() {
+    sendEvent("backRequested", null)
+  }
+
   fun emitIsInitialisedChanged(isInitialised: Boolean) {
     val params = Arguments.createMap()
     params.putBoolean("isInitialised", isInitialised)

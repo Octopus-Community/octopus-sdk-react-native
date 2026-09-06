@@ -275,18 +275,22 @@ class OctopusEventSerializer {
       return ["type": "reportExplanation"]
     case .deleteAccount:
       return ["type": "deleteAccount"]
-    // New screens added in native SDK 1.11 — typed support deferred to a follow-up.
-    // Surface them as "unknown" so the bridge doesn't crash and JS can detect them.
-    case .mainFeed:
-      return ["type": "unknown"]
+    // Screens added in native SDK 1.11.
+    case .mainFeed(let context):
+      return ["type": "mainFeed", "feedId": context.feedId]
     case .groups:
-      return ["type": "unknown"]
-    case .groupDetail:
-      return ["type": "unknown"]
-    // Unified Profile screen added in native SDK 1.13 — the wrapper exposes no
-    // Unified Profile surface yet, so it follows the same deferral as above.
-    case .otherUserPosts:
-      return ["type": "unknown"]
+      return ["type": "groups"]
+    case .groupDetail(let context):
+      // `context.source` (clientApp / community) is deliberately not bridged: Android
+      // names the same distinction BRIDGE / COMMUNITY, so carrying it needs a wire
+      // naming decision of its own rather than an iOS-side one.
+      return ["type": "groupDetail", "groupId": context.groupId]
+    // Unified Profile screen added in native SDK 1.13. There is no `.activity` counterpart
+    // on iOS — the native SDK reports `.profile` for the connected user's own activity, so
+    // "activity" is an Android-only wire tag. See `ScreenType` in `src/types/sdkEvents.ts`
+    // and `KNOWN_SCREEN_PLATFORM_GAPS` in `src/__tests__/goldenRoundtrip.test.ts`.
+    case .otherUserPosts(let context):
+      return ["type": "otherUserPosts", "profileId": context.profileId]
     @unknown default:
       return ["type": "unknown"]
     }

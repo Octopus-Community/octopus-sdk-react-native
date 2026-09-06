@@ -127,6 +127,30 @@ class OctopusEventManager {
     }
   }
 
+  // Parity wave — navigation & theme (fullscreen back event, issue #36)
+
+  /// The fullscreen UI's root-screen leading-icon tap, forwarded to the `onBackRequested`
+  /// callback JS registered through `openUI({ onBackRequested })` (see
+  /// `internals/fullscreenBackRequested.ts`).
+  ///
+  /// Always emitted, like every other channel here — this class keeps no listener tally, see the
+  /// doc comment on `sendEvent`. The presentation is dismissed either way, so a JS side with no
+  /// callback registered simply drops it.
+  ///
+  /// Reachable only through the `navBarLeadingAction` `onTap` closure installed by
+  /// `OctopusReactNativeSdk.openUI`: every root the SDK renders itself also offers a silent
+  /// dismissal — the trailing Close button on the feed root, a leading close button on an
+  /// `initialScreen` root — which dismisses the SwiftUI presentation directly and calls no host
+  /// closure. So this is a best-effort notification of the leading-icon path, never a dependable
+  /// exit signal; `OpenUIOptions.onBackRequested`'s TSDoc states the same for hosts.
+  ///
+  /// The embedded view does NOT come through here: it carries its own per-view direct event
+  /// instead (`OctopusUIViewManager`), which is what lets one embedded view's callback fire
+  /// without reaching another's.
+  func emitFullscreenBackRequested() {
+    sendEvent(name: "backRequested", body: nil)
+  }
+
   func emitIsInitialisedChanged(isInitialised: Bool) {
     sendEvent(name: "isInitialisedChanged", body: ["isInitialised": isInitialised])
   }

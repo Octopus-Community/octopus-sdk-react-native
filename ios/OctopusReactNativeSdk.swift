@@ -244,15 +244,22 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
     // TS layer always sends a concrete value (see `openUI.ts`'s `?? 'navigationStack'`), and
     // `decodeNavigationMode`'s own nil/unrecognized fallback matches, deliberately not the
     // native SDK's own `.automatic` default (iso with Flutter — see the type's TSDoc for why).
-    // The leading-action tap dismisses the fullscreen UI exactly like the native default back
-    // arrow does — mirroring Android's `onBack = { finish() }`, which is unconditionally wired
-    // regardless of icon variant.
+    // The leading-action tap notifies JS and then dismisses the fullscreen UI exactly like the
+    // native default back arrow does — mirroring Android's `onSdkBackRequested`, which is
+    // unconditionally wired regardless of icon variant. Notify-then-close, in that order and
+    // deliberately not delegated to JS: the container is the SDK's own full-screen modal, which
+    // a user has no system gesture out of, so a host that registered no `onBackRequested` — or
+    // one whose handler forgets `closeUI()` — must not be able to strand them in it.
+    // `OpenUIOptions.onBackRequested`'s TSDoc states the same contract for hosts.
     let navigationMode = decodeNavigationMode(
       (options as? [String: Any])?["navigationMode"] as? String
     )
     let navBarLeadingAction = decodeNavBarLeadingAction(
       (options as? [String: Any])?["navBarLeadingAction"] as? String,
-      onTap: { [weak self] in try? self?.uiManager.closeUI() }
+      onTap: { [weak self] in
+        self?.eventManager.emitFullscreenBackRequested()
+        try? self?.uiManager.closeUI()
+      }
     )
 
     DispatchQueue.main.async {

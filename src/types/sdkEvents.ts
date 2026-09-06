@@ -69,16 +69,37 @@ export type PostClickedSource = 'feed' | 'profile';
 /**
  * Screen types displayed in the Octopus UI.
  *
- * `'settingsList'` is emitted on Android only since native SDK 1.13: iOS deleted the
- * settings-list screen, so nothing emits it there anymore.
+ * Three members are **not** emitted by both pinned natives. Treat them as optional inputs
+ * rather than as guarantees, and never assume one implies the absence of the other:
+ *
+ * - `'postsFeed'` is kept in the union for source compatibility only — it is not emitted by
+ *   either platform any more. It is superseded by `'mainFeed'` and `'groupDetail'`, which the
+ *   native SDKs split it into: Android's `ScreenDisplayed.PostsFeed` has been `@Deprecated`
+ *   with zero emission sites since native 1.13.3, and iOS's `Screen.postsFeed` has been
+ *   deprecated and unreachable since native 1.13.2.
+ * - `'settingsList'` is emitted on Android only since native SDK 1.13: iOS deleted the
+ *   settings-list screen, so nothing emits it there anymore.
+ * - `'activity'` is emitted on Android only. The native iOS SDK models no separate screen
+ *   for the connected user's own Unified Profile activity and reports `'profile'` for it,
+ *   so the same user action yields `'activity'` on Android and `'profile'` on iOS. A host
+ *   counting "the user looked at their own community activity" must accept both.
+ *
+ * The list grows as the native SDKs add screens, and a screen this wrapper version does not
+ * model yet arrives as `'unknown'` — so match on the members you care about and keep a
+ * default branch rather than assuming the union is closed.
  */
 export type ScreenType =
+  | 'mainFeed'
   | 'postsFeed'
+  | 'groups'
+  | 'groupDetail'
   | 'postDetail'
   | 'commentDetail'
   | 'createPost'
   | 'profile'
+  | 'activity'
   | 'otherUserProfile'
+  | 'otherUserPosts'
   | 'editProfile'
   | 'reportContent'
   | 'reportProfile'
@@ -197,12 +218,23 @@ export interface GamificationPointsRemovedEvent extends BaseSDKEvent {
 }
 
 /**
- * Screen information for screen displayed events
+ * Screen information for screen displayed events.
+ *
+ * Every field but `type` is optional and only present for the screens that carry it:
+ * `feedId` on `'mainFeed'` and `'postsFeed'` (with `relatedTopicId` on the latter only, and
+ * only when the feed maps to a single group), `groupId` on `'groupDetail'`, `postId` on
+ * `'postDetail'`, `commentId` on `'commentDetail'`, and `profileId` on `'otherUserProfile'`
+ * and `'otherUserPosts'`. An absent field is missing from the payload, so it reads as
+ * `undefined` — never `null` — with one legacy exception: `relatedTopicId` predates that
+ * convention and still carries an explicit `null` for "no single group", rather than being
+ * omitted.
  */
 export interface ScreenInfo {
   type: ScreenType;
   feedId?: string;
   relatedTopicId?: string | null;
+  /** The ID of the group whose detail screen is displayed. `'groupDetail'` only. */
+  groupId?: string;
   postId?: string;
   commentId?: string;
   profileId?: string;

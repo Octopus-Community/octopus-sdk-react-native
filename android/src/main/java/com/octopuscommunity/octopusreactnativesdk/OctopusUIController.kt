@@ -38,6 +38,12 @@ class OctopusUIController(private val reactContext: ReactApplicationContext) {
       navBarLeadingAction?.let {
         intent.putExtra(OctopusActivity.EXTRA_NAV_BAR_LEADING_ACTION, it)
       }
+      // Only a UI opened from here emits `backRequested` on its root back tap: the JS callback
+      // is an option of `openUI` / `openNotification`, so it must not fire for a fullscreen UI
+      // opened by another entry point. `navigateToOctopusCreatePost` builds its own Intent
+      // (OctopusReactModule) and deliberately does not set this — matching iOS, where the event
+      // rides the `navBarLeadingAction` closure that only `openUI` installs.
+      intent.putExtra(OctopusActivity.EXTRA_EMIT_BACK_REQUESTED, true)
 
       val linkPath = options
         ?.takeIf { it.hasKey("notification") }

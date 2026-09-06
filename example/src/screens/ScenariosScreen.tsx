@@ -195,7 +195,7 @@ const SCENARIO_SUBTITLES: Record<ScenarioId, string> = {
   initialScreen:
     'openUI({ initialScreen }) — feed, post, group, profile, editor',
   embeddedBack:
-    'showBackButton / navBarLeadingAction + onBackRequested on the embedded view',
+    'showBackButton / navBarLeadingAction + onBackRequested, embedded and fullscreen',
   reactions: 'setReaction — set / change / unreact',
   profileFieldsLock: 'per-field lock: nickname / avatar / bio',
   contentOptions: 'per-content-type options: pictures, polls',
@@ -223,7 +223,7 @@ const SCENARIO_APIS: Record<ScenarioId, string[]> = {
   theme: ['initialize', 'setThemeMode'],
   createPost: ['navigateToOctopusCreatePost'],
   initialScreen: ['openUI'],
-  embeddedBack: ['OctopusUIView'],
+  embeddedBack: ['OctopusUIView', 'openUI'],
   reactions: ['setReaction'],
   profileFieldsLock: ['debugOverrideProfileFieldsLock'],
   contentOptions: ['debugOverrideContentOptions'],
@@ -605,6 +605,23 @@ const EMBEDDED_BACK_PRESETS: {
     testID: 'qa-preset-embeddedBack-5',
     showBackButton: false,
   },
+];
+
+/**
+ * The two presentation modes the scenario runs the same leading-icon presets in — the
+ * embedded `<OctopusUIView>` and the fullscreen `openUI()`, which fire the same
+ * `onBackRequested` contract from two different containers.
+ *
+ * The presets above are written for the embedded view, and only part of them survives
+ * fullscreen: `showBackButton` is an embedded-view prop, so fullscreen reads a preset's
+ * `navBarLeadingAction` alone. Presets 1 and 5 therefore both mean "no leading action" there
+ * — each platform paints its own default instead, which also costs preset 5 its
+ * negative-control meaning (fullscreen always has *something* to tap). The card's hint says
+ * so on screen rather than leaving a tester to infer it from an unexpected icon.
+ */
+const EMBEDDED_BACK_PRESENTATIONS: { key: string; label: string }[] = [
+  { key: 'embedded', label: 'Embedded view' },
+  { key: 'fullscreen', label: 'Fullscreen openUI' },
 ];
 
 export interface ScenariosScreenProps {
@@ -1319,40 +1336,87 @@ export function ScenariosScreen({
     EMBEDDED_BACK_PRESETS.find(
       (preset) => preset.key === embeddedBackPresetKey
     ) ?? EMBEDDED_BACK_PRESETS[0]!;
+  // Which container the run mounts the selected preset in. Both halves answer the same
+  // `onBackRequested` contract; only the fullscreen one closes itself when it fires.
+  const [embeddedBackPresentation, setEmbeddedBackPresentation] =
+    useState('embedded');
+  const isEmbeddedBackFullscreen = embeddedBackPresentation === 'fullscreen';
   // The scenario's own host route: the sample's whole content area, holding nothing but its own
   // thin band and the embedded view. Run opens it, `onBackRequested` closes it — which is what
   // makes the callback observable at all, since the prop's whole contract is "the host dismisses
   // its own container". Like the `clientProfileView` route it is modelled on, it replaces the
   // content below the app's chrome, not the chrome itself: the tab bar stays reachable.
+  // Fullscreen runs open no route: there the SDK owns the container.
   const [isEmbeddedBackRouteOpen, setIsEmbeddedBackRouteOpen] = useState(false);
-  // Whether the SDK called back during the run that is on screen. Reset by every Run, so the
-  // Result panel describes this trial rather than an earlier one.
-  const [hasEmbeddedBackFired, setHasEmbeddedBackFired] = useState(false);
-
-  // The success sentence reports what the run did, not what to do next: it is only legible once
-  // the route has closed, i.e. once tapping the icon is no longer possible. The live instruction
-  // is on the band inside the route, and the verdict is in `embeddedBackInfo` below.
-  const onRunEmbeddedBack = useCallback(
-    () =>
-      runEmbeddedBack(async () => {
-        setHasEmbeddedBackFired(false);
-        setIsEmbeddedBackRouteOpen(true);
-      }, 'Host route opened with the selected leading icon'),
-    [runEmbeddedBack]
-  );
+  // How many times the SDK called back during the run that is on screen, and from which
+  // container. Reset by every Run, so the Result panel describes this trial rather than an
+  // earlier one — a count rather than a flag because a fullscreen UI can be left, reopened and
+  // left again without the sample's own screen ever changing.
+  const [embeddedBackFiredCount, setEmbeddedBackFiredCount] = useState(0);
+  const [embeddedBackLastSource, setEmbeddedBackLastSource] = useState('');
 
   /**
-   * The prop under test. Popping the host route here is the visible effect QA reads: the
-   * scenario detail comes back on screen, and the Result panel says the callback fired.
+   * The fullscreen option under test. Nothing is dismissed here: `openUI`'s `onBackRequested`
+   * is a notification, and the SDK has already closed its own container by the time this runs
+   * — so the proof is the Result panel's counter, read on the scenario screen the fullscreen
+   * UI just uncovered.
+   */
+  const onFullscreenBackRequested = useCallback(() => {
+    setEmbeddedBackFiredCount((count) => count + 1);
+    setEmbeddedBackLastSource('fullscreen');
+    debugLog.event(
+      'onBackRequested',
+      'fullscreen root back tap — the SDK closed its own container'
+    );
+  }, []);
+
+  /**
+   * The embedded prop under test. Popping the host route here is the visible effect QA reads:
+   * the scenario detail comes back on screen, and the Result panel says the callback fired.
    */
   const onEmbeddedBackRequested = useCallback(() => {
-    setHasEmbeddedBackFired(true);
+    setEmbeddedBackFiredCount((count) => count + 1);
+    setEmbeddedBackLastSource('embedded');
     setIsEmbeddedBackRouteOpen(false);
     debugLog.event(
       'onBackRequested',
       'embedded root back tap — host route popped'
     );
   }, []);
+
+  // The success sentence reports what the run did, not what to do next: it is only legible once
+  // the container has closed, i.e. once tapping the icon is no longer possible. The live
+  // instruction is on the band inside the embedded route (and in the card's hint for the
+  // fullscreen half), and the verdict is in `embeddedBackInfo` below.
+  const onRunEmbeddedBack = useCallback(
+    () =>
+      runEmbeddedBack(
+        async () => {
+          setEmbeddedBackFiredCount(0);
+          setEmbeddedBackLastSource('');
+          if (isEmbeddedBackFullscreen) {
+            // `showBackButton` is an embedded-view prop, so only the preset's
+            // `navBarLeadingAction` carries over — undefined for the two presets that have
+            // none, which is what leaves each platform painting its own default.
+            await openUI({
+              navBarLeadingAction: embeddedBackPreset.navBarLeadingAction,
+              onBackRequested: onFullscreenBackRequested,
+            });
+            return;
+          }
+          setIsEmbeddedBackRouteOpen(true);
+        },
+        isEmbeddedBackFullscreen
+          ? 'Fullscreen UI opened with the selected leading icon'
+          : 'Host route opened with the selected leading icon'
+      ),
+    [
+      runEmbeddedBack,
+      isEmbeddedBackFullscreen,
+      embeddedBackPreset.navBarLeadingAction,
+      onFullscreenBackRequested,
+    ]
+  );
 
   /** The band's own way out, used when the SDK's icon does NOT bring the tester back. */
   const onCloseEmbeddedBackRoute = useCallback(
@@ -1362,11 +1426,18 @@ export function ScenariosScreen({
 
   // `info` renders in the idle state too, so the pre-run sentence must not read as a verdict on
   // a run that has not happened yet.
-  const embeddedBackInfo = hasEmbeddedBackFired
-    ? 'onBackRequested fired — the SDK’s leading icon popped the host route.'
-    : embeddedBackRunState.status === 'idle'
-      ? 'Run to open the host route, then tap the leading icon on the SDK’s root screen.'
-      : 'onBackRequested: not fired since the last run.';
+  const embeddedBackInfo =
+    embeddedBackFiredCount > 0
+      ? `onBackRequested fired ×${embeddedBackFiredCount} (${embeddedBackLastSource}) — ${
+          embeddedBackLastSource === 'fullscreen'
+            ? 'the SDK closed its fullscreen container itself.'
+            : 'the SDK’s leading icon popped the host route.'
+        }`
+      : embeddedBackRunState.status === 'idle'
+        ? isEmbeddedBackFullscreen
+          ? 'Run to open the fullscreen UI, then tap the leading icon on the SDK’s root screen.'
+          : 'Run to open the host route, then tap the leading icon on the SDK’s root screen.'
+        : 'onBackRequested: not fired since the last run.';
 
   // --- reactions --------------------------------------------------------------------------
   const hasDemoPostId = octopusDemoPostId !== '';
@@ -2675,12 +2746,28 @@ export function ScenariosScreen({
         textColor={textColor}
       >
         <Text style={[styles.hint, { color: secondaryColor }]}>
-          Run opens a host route holding nothing but an embedded
-          `OctopusUIView`. On the SDK’s ROOT screen the top app bar’s leading
-          icon fires `onBackRequested`, and this sample answers it by popping
-          that route. Open a post or a profile first and the same icon pops the
-          SDK’s own stack instead — no callback, the route stays.
+          {isEmbeddedBackFullscreen
+            ? 'Run opens the fullscreen UI through openUI({ onBackRequested }). On the SDK’s ROOT screen the top app bar’s leading icon closes that UI itself and fires the callback — the counter below is the only thing this sample does about it. Open a post or a profile first and the same icon pops the SDK’s own stack instead: no callback.'
+            : 'Run opens a host route holding nothing but an embedded `OctopusUIView`. On the SDK’s ROOT screen the top app bar’s leading icon fires `onBackRequested`, and this sample answers it by popping that route. Open a post or a profile first and the same icon pops the SDK’s own stack instead — no callback, the route stays.'}
         </Text>
+        {isEmbeddedBackFullscreen && (
+          <Text style={[styles.hint, { color: secondaryColor }]}>
+            Fullscreen reads a preset’s `navBarLeadingAction` only —
+            `showBackButton` is an embedded-view prop. The two presets that
+            carry no leading action leave each platform its own default: an
+            arrow that fires the callback on Android, the SDK’s own trailing
+            Close on iOS, which dismisses without firing.
+          </Text>
+        )}
+        <EnumParamField
+          testID="qa-param-embeddedBack-presentation"
+          label="Presentation"
+          typeName="PresentationMode"
+          isDark={isDark}
+          value={embeddedBackPresentation}
+          onChange={setEmbeddedBackPresentation}
+          options={EMBEDDED_BACK_PRESENTATIONS}
+        />
         <EnumParamField
           testID="qa-param-embeddedBack-leading"
           label="Leading icon"

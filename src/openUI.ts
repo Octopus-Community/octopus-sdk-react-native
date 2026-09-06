@@ -1,3 +1,4 @@
+import { setFullscreenBackRequestedCallback } from './internals/fullscreenBackRequested';
 import { resolveInitialScreen } from './internals/initialScreen';
 import { OctopusReactNativeSdk } from './internals/nativeModule';
 import type { OctopusInitialScreen } from './types/octopusInitialScreen';
@@ -97,15 +98,90 @@ export interface OpenUIOptions {
 
   /**
    * Overrides the leading (top-left) icon on the top app bar with a close
-   * (X) or back arrow. Tapping it closes the UI, exactly like the default
-   * back arrow does. Useful when `openUI()` is presented from a modal and a
-   * close affordance reads better than a back arrow, or vice-versa.
+   * (X) or back arrow. Tapping it on the SDK's root screen closes the UI,
+   * exactly like the default back arrow does, and fires
+   * {@link onBackRequested} if you passed one. Useful when `openUI()` is
+   * presented from a modal and a close affordance reads better than a back
+   * arrow, or vice-versa.
    *
-   * When omitted, the native default back arrow applies.
+   * When omitted, each platform's own default applies: a leading back arrow
+   * on Android, and on iOS no leading icon at all on the community feed —
+   * that root is left to the SDK's own trailing "Close" button, which
+   * dismisses the UI without firing {@link onBackRequested}. Pass a value
+   * here whenever you need the callback on iOS, but note that it adds a
+   * leading icon without removing that trailing Close — see
+   * {@link onBackRequested} for what that means for the signal.
    *
    * @see {@link OctopusNavBarLeadingAction}
    */
   navBarLeadingAction?: OctopusNavBarLeadingAction;
+
+  /**
+   * Called when the SDK leaves its **root** screen at the user's request —
+   * the top app bar's leading icon (the default back arrow or the
+   * {@link navBarLeadingAction} override) tapped where the SDK's own internal
+   * navigation has nothing left to pop, or an equivalent SDK affordance that
+   * routes through that same leading action: on iOS the "OK" button of the
+   * content-unavailable / content-deleted alert leaves the screen the same
+   * way. The fullscreen counterpart of
+   * {@link OctopusUIViewProps.onBackRequested}, and the RN analog of the
+   * Flutter `OctopusHomeScreen` widget's `onBack`.
+   *
+   * **The UI still closes itself — this is a notification, not a delegation.**
+   * You do not have to call {@link closeUI} from the callback (doing so
+   * anyway is harmless), and dismissal is identical whether you pass the
+   * option or not. The container is the SDK's own — a native Activity on
+   * Android, a full-screen modal on iOS — so leaving it up until the host
+   * reacted would strand a user whose handler forgot to close it, on a screen
+   * iOS gives no system way out of. Use the callback to *follow* the user
+   * back: pop your own route, restore chrome you hid, refresh a badge, log an
+   * event.
+   *
+   * Not called on the SDK's sub-screens — there the icon pops the SDK's
+   * internal stack instead, exactly like the embedded view.
+   *
+   * **Registration is last-write-wins across the fullscreen entry points**
+   * ({@link openUI}, `openNotification`): each call replaces the previous
+   * registration, and a call that omits the option clears it. Passing nothing
+   * therefore keeps the pre-callback behaviour exactly.
+   *
+   * **Not a complete exit signal on iOS.** The SDK's community feed root
+   * renders its own trailing "Close" button whenever it is presented modally
+   * — which `openUI` always is — *regardless* of
+   * {@link navBarLeadingAction}, and that button dismisses the presentation
+   * directly without firing anything. Passing a {@link navBarLeadingAction}
+   * adds a leading icon that does fire the callback, but it does not take the
+   * trailing Close away, so the user always keeps a silent way out. (On a
+   * bridge-mode {@link initialScreen} root the leading slot carries your
+   * {@link navBarLeadingAction} when you pass one, and the SDK's own silent
+   * close button when you do not.) Treat the callback as a best-effort
+   * notification of the leading-icon path — never as "the user is still in
+   * the community until it fires".
+   *
+   * **Android**: the leading icon is always painted on the root screen, so
+   * that path is always reachable. The OS-level gesture (system back,
+   * predictive back) is not routed through the callback: on the SDK's
+   * sub-screens — including one opened through {@link initialScreen}, which
+   * this bridge pushes on top of the community feed rather than making it the
+   * root of the stack — it pops the SDK's own stack back towards the feed,
+   * and on the feed itself it finishes the SDK's Activity without firing.
+   * iOS's full-screen modal offers no system dismissal gesture at all.
+   *
+   * @example
+   * ```typescript
+   * await openUI({
+   *   navBarLeadingAction: 'close',
+   *   onBackRequested: () => {
+   *     // The UI is closing itself; just follow the user back — pop the route
+   *     // you pushed, restore the chrome you hid. Do not use this as a
+   *     // "community session ended" signal: iOS keeps a silent Close that
+   *     // never fires it (see above).
+   *     restoreHostChrome();
+   *   },
+   * });
+   * ```
+   */
+  onBackRequested?: () => void;
 }
 
 /**
@@ -115,9 +191,10 @@ export interface OpenUIOptions {
  *   URL taps via `addNavigateToUrlListener` instead of having the SDK open them,
  *   `interceptProfileTaps: true` to receive profile taps via
  *   `addNavigateToProfileListener` instead of having the SDK open its own profile
- *   screens, `notification` to open directly on deep-linked content, and
+ *   screens, `notification` to open directly on deep-linked content,
  *   `initialScreen` to open on a specific screen (a post, a group, one
- *   member's posts or profile, or the post editor).
+ *   member's posts or profile, or the post editor), and `onBackRequested` to
+ *   be told when the user leaves the UI from its root screen.
  * @returns A promise that resolves when the UI has been opened.
  * @throws An error whose `code` is `OPEN_UI_ERROR` (as a promise rejection) when
  *   the SDK is not initialized — call `initialize()` first. Both platforms.
@@ -155,6 +232,16 @@ export function openUI(options?: OpenUIOptions): Promise<void> {
         rawPayload: opts.notification.rawPayload,
       }
     : undefined;
+  // Registered before the UI can exist, and unconditionally: an open that passes no callback
+  // clears whatever a previous one registered, so the option cannot leak across two UIs. The
+  // callback stays JS-side — nothing about it crosses the bridge, since the native side emits
+  // the `backRequested` event whether or not JS listens (see OctopusEventEmitter.sendEvent).
+  //
+  // Deliberately above resolveInitialScreen: that call throws synchronously on a structurally
+  // invalid `initialScreen` (see @throws), and "unconditionally" has to mean it — otherwise a
+  // failed open would leave the previous host's callback armed, wired to a UI it never opened.
+  // This is local JS state; it owes nothing to the open succeeding.
+  setFullscreenBackRequestedCallback(opts.onBackRequested);
   // A tapped notification always wins over an initial screen — see
   // resolveInitialScreen, shared with the embedded <OctopusUIView> so neither
   // the two platforms nor the two entry points can drift on that precedence.

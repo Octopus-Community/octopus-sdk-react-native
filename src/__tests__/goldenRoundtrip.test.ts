@@ -120,6 +120,7 @@ const screenToWire = (screen: ScreenInfo): Wire => {
     type,
     feedId,
     relatedTopicId,
+    groupId,
     postId,
     commentId,
     profileId,
@@ -131,14 +132,24 @@ const screenToWire = (screen: ScreenInfo): Wire => {
       // Both natives write `feedId` unconditionally and only guard
       // `relatedTopicId`, so only the latter may be absent from the wire.
       return { type, feedId, ...withoutNullish({ relatedTopicId }) };
+    case 'mainFeed':
+      // `MainFeedContext` carries `feedId` alone — no `relatedTopicId` on either side.
+      return { type, feedId };
+    case 'groupDetail':
+      // The native `source` (BRIDGE/COMMUNITY on Android, clientApp/community on iOS) is
+      // deliberately not bridged, so `groupId` is the whole payload.
+      return { type, groupId };
     case 'postDetail':
       return { type, postId };
     case 'commentDetail':
       return { type, commentId };
     case 'otherUserProfile':
+    case 'otherUserPosts':
       return { type, profileId };
+    case 'groups':
     case 'createPost':
     case 'profile':
+    case 'activity':
     case 'editProfile':
     case 'reportContent':
     case 'reportProfile':
@@ -401,11 +412,16 @@ const EVENT_GOLDENS: Record<SDKEvent['type'], Wire> = {
 /** One golden per screen type, likewise transcribed from `serializeScreen`. */
 const SCREEN_GOLDENS: Record<ScreenType, Wire> = {
   postsFeed: { type: 'postsFeed', feedId: 'feed-1', relatedTopicId: 'topic-1' },
+  mainFeed: { type: 'mainFeed', feedId: 'feed-1' },
+  groups: { type: 'groups' },
+  groupDetail: { type: 'groupDetail', groupId: 'group-1' },
   postDetail: { type: 'postDetail', postId: 'post-1' },
   commentDetail: { type: 'commentDetail', commentId: 'comment-1' },
   createPost: { type: 'createPost' },
   profile: { type: 'profile' },
+  activity: { type: 'activity' },
   otherUserProfile: { type: 'otherUserProfile', profileId: 'profile-1' },
+  otherUserPosts: { type: 'otherUserPosts', profileId: 'profile-1' },
   editProfile: { type: 'editProfile' },
   reportContent: { type: 'reportContent' },
   reportProfile: { type: 'reportProfile' },
@@ -491,6 +507,19 @@ describe('SDK events — golden round-trip', () => {
     const { [field]: dropped, ...truncated } = EVENT_GOLDENS[type];
     expect(dropped).toBeDefined();
     expect(eventToWire(truncated as unknown as SDKEvent)).not.toStrictEqual(
+      truncated
+    );
+  });
+
+  /** Same non-vacuity check for the screens that carry a payload. */
+  it.each([
+    ['mainFeed', 'feedId'],
+    ['groupDetail', 'groupId'],
+    ['otherUserPosts', 'profileId'],
+  ] as const)('fails when the %s screen golden loses its %s', (type, field) => {
+    const { [field]: dropped, ...truncated } = SCREEN_GOLDENS[type];
+    expect(dropped).toBeDefined();
+    expect(screenToWire(truncated as unknown as ScreenInfo)).not.toStrictEqual(
       truncated
     );
   });
@@ -959,6 +988,38 @@ const KNOWN_PLATFORM_GAPS: Record<string, string> = {
     'native iOS SDK, not something to work around here.',
 };
 
+/**
+ * Screen wire tags one platform emits and the other does not, with the platform that does.
+ *
+ * The event-side table above only excuses iOS, because Android is the reference for the event
+ * catalog. The screen catalogs are genuinely asymmetric in both directions, so this one is
+ * two-sided — but it is no more a licence to skip a golden than the other: JS must handle
+ * whatever *either* platform sends, so every tag here still has a golden and still round-trips.
+ * A **new** gap fails the anchor instead of blending into the diff.
+ */
+const KNOWN_SCREEN_PLATFORM_GAPS: Record<
+  string,
+  { emittedBy: 'android' | 'ios'; reason: string }
+> = {
+  activity: {
+    emittedBy: 'android',
+    reason:
+      'Android has OctopusEvent.ScreenDisplayed.Activity for the connected user own ' +
+      'Unified Profile activity screen. The native iOS SDK models no separate screen for ' +
+      'it and reports .profile instead, so the same user action is "activity" on Android ' +
+      'and "profile" on iOS — recorded in the ScreenType TSDoc for hosts.',
+  },
+  // 'unknown' used to live here as an iOS-only gap: the iOS @unknown default catches a
+  // screen case a future native SDK adds, while the Kotlin when has no else on purpose —
+  // OctopusEvent.ScreenDisplayed is sealed, so a new subtype broke the Android build
+  // instead of being swallowed, and Android never emitted "unknown" itself. It is no
+  // longer a gap: serializeScreen now also seeds "unknown" as a defense-in-depth default
+  // ahead of that exhaustive `when`, for the one case the compiler cannot catch — a
+  // native dependency bump paired with a wrapper build that does not pick up the
+  // matching Kotlin subtype. Both platforms textually emit "unknown" now, so the tag is
+  // expected on both and needs no entry here.
+};
+
 describe('native anchor', () => {
   const kotlinEvents = readNative(
     'android/src/main/java/com/octopuscommunity/octopusreactnativesdk/OctopusEventSerializer.kt'
@@ -983,10 +1044,18 @@ describe('native anchor', () => {
   it('has a golden for every screen tag both serializers emit', () => {
     const kotlin = wireTagsIn(kotlinEvents, /fun serializeScreen/, KOTLIN_TAG);
     const swift = wireTagsIn(swiftEvents, /func serializeScreen/, SWIFT_TAG);
-    const expected = Object.keys(SCREEN_GOLDENS).sort();
 
-    expect([...kotlin].sort()).toStrictEqual(expected);
-    expect([...swift].sort()).toStrictEqual(expected);
+    const expectedFor = (platform: 'android' | 'ios') =>
+      Object.keys(SCREEN_GOLDENS)
+        .filter(
+          (tag) =>
+            (KNOWN_SCREEN_PLATFORM_GAPS[tag]?.emittedBy ?? platform) ===
+            platform
+        )
+        .sort();
+
+    expect([...kotlin].sort()).toStrictEqual(expectedFor('android'));
+    expect([...swift].sort()).toStrictEqual(expectedFor('ios'));
   });
 
   it('reads live code only', () => {

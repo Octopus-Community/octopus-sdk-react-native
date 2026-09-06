@@ -90,6 +90,12 @@ export function formatSDKEvent(event: SDKEvent): {
         detailParts.push(`postId: ${event.screen.postId}`);
       if (event.screen?.feedId)
         detailParts.push(`feedId: ${event.screen.feedId}`);
+      if (event.screen?.groupId)
+        detailParts.push(`groupId: ${event.screen.groupId}`);
+      if (event.screen?.commentId)
+        detailParts.push(`commentId: ${event.screen.commentId}`);
+      if (event.screen?.profileId)
+        detailParts.push(`profileId: ${event.screen.profileId}`);
       return { title: 'Screen displayed', details: detailParts.join(' · ') };
 
     case 'notificationClicked':

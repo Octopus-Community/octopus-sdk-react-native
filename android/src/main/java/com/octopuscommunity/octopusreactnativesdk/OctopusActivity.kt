@@ -26,6 +26,7 @@ class OctopusActivity : ComponentActivity() {
     const val EXTRA_LINK_PATH = "linkPath"
     // Parity wave — navigation & theme
     const val EXTRA_NAV_BAR_LEADING_ACTION = "navBarLeadingAction"
+    const val EXTRA_EMIT_BACK_REQUESTED = "emitBackRequested"
     const val EXTRA_CREATE_POST_TEXT = "createPostText"
     const val EXTRA_CREATE_POST_IMAGE_URI = "createPostImageUri"
     const val EXTRA_CREATE_POST_TOPIC_ID = "createPostTopicId"
@@ -121,18 +122,40 @@ class OctopusActivity : ComponentActivity() {
         backButton = true,
         interceptUrls = interceptUrls,
         interceptProfileTaps = interceptProfileTaps,
-        onBack = { finish() },
+        onBack = ::onSdkBackRequested,
         linkPath = linkPath,
         createPostInfo = createPostInfo,
         initialScreen = initialScreen,
-        // Parity wave — navigation & theme. The fullscreen Activity's `onBack` above already
-        // fires on this icon regardless of variant, since OctopusHomeScreen's own
-        // leadingNavigationIcon resolution routes both Back and Close taps through the same
-        // `onBack` callback — the embedded view reaches the same behaviour through its
-        // `onBackRequested` direct event (see OctopusUIViewManager, issue #36).
+        // Parity wave — navigation & theme. `onSdkBackRequested` above already fires on this
+        // icon regardless of variant, since OctopusHomeScreen's own leadingNavigationIcon
+        // resolution routes both Back and Close taps through the same `onBack` callback — so
+        // the fullscreen UI reaches JS through the module-level `backRequested` event, while
+        // the embedded view reaches the same behaviour through its per-view `onBackRequested`
+        // direct event (see OctopusUIViewManager, issue #36).
         navBarLeadingAction = navBarLeadingAction
       )
     }
+  }
+
+  /**
+   * The SDK's root-screen back request: the top app bar's leading icon tapped where
+   * `OctopusHomeScreen`'s own navigation has nothing left to pop (its `onBack` contract —
+   * sub-screens pop the SDK's internal stack and never reach here). Both icon variants route
+   * through it, `NavigationIconType.Close` included.
+   *
+   * Notify-then-close, deliberately in that order and deliberately not delegated: JS is told
+   * through the `backRequested` event — only for a UI `openUI` launched, see
+   * [EXTRA_EMIT_BACK_REQUESTED] — then this Activity finishes itself exactly as it did before
+   * the event existed. The fullscreen container is the SDK's own, so a host that
+   * registered no callback — or registered one that forgets `closeUI()` — must not end up
+   * stuck on a screen with no way out. `openUI`'s TSDoc states the same contract for hosts,
+   * and iOS's `openUI` closure mirrors it.
+   */
+  private fun onSdkBackRequested() {
+    if (intent.getBooleanExtra(EXTRA_EMIT_BACK_REQUESTED, false)) {
+      OctopusEventEmitter.instance?.emitFullscreenBackRequested()
+    }
+    finish()
   }
 
   /**

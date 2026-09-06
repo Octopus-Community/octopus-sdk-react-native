@@ -1,5 +1,47 @@
 # @octopus-community/react-native
 
+## 1.13.3
+
+### Patch Changes
+
+- d8a3694: Report the five `screenDisplayed` screens that both native bridges were flattening to
+  `'unknown'`: `mainFeed` (with its `feedId`), `groups`, `groupDetail` (with its `groupId`),
+  `otherUserPosts` (with its `profileId`), and — Android only — `activity`. `ScreenType` gains
+  those five members and `ScreenInfo` a `groupId?`; nothing was renamed, narrowed or removed, so
+  a host that already groups unmodelled screens under a catch-all keeps compiling.
+
+  `'activity'` is the connected user's own Unified Profile activity screen. The native iOS SDK
+  models no separate screen for it and reports `.profile`, so the same user action yields
+  `'activity'` on Android and `'profile'` on iOS — named in the `ScreenType` TSDoc rather than
+  flattened away, since flattening would discard what Android does know and would silently
+  change tag the day iOS gains the case. The `groupDetail` native `source` is deliberately not
+  bridged yet: the two platforms name it differently (`BRIDGE`/`COMMUNITY` against
+  `clientApp`/`community`), which is a wire-naming decision of its own.
+
+- 53276ce: Bump the pinned Android native Octopus SDK from 1.13.3 to 1.13.4. It carries two fixes for
+  host apps:
+  - The Octopus UI no longer brings the app down when Android re-creates a host activity from
+    its saved task state — after a low-memory kill, for instance — before `initialize()` has
+    run. It now logs a warning and renders nothing until the host initialises the SDK, then the
+    content appears on its own. Apps that initialise before showing Octopus UI see no
+    difference.
+  - The SDK no longer fails at `initialize()` in a host app that minifies its release build.
+    The Guava keep rules the SDK's gRPC transport needs at runtime now ship with the SDK
+    itself, so there is nothing to add on the host side. Hosts that do not minify were never
+    affected.
+
+  The iOS pin stays on 1.13.2: neither fix has an iOS counterpart, and the two pins still share
+  `MAJOR.MINOR`. No API change on either platform.
+
+- 9454e18: Add an `onBackRequested` callback to `openUI()` and `openNotification()`, fired when the
+  fullscreen UI leaves its root screen at the user's request — the top app bar's leading icon,
+  or an equivalent SDK affordance routing through it. The fullscreen counterpart of the embedded
+  `<OctopusUIView>` prop. The UI still closes itself, so the callback is a notification, not a
+  delegation: no `closeUI()` needed, and a host that passes nothing keeps today's behaviour
+  exactly. On iOS it is a best-effort signal: the community feed root always carries the SDK's
+  own trailing Close button, which dismisses without notifying, whether or not a
+  `navBarLeadingAction` is passed.
+
 ## 1.13.2
 
 ### Patch Changes

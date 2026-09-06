@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.13.2**](../README.md)
+[**@octopus-community/react-native v1.13.3**](../README.md)
 
 ---
 
@@ -179,6 +179,11 @@ your route, close your modal, switch tab…).
 
 Not called on the SDK's sub-screens — there the icon pops the SDK's
 internal stack itself, exactly like `openUI()`'s fullscreen UI.
+
+The fullscreen entry point has the same callback as an option —
+[OpenUIOptions.onBackRequested](OpenUIOptions.md#onbackrequested) — with one difference: there the SDK
+owns the container and closes it for you, so the callback is a
+notification rather than a request to dismiss.
 
 #### Returns
 

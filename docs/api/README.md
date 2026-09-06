@@ -1,8 +1,8 @@
-**@octopus-community/react-native v1.13.2**
+**@octopus-community/react-native v1.13.3**
 
 ---
 
-# @octopus-community/react-native v1.13.2
+# @octopus-community/react-native v1.13.3
 
 ## Enumerations
 
@@ -119,6 +119,7 @@
 - [OctopusNotification](type-aliases/OctopusNotification.md)
 - [OctopusReactionKind](type-aliases/OctopusReactionKind.md)
 - [OctopusThemeMode](type-aliases/OctopusThemeMode.md)
+- [OpenNotificationOptions](type-aliases/OpenNotificationOptions.md)
 - [OverrideCommunityAccessErrorCode](type-aliases/OverrideCommunityAccessErrorCode.md)
 - [PostClickedSource](type-aliases/PostClickedSource.md)
 - [PostContentType](type-aliases/PostContentType.md)

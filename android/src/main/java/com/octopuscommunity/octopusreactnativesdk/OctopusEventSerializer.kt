@@ -285,7 +285,14 @@ object OctopusEventSerializer {
 
   private fun serializeScreen(event: OctopusEvent.ScreenDisplayed): WritableMap {
     val screenMap = Arguments.createMap()
-    
+    // Default set before the `when` below, which stays exhaustive on purpose (a compile-time
+    // forcing function: adding a ScreenDisplayed subtype without adding a branch here is a
+    // build failure, not a silent gap). This default is the defense-in-depth line for the
+    // case that check cannot cover — a native dependency bump paired with a wrapper build that
+    // does not also pick up the matching Kotlin subtype — so the bridge still emits a map with
+    // a "type" key, `'unknown'`, instead of one missing it entirely.
+    screenMap.putString("type", "unknown")
+
     when (event) {
       is OctopusEvent.ScreenDisplayed.PostsFeed -> {
         screenMap.putString("type", "postsFeed")
@@ -337,26 +344,36 @@ object OctopusEventSerializer {
         screenMap.putString("type", "deleteAccount")
       }
       is OctopusEvent.ScreenDisplayed.MainFeed -> {
-        screenMap.putString("type", "unknown")
+        screenMap.putString("type", "mainFeed")
+        screenMap.putString("feedId", event.feedId)
       }
       OctopusEvent.ScreenDisplayed.Groups -> {
-        screenMap.putString("type", "unknown")
+        screenMap.putString("type", "groups")
       }
       is OctopusEvent.ScreenDisplayed.GroupDetail -> {
-        screenMap.putString("type", "unknown")
+        screenMap.putString("type", "groupDetail")
+        screenMap.putString("groupId", event.groupId)
+        // `event.source` (BRIDGE / COMMUNITY) is deliberately not bridged: iOS names the
+        // same distinction `clientApp` / `community`, so carrying it needs a wire naming
+        // decision of its own rather than an Android-side one.
       }
-      // Unified Profile screens added in native SDK 1.13. The wrapper now does pass
-      // `onNavigateToProfile` (behind `interceptProfileTaps`), so these are reachable —
-      // but they stay untyped, following the same deferral as the screens above, because
-      // typing them is a cross-platform decision rather than an Android one: iOS has no
-      // `activity` case and reuses `.profile` for the connected user's own activity
-      // screen, so the same user action would report "profile" there and "activity" here
-      // unless the two sides are resolved together.
+      // Unified Profile screens added in native SDK 1.13, reachable since the wrapper
+      // passes `onNavigateToProfile` (behind `interceptProfileTaps`).
+      //
+      // `activity` has no iOS counterpart: the native iOS SDK models no separate screen
+      // for the connected user's own activity and reports `.profile` for it. The two
+      // sides are therefore resolved by *naming* the asymmetry rather than by flattening
+      // it — Android keeps the finer tag the native SDK gives it, and `ScreenType`'s
+      // TSDoc plus `KNOWN_SCREEN_PLATFORM_GAPS` in `src/__tests__/goldenRoundtrip.test.ts`
+      // record that a host counting this action must accept "activity" or "profile".
+      // Flattening to "profile" here would instead discard information Android has and
+      // silently change tag if iOS ever gains the case.
       is OctopusEvent.ScreenDisplayed.Activity -> {
-        screenMap.putString("type", "unknown")
+        screenMap.putString("type", "activity")
       }
       is OctopusEvent.ScreenDisplayed.OtherUserPosts -> {
-        screenMap.putString("type", "unknown")
+        screenMap.putString("type", "otherUserPosts")
+        screenMap.putString("profileId", event.profileId)
       }
     }
     
