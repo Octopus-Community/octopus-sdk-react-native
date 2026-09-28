@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native';
 
-import { chromeColors, OCTOPUS_BRAND } from '../../theme/branding';
+import { chromeColors } from '../../theme/branding';
 
 /**
  * Palette shared by the scenario panels below, so a panel folded into a
@@ -78,20 +78,6 @@ export const panelStyles = StyleSheet.create({
   feedback: {
     fontSize: 12,
     lineHeight: 17,
-  },
-  badge: {
-    backgroundColor: OCTOPUS_BRAND.error,
-    borderRadius: 9,
-    minWidth: 18,
-    height: 18,
-    paddingHorizontal: 5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  badgeText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
   },
   valueBadge: {
     borderRadius: 8,

@@ -9,9 +9,13 @@ import {
 } from 'react-native';
 
 import { KeyValueCard } from '../components/KeyValueCard';
+import { PillButton } from '../components/PillButton';
+import type { KeyValueRow } from '../components/KeyValueCard';
 import { SegmentControl } from '../components/SegmentControl';
+import type { DebugInfoCard } from '../debug/debugInfo';
 import type { DebugEntry } from '../debug/debugLog';
 import { debugLog, useDebugLog } from '../debug/debugLog';
+import type { DebugView } from '../navigation/anchors';
 import { chromeColors } from '../theme/branding';
 
 /** Which kinds of entries the console shows. */
@@ -27,11 +31,25 @@ export interface DebugScreenProps {
   hasAccessToCommunity: boolean | null;
   notSeenNotificationsCount: number;
   pushToken: string | null;
+  /**
+   * Which of Developer tools' two destinations this is: `events`, the live log the QA
+   * catalog drives (`debug-open-button`), or `info`, the read-only snapshot of the streamed
+   * state and of {@link DebugScreenProps.infoCards}. Defaults to `events`.
+   */
+  view?: DebugView;
+  /** Build and configuration cards of the `info` view, built by `buildDebugInfoCards`. */
+  infoCards?: DebugInfoCard[];
+  /**
+   * The `info` view's link to Config › Host callbacks, where the URL and profile-tap
+   * handling it reports are set. Applying there restarts the SDK. Absent, no link.
+   */
+  onOpenHostCallbacks?: () => void;
 }
 
 /**
  * Debug console — a live, in-app feed of SDK events and of the API calls the
- * sample fires, plus a snapshot of the state values the SDK streams.
+ * sample fires (`view="events"`), or a snapshot of the state values the SDK streams
+ * and of the build and configuration in force (`view="info"`).
  *
  * Read-only view of the process-wide {@link debugLog}, newest first. Not a tab:
  * the shared QA shell has exactly four, so the console is presented as a modal
@@ -53,6 +71,9 @@ export function DebugScreen({
   hasAccessToCommunity,
   notSeenNotificationsCount,
   pushToken,
+  view = 'events',
+  infoCards = [],
+  onOpenHostCallbacks,
 }: DebugScreenProps) {
   const entries = useDebugLog();
   const [filter, setFilter] = useState<DebugFilter>('all');
@@ -88,36 +109,59 @@ export function DebugScreen({
     copiedTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
   }, []);
 
+  const liveRows: KeyValueRow[] = [
+    { label: 'isInitialized', value: String(isInitialized) },
+    {
+      label: 'connection',
+      value: isUserConnected ? 'connected' : 'anonymous',
+    },
+    {
+      label: 'hasAccessToCommunity',
+      value: hasAccessToCommunity === null ? '—' : String(hasAccessToCommunity),
+    },
+    {
+      label: 'notSeenNotificationsCount',
+      value: String(notSeenNotificationsCount),
+    },
+    {
+      label: 'pushToken',
+      value: pushToken === null ? '—' : 'set',
+    },
+  ];
+
+  // Two destinations, not one console under two names: Events log is the live feed, Debug
+  // info the snapshot — the streamed state plus the build and configuration in force.
+  if (view === 'info') {
+    return (
+      <ScrollView
+        testID="debug-info-list"
+        contentContainerStyle={styles.content}
+      >
+        <KeyValueCard title="Live state" isDark={isDark} rows={liveRows} />
+        {infoCards.map((card) => (
+          <KeyValueCard
+            key={card.title}
+            title={card.title}
+            rows={card.rows}
+            isDark={isDark}
+          />
+        ))}
+        {onOpenHostCallbacks !== undefined && (
+          <PillButton
+            testID="debug-info-open-config-integration"
+            label="Config › Host callbacks"
+            icon="arrow-forward"
+            variant="secondary"
+            isDark={isDark}
+            onPress={onOpenHostCallbacks}
+          />
+        )}
+      </ScrollView>
+    );
+  }
+
   return (
     <ScrollView contentContainerStyle={styles.content}>
-      <KeyValueCard
-        title="Live state"
-        isDark={isDark}
-        rows={[
-          { label: 'isInitialized', value: String(isInitialized) },
-          {
-            label: 'connection',
-            value: isUserConnected ? 'connected' : 'anonymous',
-          },
-          {
-            label: 'hasAccessToCommunity',
-            value:
-              hasAccessToCommunity === null
-                ? '—'
-                : String(hasAccessToCommunity),
-          },
-          {
-            label: 'notSeenNotificationsCount',
-            value: String(notSeenNotificationsCount),
-          },
-          {
-            label: 'pushToken',
-            value:
-              pushToken === null ? '—' : `${pushToken.slice(0, 12)}… (set)`,
-          },
-        ]}
-      />
-
       <View style={styles.headerRow}>
         <Text style={[styles.sectionTitle, { color: textColor }]}>
           {`Log (${filtered.length}${
@@ -154,7 +198,7 @@ export function DebugScreen({
           activeOpacity={0.8}
         >
           <Text style={[styles.actionText, { color: chrome.accent }]}>
-            {copied ? 'Copied' : 'Copy as JSON'}
+            {copied ? 'Copied' : 'Copy log'}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -236,7 +280,10 @@ function LogRow({ entry, isDark }: { entry: DebugEntry; isDark: boolean }) {
           {time}
         </Text>
       </View>
-      <Text style={[styles.detail, { color: chrome.text }]} numberOfLines={4}>
+      <Text
+        style={[styles.detail, { color: chrome.textBody }]}
+        numberOfLines={4}
+      >
         {entry.detail}
       </Text>
     </View>

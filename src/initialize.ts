@@ -5,6 +5,8 @@ import { Appearance } from 'react-native';
 import { colorSchemeManager } from './internals/colorSchemeManager';
 import { parseFontConfig, type ParsedFontConfig } from './internals/fontParser';
 import { normalizeThemeColors } from './internals/colorValidator';
+import { flattenIconOverrides } from './internals/iconOverrides';
+import type { OctopusIcons } from './types/octopusIcons';
 import {
   attachStateChannels,
   publishIsInitialised,
@@ -49,6 +51,42 @@ export interface OctopusColorSet {
    * Android, the system background on iOS.
    */
   background?: string;
+  /**
+   * **Android only.** First step of the native SDK's neutral gray ramp, the one nearest the
+   * page: snackbar and tooltip ink, and the default page background in dark mode
+   * (hex format: #FF6B35 or FF6B35). Overriding it does not move the page background:
+   * set {@link background} for that.
+   *
+   * The four `gray*` keys let a host move the community's neutral surfaces, hairlines and
+   * body text onto its own ladder — a navy dark theme rather than the default neutral
+   * grays. Each one is optional and independent: an omitted key keeps the native default,
+   * so a theme that sets none of them renders exactly as before.
+   *
+   * Unlike {@link link} and {@link background}, a gray given in one mode of a
+   * `{ light, dark }` set is **not** applied to the other mode: the ramp is tuned per
+   * appearance, and a dark gray reused in light mode would invert the contrast. A single
+   * color set still applies to both modes, as every other key does.
+   *
+   * Ignored on iOS, whose native SDK does not expose its gray ramp for customization.
+   */
+  gray100?: string;
+  /**
+   * **Android only.** Second step of the native gray ramp: low-contrast fills such as poll
+   * bars and disabled content (hex format: #FF6B35 or FF6B35). Same rules as
+   * {@link gray100}.
+   */
+  gray200?: string;
+  /**
+   * **Android only.** Third step of the native gray ramp: hairlines, dividers and borders,
+   * and the default `disabled` color (hex format: #FF6B35 or FF6B35). Same rules as
+   * {@link gray100}; overriding it does not move `disabled`.
+   */
+  gray300?: string;
+  /**
+   * **Android only.** Secondary-text step of the native gray ramp: post metadata,
+   * counters and toggles (hex format: #FF6B35 or FF6B35). Same rules as {@link gray100}.
+   */
+  gray700?: string;
 }
 
 /**
@@ -214,6 +252,13 @@ export interface OctopusTheme {
     /** Local image resource - use Image.resolveAssetSource(require('./path/to/image.png')) */
     image?: ImageResolvedAssetSource;
   };
+  /**
+   * Icon overrides. Every slot is optional: an absent slot keeps the native default icon,
+   * and omitting `icons` leaves the native icon set untouched. Icons are tinted with the
+   * theme colors (reactions and screen-state illustrations excepted). See {@link OctopusIcons} for the slots and the
+   * image guidelines.
+   */
+  icons?: OctopusIcons;
 }
 
 /**
@@ -386,16 +431,21 @@ export function initialize(params: InitializeParams): Promise<void> {
   // Automatically detect the current color scheme and add it to the params
   const colorScheme = Appearance.getColorScheme();
 
-  // Pre-process font configuration to avoid duplication in native layers
+  // Pre-process font configuration to avoid duplication in native layers, and flatten the
+  // icon overrides into the `slot path -> uri` map both bridges read (`iconOverrides`). The
+  // nested `icons` object itself never crosses the bridge.
+  const { icons, ...themeWithoutIcons } = themeWithCanonicalColors ?? {};
+  const iconOverrides = flattenIconOverrides(icons);
   const processedTheme = themeWithCanonicalColors
     ? {
-        ...themeWithCanonicalColors,
+        ...themeWithoutIcons,
         fonts: themeWithCanonicalColors.fonts
           ? {
               ...themeWithCanonicalColors.fonts,
               parsedConfig: parseFontConfig(themeWithCanonicalColors.fonts),
             }
           : undefined,
+        ...(iconOverrides && { iconOverrides }),
       }
     : undefined;
 

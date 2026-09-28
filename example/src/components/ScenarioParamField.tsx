@@ -38,7 +38,10 @@ function FieldShell({
   return (
     <View
       testID={testID}
-      style={[styles.field, { backgroundColor: chrome.surfaceRaised }]}
+      style={[
+        styles.field,
+        { backgroundColor: chrome.surfaceRaised, borderColor: chrome.border },
+      ]}
     >
       <View style={styles.fieldHeader}>
         <Text style={[styles.fieldLabel, { color: chrome.textSecondary }]}>
@@ -46,7 +49,13 @@ function FieldShell({
         </Text>
         {/* `tintBorder` is a border token — as ink on a light surface it is the fill-only
             accent blue at 3.50:1, so the text draws in `chrome.accent`. */}
-        <View style={[styles.typeChip, { backgroundColor: chrome.tint }]}>
+        <View
+          style={[
+            styles.typeChip,
+            { backgroundColor: chrome.tint },
+            chrome.badge,
+          ]}
+        >
           <Text style={[styles.typeChipText, { color: chrome.accent }]}>
             {type}
           </Text>
@@ -88,7 +97,7 @@ export function TextParamField({
     <FieldShell testID={testID} label={label} type={type} isDark={isDark}>
       <TextInput
         testID={`${testID}-input`}
-        style={[styles.fieldValue, { color: chrome.text }]}
+        style={[styles.fieldValue, { color: chrome.textBody }]}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
@@ -236,6 +245,7 @@ export function EnumParamField({
 
 const styles = StyleSheet.create({
   field: {
+    borderWidth: 1,
     borderRadius: 10,
     padding: 10,
     marginBottom: 8,

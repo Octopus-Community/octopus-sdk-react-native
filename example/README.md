@@ -21,7 +21,9 @@ cp .env.dist .env
 | `OCTOPUS_SSO_USER_TOKEN_PREMIUM` | For preset 2 | Same user, Premium entitlement. |
 | `OCTOPUS_SSO_USER_TOKEN_MODERATOR` | For preset 3 | Same user, Moderator entitlement. |
 | `OCTOPUS_SSO_USER_TOKEN_PREMIUM_MODERATOR` | For preset 4 | Same user, both entitlements. |
-| `OCTOPUS_DEMO_POST_ID` | For the "reactions" scenario | Id of an existing post in your community, used by the reaction presets. |
+| `OCTOPUS_DEMO_POST_ID` | No | Override the shared text post for initial-screen and notification presets, and the reaction target. Blank uses the built-in defaults. |
+| `OCTOPUS_QA_REACTION_POST_ID` | No | Override only the reaction target; takes precedence over `OCTOPUS_DEMO_POST_ID`. |
+| `OCTOPUS_QA_COMMENT_ID` / `OCTOPUS_QA_USER_ID` / `OCTOPUS_QA_TOPIC_ID` | No | Override the default comment, other member profile, or default group id. |
 | `OCTOPUS_API_HOST` | No | The backend this build talks to, passed to `initialize()` as `apiServer`. Left unset, it resolves to the **demo** backend; only naming `api.8pus.io` reaches production — see below. |
 | `OCTOPUS_INTERNAL` | No | `true` marks this build as an Octopus-internal one. Changes nothing the SDK does; it only re-enables the production banner — see below. |
 
@@ -50,6 +52,33 @@ for that session only — never written to device storage — so it is re-entere
 > integration case, and it has no reason to shout an Octopus host at you. Nothing sets the marker
 > for you — an Octopus developer sets it once in their own `.env`. The Android and Flutter samples
 > gate their banner on the same marker.
+
+## Demo content ids
+
+`src/config/sampleFixtures.ts` holds default ids of posts, a comment, a member and a group
+in the demo community the sample targets, so the presets below have a target without extra
+setup. Demo content can expire: if an id no longer resolves, override it (see below). The API
+key still comes from the existing configuration.
+
+After initialization, **Scenarios → Initial screen → Demo post → Run** opens
+`post.text` by id. The embedded Post preview uses the same target.
+**Push notifications → Run** replays a synthetic notification for that post through
+`getOctopusNotification` and `openNotification`; it does not require a push service.
+Reactions use the distinct `post.reactionStack` fixture. Group presets and the
+editable group form use `topic.default`. Community-data lookup starts at `user.other`
+and later reuses the latest successful lookup; the activity preset opens the other
+member's posts directly. Host `clientUserId` presets still use the configured SSO user.
+
+Non-blank `.env` overrides take precedence. Restart Metro with `yarn example start:reset` after editing them:
+development needs no native rebuild, but a release needs a new JS bundle.
+Retarget the ids as well as the API key when using another community.
+
+`post.image`, `post.poll`, `post.cta`, `comment.reported`, `topic.gated` and
+`deeplink.post` have no default and remain `null`. `comment.onPost` has a default, but this
+sample has no comment-detail preset. It also has no external `octopus-sample://post`
+URL handler on either platform; the in-app post and push presets do not claim to
+verify that missing external route. Create-post presets let the SDK choose the
+posting group (the bridge has no prefilled topic parameter).
 
 ## What the example demonstrates
 
@@ -152,3 +181,32 @@ When you want to forcefully reload, for example to reset the state of your app, 
 # Troubleshooting
 
 If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
+
+### Optional design and feedback links
+
+`OCTOPUS_DESIGN_REFERENCE_URL` in `.env` supplies the HTTPS target for
+Settings → About → Design reference. An empty or invalid value hides the row.
+
+Feedback is opt-in for internal bundles: set `OCTOPUS_INTERNAL=true` and
+`OCTOPUS_FEEDBACK_REPO=owner/repository-private` in `.env`, then start Metro from `example/` with
+`OCTOPUS_INTERNAL_FEEDBACK=true node node_modules/react-native/cli.js start --reset-cache`.
+For a bundled internal build, set the same environment variable on the bundle/build
+command. Verify that the configured destination is a **private** GitHub repository;
+the app validates its shape but cannot inspect repository visibility without credentials.
+The destination must have the `react-native` and `spotted` labels provisioned.
+
+The confirmation sheet opens a pre-filled issue in the browser; it never submits it.
+It includes platform/OS, wrapper version, native pins read at bundle time, environment
+label, last content screen/scenario and up to 50 log entries. Log payloads and unknown
+labels are omitted entirely, so arbitrary SDK data never enters the report. Screenshots
+are not captured automatically; the reporter can add one in GitHub. No new native
+dependency is required. The optional implementation lives under `debug/internal/` in
+`*.local.*` files, already excluded by the public mirror. Without the explicit bootstrap
+flag or those files, the bundle contains no import of it and Settings hides Send feedback.
+
+The language and custom-event scenarios provide Customize and Reset to preset.
+Preset buttons restore **every** input and execute that exact preset in one tap;
+editing alone never calls the SDK. A result whose inputs have since changed is marked
+stale. The custom-event editor retains the RN sample's existing preset values and accepts
+a JSON object of string properties. Unsupported language codes follow the native SDK's
+fallback behavior.

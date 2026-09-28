@@ -1,8 +1,8 @@
-**@octopus-community/react-native v1.13.3**
+**@octopus-community/react-native v1.14.0**
 
 ---
 
-# @octopus-community/react-native v1.13.3
+# @octopus-community/react-native v1.14.0
 
 ## Enumerations
 
@@ -36,12 +36,20 @@
 - [NavigateToProfileEventParams](interfaces/NavigateToProfileEventParams.md)
 - [NotificationClickedEvent](interfaces/NotificationClickedEvent.md)
 - [OctopusColorSet](interfaces/OctopusColorSet.md)
+- [OctopusCommentCreationIcons](interfaces/OctopusCommentCreationIcons.md)
+- [OctopusCommentIcons](interfaces/OctopusCommentIcons.md)
+- [OctopusCommonIcons](interfaces/OctopusCommonIcons.md)
 - [OctopusCommunityData](interfaces/OctopusCommunityData.md)
 - [OctopusConnected](interfaces/OctopusConnected.md)
+- [OctopusContentIcons](interfaces/OctopusContentIcons.md)
 - [OctopusFonts](interfaces/OctopusFonts.md)
 - [OctopusFontSize](interfaces/OctopusFontSize.md)
 - [OctopusGamification](interfaces/OctopusGamification.md)
+- [OctopusGamificationIcons](interfaces/OctopusGamificationIcons.md)
 - [OctopusGroup](interfaces/OctopusGroup.md)
+- [OctopusGroupsIcons](interfaces/OctopusGroupsIcons.md)
+- [OctopusIconOnOff](interfaces/OctopusIconOnOff.md)
+- [OctopusIcons](interfaces/OctopusIcons.md)
 - [OctopusInitialScreenActivity](interfaces/OctopusInitialScreenActivity.md)
 - [OctopusInitialScreenCreatePost](interfaces/OctopusInitialScreenCreatePost.md)
 - [OctopusInitialScreenGroup](interfaces/OctopusInitialScreenGroup.md)
@@ -50,17 +58,27 @@
 - [OctopusInitialScreenProfile](interfaces/OctopusInitialScreenProfile.md)
 - [OctopusLocalImageAttachment](interfaces/OctopusLocalImageAttachment.md)
 - [OctopusNotConnected](interfaces/OctopusNotConnected.md)
+- [OctopusPollIcons](interfaces/OctopusPollIcons.md)
 - [OctopusPost](interfaces/OctopusPost.md)
+- [OctopusPostCreationIcons](interfaces/OctopusPostCreationIcons.md)
 - [OctopusPostCTA](interfaces/OctopusPostCTA.md)
+- [OctopusPostIcons](interfaces/OctopusPostIcons.md)
 - [OctopusPrefilledPost](interfaces/OctopusPrefilledPost.md)
 - [OctopusProfile](interfaces/OctopusProfile.md)
+- [OctopusProfileIcons](interfaces/OctopusProfileIcons.md)
 - [OctopusReactionCount](interfaces/OctopusReactionCount.md)
+- [OctopusReactionIcons](interfaces/OctopusReactionIcons.md)
 - [OctopusRemoteImageAttachment](interfaces/OctopusRemoteImageAttachment.md)
+- [OctopusReplyCreationIcons](interfaces/OctopusReplyCreationIcons.md)
+- [OctopusReplyIcons](interfaces/OctopusReplyIcons.md)
+- [OctopusScreenStatesIcons](interfaces/OctopusScreenStatesIcons.md)
+- [OctopusSettingsIcons](interfaces/OctopusSettingsIcons.md)
 - [OctopusTextStyle](interfaces/OctopusTextStyle.md)
 - [OctopusTheme](interfaces/OctopusTheme.md)
 - [OctopusTopAppBar](interfaces/OctopusTopAppBar.md)
 - [OctopusUIOptions](interfaces/OctopusUIOptions.md)
 - [OctopusUIViewProps](interfaces/OctopusUIViewProps.md)
+- [OctopusVideoIcons](interfaces/OctopusVideoIcons.md)
 - [OpenUIOptions](interfaces/OpenUIOptions.md)
 - [OverrideCommunityAccessError](interfaces/OverrideCommunityAccessError.md)
 - [OverrideLocaleParams](interfaces/OverrideLocaleParams.md)
@@ -113,6 +131,7 @@
 - [OctopusConnectionState](type-aliases/OctopusConnectionState.md)
 - [OctopusDebugCommunityConfig](type-aliases/OctopusDebugCommunityConfig.md)
 - [OctopusFontType](type-aliases/OctopusFontType.md)
+- [OctopusIconSource](type-aliases/OctopusIconSource.md)
 - [OctopusInitialScreen](type-aliases/OctopusInitialScreen.md)
 - [OctopusNavBarLeadingAction](type-aliases/OctopusNavBarLeadingAction.md)
 - [OctopusNavigationMode](type-aliases/OctopusNavigationMode.md)

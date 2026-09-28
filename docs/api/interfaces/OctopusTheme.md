@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.13.3**](../README.md)
+[**@octopus-community/react-native v1.14.0**](../README.md)
 
 ---
 
@@ -49,6 +49,17 @@ Colors for light mode
 > `optional` **fonts**: [`OctopusFonts`](OctopusFonts.md)
 
 Font customization options
+
+---
+
+### icons?
+
+> `optional` **icons**: [`OctopusIcons`](OctopusIcons.md)
+
+Icon overrides. Every slot is optional: an absent slot keeps the native default icon,
+and omitting `icons` leaves the native icon set untouched. Icons are tinted with the
+theme colors (reactions and screen-state illustrations excepted). See [OctopusIcons](OctopusIcons.md) for the slots and the
+image guidelines.
 
 ---
 

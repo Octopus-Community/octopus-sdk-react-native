@@ -10,6 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import { MaterialIcons } from '@react-native-vector-icons/material-icons/static';
+import { useHardwareBack } from '../navigation/useHardwareBack';
 import * as Octopus from '@octopus-community/react-native';
 import {
   trackCustomEvent,
@@ -43,6 +44,8 @@ import type {
 } from '@octopus-community/react-native';
 import { PillButton } from '../components/PillButton';
 import { PresetButton } from '../components/PresetButton';
+import { UnifiedProfileSection } from '../components/UnifiedProfileSection';
+import type { ExposeClientUserIdOverride } from '../scenarios/unifiedProfile';
 import { chromeColors } from '../theme/branding';
 import { ScenarioResultPanel } from '../components/ScenarioResultPanel';
 import { ScenarioRunButton } from '../components/ScenarioRunButton';
@@ -59,14 +62,22 @@ import {
   ENTITLEMENT_LABELS,
   hasUserToken,
   injectedApiKeys,
-  octopusDemoPostId,
   resolveSwitchTarget,
   USER_TOKEN_ENV_VARS,
 } from '../config/demoConfig';
 import { useScenarioRun } from '../debug/useScenarioRun';
+import { sampleSupport } from '../config/sampleSupport';
+import { sampleFixtures } from '../config/sampleFixtures';
 import { debugLog } from '../debug/debugLog';
 import type { CommunityLocaleOverride } from './SettingsScreen';
-import { CustomEventPanel } from './panels/CustomEventPanel';
+import { withSectionOpen } from '../navigation/anchors';
+import type {
+  ConfigSection,
+  NavRequest,
+  ScenarioSectionId,
+} from '../navigation/anchors';
+import { useAnchorScroll } from '../navigation/useAnchorScroll';
+import { ScenarioCustomize } from '../components/ScenarioCustomize';
 import { SyncFollowGroupsPanel } from './panels/SyncFollowGroupsPanel';
 import { ThemePanel } from './panels/ThemePanel';
 import type {
@@ -88,8 +99,8 @@ import type {
  */
 const SAMPLE_NOTIFICATION_PAYLOAD: Record<string, string> = {
   is_octopus_notification: 'true',
-  link_path: 'post/sample-post-1',
-  post_id: 'sample-post-1',
+  link_path: `post/${sampleFixtures.post.text}`,
+  post_id: sampleFixtures.post.text,
   title: 'Sample Octopus notification',
   body: 'Tap to open the linked content in the Octopus community',
 };
@@ -107,7 +118,7 @@ const SAMPLE_CUSTOM_EVENT_PROPERTIES: Record<string, string> = {
  * pushNotifications preset above, rather than the Android sample's approach of batching
  * over its live `OctopusSDK.groups` cache.
  */
-const SAMPLE_GROUP_IDS = ['sample-group-1', 'sample-group-2', 'sample-group-3'];
+const SAMPLE_GROUP_IDS = [sampleFixtures.topic.default];
 
 /** Labels for the `reactions` scenario's `EnumParamField` — hoisted to module scope so it
  *  is a stable reference, not a fresh object on every render (which would otherwise force
@@ -150,10 +161,9 @@ type ClientProfileView =
   | { status: 'unknown' };
 
 /**
- * Card titles, spelled exactly as the shared scenario catalog's `title:` field (kept in the
- * internal QA tooling's shared config). The catalog is the cross-platform source of
- * truth for the wording, so the reference sample and this one label the same capability the same
- * way — and the search box below filters on it.
+ * Card titles, spelled exactly as the shared cross-platform scenario catalog's `title:` field.
+ * The catalog is the source of truth for the wording, so the reference sample and this one label
+ * the same capability the same way — and the search box below filters on it.
  */
 const SCENARIO_TITLES = {
   connection: 'Connection',
@@ -203,6 +213,42 @@ const SCENARIO_SUBTITLES: Record<ScenarioId, string> = {
   communityData: 'fetchCommunityData by profileId or clientUserId',
   syncFollowGroups: 'batch follow / unfollow with per-action timestamps',
   lifecycle: 'switchCommunity — re-target the SDK at another community',
+};
+
+/** Observable outcomes, separate from the API/capability labels in the list. */
+const SCENARIO_OUTCOMES: Record<ScenarioId, string> = {
+  connection:
+    'The connection state changes; the Community tab reflects the connected user and their access.',
+  communityAccess:
+    'The access state updates and the Community tab reflects whether access is granted.',
+  notSeenNotifications:
+    'The current unseen count in Result after a refresh or an incoming update.',
+  pushNotifications:
+    'The community opens at the post linked by the sample notification.',
+  customEvents:
+    'A debug console entry for each event sent; this call has no visible community UI.',
+  locale:
+    'Community labels and relative dates follow the selected language. Unsupported codes use the SDK fallback.',
+  theme:
+    'The Community tab uses the chosen colors, fonts and logo; the sample shell keeps its own palette.',
+  createPost:
+    'A post editor pre-filled with the selected text and attachments.',
+  initialScreen: 'The community opens directly at the selected destination.',
+  embeddedBack:
+    'The chosen back control appears; using it invokes the host callback or closes the fullscreen view.',
+  reactions:
+    'The selected reaction appears on the target post, or is removed when you unreact.',
+  profileFieldsLock:
+    'The chosen profile fields become editable or locked in the community profile editor.',
+  contentOptions:
+    'The community editor offers only the picture and poll options enabled for that content type.',
+  termsAcceptance:
+    'The community uses the selected consent mode when terms must be accepted.',
+  communityData:
+    'The fetched profile data in Result, with updates while observation is active.',
+  syncFollowGroups:
+    'The selected groups become followed or unfollowed in the Community tab.',
+  lifecycle: 'The Community tab switches to the newly selected demo community.',
 };
 
 /**
@@ -258,7 +304,8 @@ const VERIFIABLE_IN_COMMUNITY: ScenarioId[] = [
 
 /** A collapsible group of the list — the shared six, in the shared order. */
 interface ScenarioSection {
-  id: string;
+  /** Typed against the anchors, so a link can never name a section this list lacks. */
+  id: ScenarioSectionId;
   title: string;
   scenarios: ScenarioId[];
 }
@@ -274,7 +321,7 @@ interface ScenarioSection {
 const SCENARIO_SECTIONS: ScenarioSection[] = [
   {
     id: 'sso',
-    title: 'SSO & user',
+    title: 'Sign-in & user',
     scenarios: [
       'connection',
       'profileFieldsLock',
@@ -415,7 +462,11 @@ function ApiChips({
       {SCENARIO_APIS[id].map((api) => (
         <View
           key={api}
-          style={[styles.apiChip, { backgroundColor: chrome.tint }]}
+          style={[
+            styles.apiChip,
+            { backgroundColor: chrome.tint },
+            chrome.badge,
+          ]}
         >
           <Text style={[styles.apiChipText, { color: chrome.accent }]}>
             {api}
@@ -452,6 +503,9 @@ function ScenarioCard({
   textColor: string;
   children: React.ReactNode;
 }) {
+  useEffect(() => {
+    if (selected === id) sampleSupport.breadcrumb = `Scenarios › ${id}`;
+  }, [selected, id]);
   if (selected !== id) return null;
   return (
     <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
@@ -460,7 +514,7 @@ function ScenarioCard({
       <Text style={[styles.cardTitle, { color: textColor }]}>{title}</Text>
       <ApiChips id={id} chrome={chrome} />
       <Text style={[styles.rowSubtitle, { color: chrome.textSecondary }]}>
-        {SCENARIO_SUBTITLES[id]}
+        {`You will see: ${SCENARIO_OUTCOMES[id]}`}
       </Text>
       {children}
     </View>
@@ -509,8 +563,7 @@ function ScenarioRow({
 
 /**
  * Embedded-view initialScreen presets, previewed live inside the `initialScreen` scenario.
- * `enabled` is resolved from a *static* `process.env.X`: react-native-dotenv inlines those at
- * build time, so a computed lookup would read undefined.
+ * Backend ids come from the shared sample fixtures; SSO ids remain host configuration.
  */
 const EMBEDDED_INITIAL_SCREENS: {
   key: string;
@@ -524,9 +577,9 @@ const EMBEDDED_INITIAL_SCREENS: {
     label: 'Post',
     screen: {
       type: 'post',
-      postId: process.env.OCTOPUS_DEMO_POST_ID as string,
+      postId: sampleFixtures.post.text,
     },
-    enabled: !!process.env.OCTOPUS_DEMO_POST_ID,
+    enabled: true,
   },
   {
     key: 'activity',
@@ -639,9 +692,28 @@ export interface ScenariosScreenProps {
    * skeleton, offered by the scenarios whose effect is visible there.
    */
   onVerifyInCommunity: () => void;
+  /**
+   * Back to the Config screen at one section — the hints that name a setting only Config
+   * holds (the auth mode, the SSO user id) link straight to it. Applying restarts the SDK.
+   */
+  onOpenConfigSection: (section: ConfigSection) => void;
+  /**
+   * A section a link asked for (`scenarios/<section>`): the list shows, the search clears,
+   * that section opens and scrolls into view. Applied on mount and on every new request.
+   */
+  sectionRequest?: NavRequest<ScenarioSectionId> | null;
   /** Fed to the embedded preview's `OctopusUIView` — same flags the Community tab itself uses. */
   interceptUrls: boolean;
   interceptProfileTaps: boolean;
+  /**
+   * The Unified Profile override (`debugOverrideExposeClientUserId`), shown as a nested
+   * section at the end of Sign-in & user. `null` follows the backend.
+   */
+  exposeClientUserIdOverride: ExposeClientUserIdOverride;
+  /** Applies the override to the live SDK — no restart. */
+  onExposeClientUserIdOverrideChange: (
+    next: ExposeClientUserIdOverride
+  ) => Promise<void>;
 
   // connection
   isMockUserConnected: boolean;
@@ -727,9 +799,9 @@ export interface ScenariosScreenProps {
  * custom events, push token) — which is why the example has no separate Theme, SDK Data
  * or Groups tab: a capability is documented, driven and asserted in one place.
  *
- * Each card mirrors one entry of the shared scenarios catalog (kept in the internal QA
- * tooling's shared config) — its preset `testID`s and result panel `testID` are copied
- * verbatim from there for the cross-platform QA gate.
+ * Each card mirrors one entry of the shared cross-platform scenario catalog — its preset
+ * `testID`s and result panel `testID` are copied verbatim from there for the cross-platform QA
+ * gate.
  */
 export function ScenariosScreen({
   isDark,
@@ -737,8 +809,12 @@ export function ScenariosScreen({
   clientUserId,
   isSsoAuth,
   onVerifyInCommunity,
+  onOpenConfigSection,
+  sectionRequest,
   interceptUrls,
   interceptProfileTaps,
+  exposeClientUserIdOverride,
+  onExposeClientUserIdOverrideChange,
   isMockUserConnected,
   isConnectingUser,
   onConnectUser,
@@ -986,83 +1062,6 @@ export function ScenariosScreen({
     [runPushNotificationsPreset]
   );
 
-  // --- customEvents -----------------------------------------------------------------------
-  const [customEventsRunState, runCustomEventPreset] =
-    useScenarioRun('customEvents');
-
-  const onTrackSampleEventPreset = useCallback(
-    () =>
-      runCustomEventPreset(
-        () => trackCustomEvent('sample_event', undefined),
-        'Tracked "sample_event" (no props)'
-      ),
-    [runCustomEventPreset]
-  );
-  const onTrackSampleEventWithPropsPreset = useCallback(
-    () =>
-      runCustomEventPreset(
-        () => trackCustomEvent('sample_event', SAMPLE_CUSTOM_EVENT_PROPERTIES),
-        'Tracked "sample_event" (with props)'
-      ),
-    [runCustomEventPreset]
-  );
-  const [customEventIncludeProps, setCustomEventIncludeProps] = useState<
-    ReadonlySet<'properties'>
-  >(new Set());
-  const toggleCustomEventIncludeProps = useCallback(
-    () =>
-      setCustomEventIncludeProps((prev) =>
-        prev.has('properties') ? new Set() : new Set(['properties'])
-      ),
-    []
-  );
-  const onRunCustomEvent = useCallback(
-    () =>
-      customEventIncludeProps.has('properties')
-        ? onTrackSampleEventWithPropsPreset()
-        : onTrackSampleEventPreset(),
-    [
-      customEventIncludeProps,
-      onTrackSampleEventWithPropsPreset,
-      onTrackSampleEventPreset,
-    ]
-  );
-  // The Properties toggle picks which of the catalog's two presets the Run button executes.
-  const customEventsPresetTestID = customEventIncludeProps.has('properties')
-    ? 'qa-preset-customEvents-2'
-    : 'qa-preset-customEvents-1';
-
-  // The panel's free-text form is a third way to call `trackCustomEvent`, routed through the
-  // same `useScenarioRun` as the two presets above so the scenario has a single Result surface
-  // instead of the panel keeping its own success/error line alongside it. Resolves to whether
-  // the call actually went through — `trackCustomEvent` itself resolves to `void`, which
-  // wouldn't tell the panel apart from the error branch (also `undefined`).
-  const onSendCustomEvent = useCallback(
-    (eventName: string, properties?: Record<string, string>) =>
-      runCustomEventPreset(
-        async () => {
-          await trackCustomEvent(eventName, properties);
-          return true as const;
-        },
-        `Tracked "${eventName}"${properties ? ` ${JSON.stringify(properties)}` : ' (no properties)'}`
-      ),
-    [runCustomEventPreset]
-  );
-
-  // --- locale -------------------------------------------------------------------------------
-  const [localeRunState, runLocale] = useScenarioRun('locale');
-  const [localeSelection, setLocaleSelection] =
-    useState<CommunityLocaleOverride>(communityLocaleOverride);
-  const onRunLocale = useCallback(
-    () =>
-      runLocale(
-        () => onCommunityLocaleOverrideChange(localeSelection),
-        `Locale override: ${
-          localeSelection === 'system' ? 'system default' : localeSelection
-        }`
-      ),
-    [runLocale, onCommunityLocaleOverrideChange, localeSelection]
-  );
   const localeResultText = [
     `Community locale override: ${
       communityLocaleOverride === 'system'
@@ -1223,7 +1222,7 @@ export function ScenariosScreen({
   const onInitialScreenPostPreset = useCallback(
     () =>
       runInitialScreenPreset(
-        { type: 'post', postId: process.env.OCTOPUS_DEMO_POST_ID as string },
+        { type: 'post', postId: sampleFixtures.post.text },
         'Opened on the demo post'
       ),
     [runInitialScreenPreset]
@@ -1231,8 +1230,8 @@ export function ScenariosScreen({
   const onInitialScreenGroupPreset = useCallback(
     () =>
       runInitialScreenPreset(
-        { type: 'group', groupId: SAMPLE_GROUP_IDS[0] as string },
-        `Opened on group ${SAMPLE_GROUP_IDS[0]}`
+        { type: 'group', groupId: sampleFixtures.topic.default },
+        `Opened on group ${sampleFixtures.topic.default}`
       ),
     [runInitialScreenPreset]
   );
@@ -1247,29 +1246,13 @@ export function ScenariosScreen({
       ),
     [runInitialScreenPreset, clientUserId]
   );
-  // Resolves the SSO member's Octopus profile id first — the way a host holding only an
-  // Octopus id (e.g. from fetchCommunityData) would open the activity screen.
   const onInitialScreenActivityByProfileIdPreset = useCallback(
     () =>
-      runInitialScreen(
-        async () => {
-          const data = await fetchCommunityData({ clientUserId });
-          if (!data) {
-            throw new Error(
-              'No community data for the SSO member — connect first'
-            );
-          }
-          await openUI({
-            initialScreen: {
-              type: 'activity',
-              member: { profileId: data.profileId },
-            },
-          });
-          return data;
-        },
-        (data) => `Opened the member's posts (by profileId ${data.profileId})`
+      runInitialScreenPreset(
+        { type: 'activity', member: { profileId: sampleFixtures.user.other } },
+        `Opened the other member's posts (${sampleFixtures.user.other})`
       ),
-    [runInitialScreen, clientUserId]
+    [runInitialScreenPreset]
   );
   const onInitialScreenProfilePreset = useCallback(
     () =>
@@ -1440,14 +1423,13 @@ export function ScenariosScreen({
         : 'onBackRequested: not fired since the last run.';
 
   // --- reactions --------------------------------------------------------------------------
-  const hasDemoPostId = octopusDemoPostId !== '';
   const [reactionsRunState, runReaction] = useScenarioRun('reactions');
 
   const runReactionPreset = useCallback(
     (reaction: OctopusReactionKind | null, successMessage: string) =>
       runReaction(async () => {
         try {
-          await setReaction(octopusDemoPostId, reaction);
+          await setReaction(sampleFixtures.post.reactionStack, reaction);
         } catch (e) {
           const message = isSetReactionError(e)
             ? `${e.code}: ${e.message}`
@@ -1473,10 +1455,6 @@ export function ScenariosScreen({
       ),
     [runReactionPreset, reactionSelection]
   );
-
-  const reactionsInfo = !hasDemoPostId
-    ? 'Set OCTOPUS_DEMO_POST_ID in .env to run these presets — see the example README'
-    : undefined;
 
   // --- profileFieldsLock ----------------------------------------------------------------------
   const [profileFieldsLockRunState, runProfileFieldsLock] =
@@ -1669,7 +1647,9 @@ export function ScenariosScreen({
   // --- communityData --------------------------------------------------------------------------
   const [communityDataRunState, runCommunityData] =
     useScenarioRun('communityData');
-  const [lastProfileId, setLastProfileId] = useState<string | null>(null);
+  const [lastProfileId, setLastProfileId] = useState<string | null>(
+    sampleFixtures.user.other
+  );
   const [isObserving, setIsObserving] = useState(false);
   const [observedCommunityData, setObservedCommunityData] =
     useState<OctopusCommunityData | null>(null);
@@ -1683,6 +1663,23 @@ export function ScenariosScreen({
     expandedSections[sectionId] = expandedSections[sectionId] === false;
     setSectionOpen({ ...expandedSections });
   }, []);
+  // A link names a section: back to the list, unfiltered — a search would hide the other
+  // sections and a leftover query could hide the one asked for — with that section open.
+  // Written to the module-level record too, like a toggle, so it stays open after the tab.
+  const requestedSection = sectionRequest?.target;
+  const sectionRequestNonce = sectionRequest?.nonce;
+  useEffect(() => {
+    if (requestedSection === undefined) return;
+    setSelected(null);
+    setQuery('');
+    Object.assign(
+      expandedSections,
+      withSectionOpen(expandedSections, requestedSection)
+    );
+    setSectionOpen({ ...expandedSections });
+  }, [requestedSection, sectionRequestNonce]);
+  const { scrollRef: listScrollRef, onSectionLayout } =
+    useAnchorScroll(sectionRequest);
   const [clientProfileView, setClientProfileView] =
     useState<ClientProfileView>(null);
 
@@ -1712,7 +1709,7 @@ export function ScenariosScreen({
     [runCommunityData, clientUserId]
   );
 
-  // Preset 2: fetch by profileId, reusing the id resolved by the last successful lookup.
+  // Preset 2: start with user.other, then reuse the last successful lookup.
   const onFetchByProfileIdPreset = useCallback(() => {
     if (!lastProfileId) return undefined;
     return runCommunityData(
@@ -1803,6 +1800,26 @@ export function ScenariosScreen({
     []
   );
 
+  // Hardware Back pops the route on screen, in the order the routes below render: the embedded
+  // host route, then the host-rendered profile, then the detail back to the list — each one
+  // exactly what that route's own on-screen Back does. The embedded SDK view pops its own
+  // sub-screens natively before this is reached (`MainActivity.onBackPressed`).
+  useHardwareBack('screen', () => {
+    if (isEmbeddedBackRouteOpen) {
+      onCloseEmbeddedBackRoute();
+      return true;
+    }
+    if (clientProfileView) {
+      onCloseClientProfilePreset();
+      return true;
+    }
+    if (selected !== null) {
+      setSelected(null);
+      return true;
+    }
+    return false;
+  });
+
   type CommunityDataAction =
     | 'fetchByClientUserId'
     | 'fetchByProfileId'
@@ -1841,7 +1858,9 @@ export function ScenariosScreen({
     isSsoAuth
       ? null
       : 'The SDK runs in octopus mode — it owns the user, so there is no clientUserId to look up',
-    lastProfileId ? `Last looked-up profileId: ${lastProfileId}` : null,
+    lastProfileId
+      ? `Profile id (fixture or last lookup): ${lastProfileId}`
+      : null,
     isObserving
       ? `Observing… ${
           hasObservedUpdate
@@ -2000,7 +2019,7 @@ export function ScenariosScreen({
   // bar proves the callback.
   if (isEmbeddedBackRouteOpen) {
     return (
-      <View style={[styles.container, { backgroundColor: chrome.background }]}>
+      <View style={[styles.container, { backgroundColor: chrome.screen }]}>
         <View
           style={[
             styles.embeddedBackBand,
@@ -2037,7 +2056,7 @@ export function ScenariosScreen({
   if (clientProfileView) {
     return (
       <ScrollView
-        style={[styles.container, { backgroundColor: chrome.background }]}
+        style={[styles.container, { backgroundColor: chrome.screen }]}
         contentContainerStyle={styles.scrollContent}
       >
         <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
@@ -2088,7 +2107,8 @@ export function ScenariosScreen({
     const total = sections.reduce((n, { matches }) => n + matches.length, 0);
     return (
       <ScrollView
-        style={[styles.container, { backgroundColor: chrome.background }]}
+        ref={listScrollRef}
+        style={[styles.container, { backgroundColor: chrome.screen }]}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator
         keyboardShouldPersistTaps="handled"
@@ -2117,7 +2137,11 @@ export function ScenariosScreen({
             // would read as "no result" to the person who typed the query.
             const open = isSearching || sectionOpen[section.id] !== false;
             return (
-              <View key={section.id} style={styles.section}>
+              <View
+                key={section.id}
+                style={styles.section}
+                onLayout={onSectionLayout(section.id)}
+              >
                 <TouchableOpacity
                   testID={`scenarios-section-${section.id}`}
                   style={styles.sectionHeader}
@@ -2157,6 +2181,15 @@ export function ScenariosScreen({
                       secondaryColor={secondaryColor}
                     />
                   ))}
+                {/* After the section's cards, like Android's `extraContent`; a search
+                    lists matching scenarios only, so it hides this panel. */}
+                {open && section.id === 'sso' && !isSearching && (
+                  <UnifiedProfileSection
+                    isDark={isDark}
+                    override={exposeClientUserIdOverride}
+                    onOverrideChange={onExposeClientUserIdOverrideChange}
+                  />
+                )}
               </View>
             );
           })
@@ -2170,7 +2203,7 @@ export function ScenariosScreen({
   // only when it is the open one, so the JSX stays a flat catalog of scenarios.
   return (
     <ScrollView
-      style={[styles.container, { backgroundColor: chrome.background }]}
+      style={[styles.container, { backgroundColor: chrome.screen }]}
       contentContainerStyle={styles.scrollContent}
       showsVerticalScrollIndicator
       keyboardShouldPersistTaps="handled"
@@ -2199,11 +2232,21 @@ export function ScenariosScreen({
         textColor={textColor}
       >
         {!isSsoAuth && (
-          <Text style={[styles.hint, { color: secondaryColor }]}>
-            The SDK was started in octopus mode: it owns the login, so the host
-            has no user to connect. Restart from Config in SSO mode to run these
-            presets.
-          </Text>
+          <>
+            <Text style={[styles.hint, { color: secondaryColor }]}>
+              The SDK was started in octopus mode: it owns the login, so the
+              host has no user to connect. Pick SSO in Config › Authentication
+              to run these presets — applying restarts the SDK.
+            </Text>
+            <PillButton
+              testID="scenarios-connection-open-config-auth"
+              label="Config › Authentication"
+              icon="arrow-forward"
+              variant="secondary"
+              isDark={isDark}
+              onPress={() => onOpenConfigSection('auth')}
+            />
+          </>
         )}
         {isSsoAuth && missingEntitlementVariants.length > 0 && (
           <Text style={[styles.hint, { color: secondaryColor }]}>
@@ -2422,30 +2465,57 @@ export function ScenariosScreen({
         borderColor={borderColor}
         textColor={textColor}
       >
-        <SetParamField
-          testID="qa-param-customEvents-properties"
-          label="Properties"
+        <ScenarioCustomize
+          id="customEvents"
+          resultTestID="customEvents-result"
           isDark={isDark}
-          selected={customEventIncludeProps}
-          onToggle={toggleCustomEventIncludeProps}
-          options={[{ key: 'properties', label: 'source, preset' }]}
-        />
-        <CustomEventPanel
-          isDark={isDark}
-          primaryColor={primaryColor}
-          onSend={onSendCustomEvent}
-        />
-        <ScenarioResultPanel
-          testID="customEvents-result"
-          isDark={isDark}
-          state={customEventsRunState}
-        />
-        <ScenarioRunButton
-          testID={customEventsPresetTestID}
-          state={customEventsRunState}
-          isDark={isDark}
-          onPress={onRunCustomEvent}
-          idleLabel="Track sample_event"
+          fields={[
+            { label: 'Event name · String', help: 'sample_event' },
+            {
+              label: 'Properties · Map<String, String>',
+              testID: 'qa-param-customEvents-properties',
+              help: 'JSON object, or blank for no properties',
+            },
+          ]}
+          presets={[
+            {
+              label: 'Preset 1 · Track sample event (no props)',
+              testID: 'qa-preset-customEvents-1',
+              values: ['sample_event', ''],
+            },
+            {
+              label: 'Preset 2 · Track sample event (with props)',
+              testID: 'qa-preset-customEvents-2',
+              values: [
+                'sample_event',
+                JSON.stringify(SAMPLE_CUSTOM_EVENT_PROPERTIES),
+              ],
+            },
+          ]}
+          onRun={async ([name, raw]) => {
+            const eventName = name?.trim() || 'sample_event';
+            const properties: unknown = raw?.trim()
+              ? JSON.parse(raw)
+              : undefined;
+            if (
+              properties !== undefined &&
+              (properties === null ||
+                Array.isArray(properties) ||
+                typeof properties !== 'object' ||
+                Object.values(properties).some(
+                  (value) => typeof value !== 'string'
+                ))
+            ) {
+              throw new Error(
+                'Properties must be a JSON object with string values.'
+              );
+            }
+            await trackCustomEvent(
+              eventName,
+              properties as Record<string, string> | undefined
+            );
+            return `Tracked "${eventName}" ${properties ? JSON.stringify(properties) : '(no properties)'}`;
+          }}
         />
       </ScenarioCard>
 
@@ -2458,40 +2528,49 @@ export function ScenariosScreen({
         borderColor={borderColor}
         textColor={textColor}
       >
-        <EnumParamField
-          testID="qa-param-locale-override"
-          label="Community locale override"
-          typeName="CommunityLocaleOverride"
+        <ScenarioCustomize
+          id="locale"
+          resultTestID="locale-result"
+          runTestID="qa-run-locale"
           isDark={isDark}
-          value={localeSelection}
-          onChange={(key) => setLocaleSelection(key as CommunityLocaleOverride)}
-          options={[
-            { key: 'fr', label: 'fr', testID: 'qa-preset-locale-1' },
-            { key: 'en', label: 'en', testID: 'qa-preset-locale-2' },
+          info={localeResultText}
+          initialValues={[
+            communityLocaleOverride === 'system' ? '' : communityLocaleOverride,
+          ]}
+          fields={[
             {
-              key: 'system',
-              label: 'System default',
-              testID: 'qa-preset-locale-3',
+              label: 'Locale · String?',
+              testID: 'qa-param-locale-override',
+              help: 'blank — system default',
             },
           ]}
-        />
-        <ScenarioResultPanel
-          testID="locale-result"
-          isDark={isDark}
-          state={localeRunState}
-          info={localeResultText}
+          presets={[
+            {
+              label: 'Preset 1 · Force fr',
+              testID: 'qa-preset-locale-1',
+              values: ['fr'],
+            },
+            {
+              label: 'Preset 2 · Force en',
+              testID: 'qa-preset-locale-2',
+              values: ['en'],
+            },
+            {
+              label: 'Preset 3 · Reset to system',
+              testID: 'qa-preset-locale-3',
+              values: [''],
+            },
+          ]}
+          onRun={async ([value]) => {
+            const locale = value?.trim() || 'system';
+            await onCommunityLocaleOverrideChange(locale);
+            return `Locale override: ${locale === 'system' ? 'system default' : locale}`;
+          }}
         />
         <VerifyInCommunityButton
           id="locale"
           isDark={isDark}
           onPress={onVerifyInCommunity}
-        />
-        <ScenarioRunButton
-          testID="qa-run-locale"
-          state={localeRunState}
-          isDark={isDark}
-          onPress={onRunLocale}
-          disabled={communityLocaleOverride === localeSelection}
         />
       </ScenarioCard>
 
@@ -2617,18 +2696,23 @@ export function ScenariosScreen({
         borderColor={borderColor}
         textColor={textColor}
       >
-        {!hasDemoPostId && (
-          <Text style={[styles.hint, { color: secondaryColor }]}>
-            Set OCTOPUS_DEMO_POST_ID in .env to run the post preset — see the
-            example README.
-          </Text>
-        )}
         {!isSsoAuth && (
-          <Text style={[styles.hint, { color: secondaryColor }]}>
-            The member presets need the SSO auth mode — pick it on the Config
-            screen, with OCTOPUS_SSO_USER_ID / OCTOPUS_SSO_USER_TOKEN set in
-            .env (see the example README).
-          </Text>
+          <>
+            <Text style={[styles.hint, { color: secondaryColor }]}>
+              The presets using clientUserId need SSO auth mode — pick it in
+              Config › Authentication, with OCTOPUS_SSO_USER_ID /
+              OCTOPUS_SSO_USER_TOKEN set in .env. The other-member preset using
+              profileId works in either auth mode.
+            </Text>
+            <PillButton
+              testID="scenarios-initialscreen-open-config-auth"
+              label="Config › Authentication"
+              icon="arrow-forward"
+              variant="secondary"
+              isDark={isDark}
+              onPress={() => onOpenConfigSection('auth')}
+            />
+          </>
         )}
         <EnumParamField
           testID="qa-param-initialScreen-target"
@@ -2641,7 +2725,7 @@ export function ScenariosScreen({
           }
           options={[
             { key: 'mainFeed', label: 'Main feed' },
-            { key: 'post', label: 'Demo post', disabled: !hasDemoPostId },
+            { key: 'post', label: 'Demo post' },
             { key: 'group', label: 'Sample group' },
             {
               key: 'activityByClientUserId',
@@ -2650,8 +2734,7 @@ export function ScenariosScreen({
             },
             {
               key: 'activityByProfileId',
-              label: 'Member posts (by profileId)',
-              disabled: !isSsoAuth || clientUserId === '',
+              label: 'Other member posts (by profileId)',
             },
             {
               key: 'profileByClientUserId',
@@ -2805,12 +2888,6 @@ export function ScenariosScreen({
         borderColor={borderColor}
         textColor={textColor}
       >
-        {!hasDemoPostId && (
-          <Text style={[styles.hint, { color: secondaryColor }]}>
-            Set OCTOPUS_DEMO_POST_ID in .env to run these presets — see the
-            example README.
-          </Text>
-        )}
         <EnumParamField
           testID="qa-param-reactions-kind"
           label="Reaction"
@@ -2831,7 +2908,6 @@ export function ScenariosScreen({
           ).map(([key, presetTestID]) => ({
             key,
             label: REACTION_LABELS[key] as string,
-            disabled: !hasDemoPostId,
             testID: presetTestID,
           }))}
         />
@@ -2839,7 +2915,6 @@ export function ScenariosScreen({
           testID="reactions-result"
           isDark={isDark}
           state={reactionsRunState}
-          info={reactionsInfo}
         />
         <VerifyInCommunityButton
           id="reactions"
@@ -2851,7 +2926,6 @@ export function ScenariosScreen({
           state={reactionsRunState}
           isDark={isDark}
           onPress={onRunReaction}
-          disabled={!hasDemoPostId}
         />
       </ScenarioCard>
 
@@ -3091,7 +3165,7 @@ export function ScenariosScreen({
             },
             {
               key: 'fetchByProfileId',
-              label: 'Fetch by profileId (from the last lookup)',
+              label: 'Fetch by profileId (fixture or last lookup)',
               disabled: !lastProfileId,
               testID: 'qa-preset-communityData-2',
             },

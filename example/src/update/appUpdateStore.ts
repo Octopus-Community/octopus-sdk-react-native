@@ -67,6 +67,26 @@ export function takeAppUpdateAnnouncement(): number | null {
   return version;
 }
 
+/**
+ * Calls `onAnnounce` with each new versionCode worth announcing — at most once
+ * per build, see {@link takeAppUpdateAnnouncement}. Also reads the current
+ * state once on subscription: a check that finished before the subscriber
+ * mounted would otherwise never be announced, since the store replays nothing.
+ *
+ * Returns the unsubscribe function.
+ */
+export function subscribeToAppUpdateAnnouncements(
+  onAnnounce: (versionCode: number) => void
+): () => void {
+  const announce = () => {
+    const version = takeAppUpdateAnnouncement();
+    if (version !== null) onAnnounce(version);
+  };
+  const unsubscribe = subscribeToAppUpdate(announce);
+  announce();
+  return unsubscribe;
+}
+
 /** Starts Play's flow, then re-checks rather than assuming what it left behind. */
 export async function startAppUpdateFlow(): Promise<void> {
   await startAppUpdate();

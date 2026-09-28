@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
@@ -9,6 +10,12 @@ import {
   View,
 } from 'react-native';
 import { MaterialIcons } from '@react-native-vector-icons/material-icons/static';
+import { useHardwareBack } from '../navigation/useHardwareBack';
+
+import {
+  sampleDesignReferenceUrl,
+  sampleSupport,
+} from '../config/sampleSupport';
 
 import { PillButton } from '../components/PillButton';
 import { useDebugLog } from '../debug/debugLog';
@@ -20,6 +27,13 @@ import {
   sampleVersionLabel,
 } from '../config/sampleVersion';
 import type { ThemeMode, ThemeSet } from '../types/theme';
+import type {
+  ConfigSection,
+  DebugView,
+  NavRequest,
+  ScenarioSectionId,
+  SettingsPage,
+} from '../navigation/anchors';
 
 export type UrlOpeningMode = 'defaultBrowser' | 'inAppWebView';
 
@@ -30,17 +44,11 @@ export type UrlOpeningMode = 'defaultBrowser' | 'inAppWebView';
 export type ProfileTapMode = 'sdkScreens' | 'appScreens';
 export type DisplayMode = 'embed' | 'fullscreen';
 
-/** Community UI language: system default or override to French/English. */
-export type CommunityLocaleOverride = 'system' | 'fr' | 'en';
+/** Community UI language: system default or a language code sent to the SDK. */
+export type CommunityLocaleOverride = string;
 
 /** Which page of the Settings tab is showing. `root` is the summary. */
-type SettingsRoute =
-  | 'root'
-  | 'account'
-  | 'appearance'
-  | 'language'
-  | 'developer'
-  | 'about';
+type SettingsRoute = SettingsPage;
 
 const LOCALE_SUMMARIES: Record<CommunityLocaleOverride, string> = {
   system: 'Follow system',
@@ -62,10 +70,22 @@ export interface SettingsScreenProps {
    * login, so the host has no user to connect.
    */
   isSsoAuth: boolean;
-  /** Back to the Config screen (`settings-reconfigure-button`). */
+  /** Back to the Config screen (`settings-reconfigure-button`), at the top. */
   onReconfigure: () => void;
-  /** Opens the Debug console (`debug-open-button`), which App presents as a modal. */
-  onOpenDebug: () => void;
+  /** Back to the Config screen, scrolled to one section — for the links that name one setting. */
+  onOpenConfigSection: (section: ConfigSection) => void;
+  /** The Scenarios tab, with one section open and scrolled into view. */
+  onOpenScenariosSection: (section: ScenarioSectionId) => void;
+  /**
+   * Opens one of Developer tools' two destinations, which App presents as a modal: the
+   * Events log (`debug-open-button`) or the read-only Debug info snapshot.
+   */
+  onOpenDebug: (view: DebugView) => void;
+  /**
+   * A page a link asked for (`settings/<page>`) — Community's "Connect" and the SDK's host
+   * callbacks land on Account through it. Applied on mount and again on every new request.
+   */
+  pageRequest?: NavRequest<SettingsPage> | null;
   isConnectingUser: boolean;
   isMockUserConnected: boolean;
   /** What the SDK's own connection stream says — the truth the profile card reports. */
@@ -75,7 +95,7 @@ export interface SettingsScreenProps {
   clientUserId: string;
   /** Entitlements the SDK currently reports for the connected profile. */
   entitlements: string[];
-  /** Community UI language override — read-only here; set on the Config screen. */
+  /** Community UI language override — read-only here; set in Scenarios › Theme & language. */
   communityLocaleOverride: CommunityLocaleOverride;
   onConnectUser: () => void;
   onDisconnectUser: () => void;
@@ -83,17 +103,18 @@ export interface SettingsScreenProps {
   onRefreshEntitlements: () => void;
   /**
    * Appearance of the SAMPLE's own chrome, and of the SDK through `setThemeMode` — read-only
-   * here; set on the Config screen (spec 05: Settings reads/displays, never sets).
+   * here; set in Config › Theme or live by the Theme scenario (spec 05: Settings
+   * reads/displays, never sets).
    */
   appearance: ThemeMode;
   themeSet: ThemeSet;
-  /** Which community the SDK is pointed at, for the Server & community subtitle. */
+  /** Which community the SDK is pointed at, for the Change Configuration subtitle. */
   communitySummary: string;
   /** Clears the sample's saved setup and returns to the Config screen. */
   onResetData: () => void;
   isDark: boolean;
   primaryColor: string;
-  /** Shown in Account for 5s when editUser/loginRequired callback is fired in embed mode */
+  /** Shown in Account for 8s when editUser/loginRequired callback is fired in embed mode */
   userCallbackMessage: string | null;
 }
 
@@ -170,7 +191,7 @@ function SubPage({
   children: React.ReactNode;
 }) {
   return (
-    <View style={[styles.container, { backgroundColor: chrome.background }]}>
+    <View style={[styles.container, { backgroundColor: chrome.screen }]}>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -209,7 +230,10 @@ export function SettingsScreen({
   hasSsoUser,
   isSsoAuth,
   onReconfigure,
+  onOpenConfigSection,
+  onOpenScenariosSection,
   onOpenDebug,
+  pageRequest,
   isConnectingUser,
   isMockUserConnected,
   isUserConnected,
@@ -228,7 +252,24 @@ export function SettingsScreen({
   primaryColor,
   userCallbackMessage,
 }: SettingsScreenProps) {
-  const [route, setRoute] = useState<SettingsRoute>('root');
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const FeedbackSheet = sampleSupport.FeedbackSheet;
+  const [route, setRoute] = useState<SettingsRoute>(
+    pageRequest?.target ?? 'root'
+  );
+  // A request that arrives while the tab is already showing — a host callback firing while
+  // the tester is on another Settings page — has to move it too, not only a fresh mount.
+  const requestedPage = pageRequest?.target;
+  const requestNonce = pageRequest?.nonce;
+  useEffect(() => {
+    if (requestedPage !== undefined) setRoute(requestedPage);
+  }, [requestedPage, requestNonce]);
+  // Hardware Back on a page does what the page's own Back does: one level up, to the summary.
+  useHardwareBack('screen', () => {
+    if (route === 'root') return false;
+    setRoute('root');
+    return true;
+  });
   // Subscribed here, not only inside the console: the Developer tools line reports the
   // live entry count, which is the whole point of putting it in the summary.
   const entries = useDebugLog();
@@ -308,11 +349,21 @@ export function SettingsScreen({
             Entitlements
           </Text>
           {entitlements.length === 0 ? (
-            <Text style={[styles.hint, { color: secondaryColor }]}>
-              None. Entitlements come from the injected token, so the Connection
-              scenario's presets are what change them — this sample signs
-              nothing itself.
-            </Text>
+            <>
+              <Text style={[styles.hint, { color: secondaryColor }]}>
+                None. Entitlements come from the injected token, so the
+                Connection scenario's entitlements field is what changes them —
+                this sample signs nothing itself.
+              </Text>
+              <PillButton
+                testID="settings-account-open-connection-scenario"
+                label="Scenarios › Sign-in & user"
+                icon="arrow-forward"
+                variant="secondary"
+                isDark={isDark}
+                onPress={() => onOpenScenariosSection('sso')}
+              />
+            </>
           ) : (
             <View style={styles.chips}>
               {entitlements.map((entitlement) => (
@@ -337,16 +388,38 @@ export function SettingsScreen({
 
         <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
           {!isSsoAuth ? (
-            <Text style={[styles.hint, { color: secondaryColor }]}>
-              Octopus auth mode: the SDK owns login, so there is no host user to
-              connect. Pick SSO on the Config screen to exercise connectUser.
-            </Text>
+            <>
+              <Text style={[styles.hint, { color: secondaryColor }]}>
+                Octopus auth mode: the SDK owns login, so there is no host user
+                to connect. Pick SSO in Config › Authentication to exercise
+                connectUser. Applying restarts the SDK.
+              </Text>
+              <PillButton
+                testID="settings-account-open-config-auth"
+                label="Config › Authentication"
+                icon="arrow-forward"
+                variant="secondary"
+                isDark={isDark}
+                onPress={() => onOpenConfigSection('auth')}
+              />
+            </>
           ) : !hasSsoUser ? (
-            <Text style={[styles.hint, { color: secondaryColor }]}>
-              No SSO token injected, so there is nothing to connect: set
-              OCTOPUS_SSO_USER_TOKEN in example/.env (copy from .env.dist). The
-              user id is set on the Config screen.
-            </Text>
+            <>
+              <Text style={[styles.hint, { color: secondaryColor }]}>
+                No SSO token injected, so there is nothing to connect: set
+                OCTOPUS_SSO_USER_TOKEN in example/.env (copy from .env.dist).
+                The user id is set in Config › Authentication; the Connection
+                scenario can override it for a single run.
+              </Text>
+              <PillButton
+                testID="settings-account-open-config-auth"
+                label="Config › Authentication"
+                icon="arrow-forward"
+                variant="secondary"
+                isDark={isDark}
+                onPress={() => onOpenConfigSection('auth')}
+              />
+            </>
           ) : isConnectingUser ? (
             <ActivityIndicator color={primaryColor} size="small" />
           ) : (
@@ -413,9 +486,26 @@ export function SettingsScreen({
             chrome={chrome}
           />
           <Text style={[styles.hint, { color: secondaryColor }]}>
-            Read-only here. Set from the Config screen — Settings only displays
-            the current value.
+            Read-only here — Settings only displays the current value. Set in
+            Config › Theme (applying restarts the SDK), or live by the Theme
+            scenario.
           </Text>
+          <PillButton
+            testID="settings-appearance-open-config-theme"
+            label="Config › Theme"
+            icon="arrow-forward"
+            variant="secondary"
+            isDark={isDark}
+            onPress={() => onOpenConfigSection('theme')}
+          />
+          <PillButton
+            testID="settings-appearance-open-scenarios"
+            label="Scenarios › Theme & language"
+            icon="arrow-forward"
+            variant="secondary"
+            isDark={isDark}
+            onPress={() => onOpenScenariosSection('appearance')}
+          />
         </View>
       </SubPage>
     );
@@ -430,13 +520,25 @@ export function SettingsScreen({
           </Text>
           <AboutLine
             label="Language"
-            value={LOCALE_SUMMARIES[communityLocaleOverride]}
+            value={
+              LOCALE_SUMMARIES[communityLocaleOverride] ??
+              communityLocaleOverride
+            }
             chrome={chrome}
           />
           <Text style={[styles.hint, { color: secondaryColor }]}>
-            Read-only here. Set from the Config screen — Settings only displays
-            the current value.
+            Read-only here — Settings only displays the current value. The
+            language is set by the Locale scenario, in Scenarios › Theme &
+            language; the Config screen has no language setting.
           </Text>
+          <PillButton
+            testID="settings-language-open-scenarios"
+            label="Scenarios › Theme & language"
+            icon="arrow-forward"
+            variant="secondary"
+            isDark={isDark}
+            onPress={() => onOpenScenariosSection('appearance')}
+          />
         </View>
       </SubPage>
     );
@@ -451,9 +553,9 @@ export function SettingsScreen({
       >
         {/* Two lines, not a card and a button: this page is part of the same summary,
             and each subtitle is the live value a tester would otherwise open the console
-            to read. Both land on the same console — it holds the log and the state
-            snapshot — so `debug-open-button` stays on the Events log line, which is the
-            one the QA catalog drives. */}
+            to read. Two lines, two destinations: Events log is the live console the QA
+            catalog drives through `debug-open-button`; Debug info is the read-only
+            snapshot of the build, the configuration in force and the streamed state. */}
         <SummaryRow
           chrome={chrome}
           testID="debug-open-button"
@@ -461,7 +563,7 @@ export function SettingsScreen({
           subtitle={`${entries.length} event${
             entries.length === 1 ? '' : 's'
           } · live`}
-          onPress={onOpenDebug}
+          onPress={() => onOpenDebug('events')}
         />
         <SummaryRow
           chrome={chrome}
@@ -470,7 +572,7 @@ export function SettingsScreen({
           subtitle={`SDK ${sampleVersion}${
             sampleBuild === null ? '' : ` · build ${sampleBuild}`
           }`}
-          onPress={onOpenDebug}
+          onPress={() => onOpenDebug('info')}
         />
       </SubPage>
     );
@@ -501,6 +603,21 @@ export function SettingsScreen({
             it.
           </Text>
         </View>
+        {sampleDesignReferenceUrl !== '' && (
+          <SummaryRow
+            chrome={chrome}
+            title="Design reference"
+            subtitle="Shared target for the five platforms"
+            onPress={() => {
+              Linking.openURL(sampleDesignReferenceUrl).catch(() =>
+                Alert.alert(
+                  'Could not open design reference',
+                  'Please check your browser and connection.'
+                )
+              );
+            }}
+          />
+        )}
         <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
           <Text style={[styles.cardTitle, { color: textColor }]}>Licences</Text>
           <Text style={[styles.hint, { color: secondaryColor }]}>
@@ -520,7 +637,10 @@ export function SettingsScreen({
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: chrome.background }]}>
+    <View style={[styles.container, { backgroundColor: chrome.screen }]}>
+      {feedbackOpen && FeedbackSheet && (
+        <FeedbackSheet isDark={isDark} onClose={() => setFeedbackOpen(false)} />
+      )}
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -548,13 +668,15 @@ export function SettingsScreen({
           chrome={chrome}
           testID="settings-language-row"
           title="Language"
-          subtitle={LOCALE_SUMMARIES[communityLocaleOverride]}
+          subtitle={
+            LOCALE_SUMMARIES[communityLocaleOverride] ?? communityLocaleOverride
+          }
           onPress={() => setRoute('language')}
         />
         <SummaryRow
           chrome={chrome}
           testID="settings-reconfigure-button"
-          title="Server & community"
+          title="Change Configuration"
           subtitle={communitySummary}
           onPress={onReconfigure}
         />
@@ -567,6 +689,14 @@ export function SettingsScreen({
           subtitle="Events log · Debug info"
           onPress={() => setRoute('developer')}
         />
+        {FeedbackSheet && (
+          <SummaryRow
+            chrome={chrome}
+            title="Send feedback"
+            subtitle="Pre-filled GitHub issue · internal builds only"
+            onPress={() => setFeedbackOpen(true)}
+          />
+        )}
         <SummaryRow
           chrome={chrome}
           testID="settings-about-row"

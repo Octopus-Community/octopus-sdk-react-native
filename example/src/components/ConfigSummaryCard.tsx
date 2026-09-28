@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { chromeColors } from '../theme/branding';
+import { chromeColors, OCTOPUS_BRAND } from '../theme/branding';
 import { PillButton } from './PillButton';
 
 /** One line of the summary: what it is, and what it currently is set to. */
@@ -22,7 +22,7 @@ export interface ConfigSummaryCardProps {
  * The framed "Current configuration" block — the one place that answers "what is this build
  * pointed at right now?" without the tester having to walk into Config and risk changing it.
  *
- * Framed in the accent rather than drawn as a plain card on purpose: it is a *summary of
+ * Framed in the accent (light) rather than drawn as a plain card on purpose: it is a *summary of
  * elsewhere*, so it should not read as another card of settings that live here. The row count
  * is the caller's business — Home shows the full eight, a narrower surface can pass three of
  * the same rows and get the same block.
@@ -40,7 +40,13 @@ export function ConfigSummaryCard({
       testID={testID}
       style={[
         styles.card,
-        { backgroundColor: chrome.tint, borderColor: chrome.accent },
+        {
+          backgroundColor: chrome.tint,
+          // Dark keeps a hairline, not a blue frame: a blue frame over ink read as a
+          // permanent selection next to the primary button (design review, 2026-09-22).
+          // The strong step, so the summary still stands out from the cards around it.
+          borderColor: isDark ? OCTOPUS_BRAND.darkBorderStrong : chrome.accent,
+        },
       ]}
     >
       <Text style={[styles.title, { color: chrome.text }]}>{title}</Text>
@@ -54,7 +60,7 @@ export function ConfigSummaryCard({
               {row.label}
             </Text>
             <Text
-              style={[styles.rowValue, { color: chrome.text }]}
+              style={[styles.rowValue, { color: chrome.textBody }]}
               numberOfLines={2}
             >
               {row.value}

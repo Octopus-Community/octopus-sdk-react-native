@@ -149,13 +149,10 @@ The `package.json` file contains various scripts for common tasks:
 - `yarn example ios`: run the example app on iOS.
 
 The example app reads its credentials from `example/.env` (see `example/.env.dist` for the
-expected keys). Octopus-internal contributors can generate that file and launch in one step
-with `scripts/run-sample.sh` (`android` by default, or `ios` / `env-only`), which fills every
-key — demo API keys, named Config-picker keys, and the four pre-signed SSO tokens — from the
-internal shared secrets file. That script is internal-only and deliberately excluded from the
-public mirror; external contributors fill `example/.env` by hand from `.env.dist`. Values are
+expected keys). Fill it by hand from `.env.dist`; Octopus maintainers generate it from their
+own secrets, which is why no generator ships in this repository. Values are
 inlined at Babel time, so restart a running Metro with `yarn example start:reset` after
-regenerating the file.
+editing the file.
 
 ### Sending a pull request
 

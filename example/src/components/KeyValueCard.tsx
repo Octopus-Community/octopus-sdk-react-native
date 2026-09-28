@@ -35,7 +35,9 @@ export function KeyValueCard({
       {rows.map((row) => (
         <View key={row.label} style={styles.row}>
           <Text style={[styles.label, { color: labelColor }]}>{row.label}</Text>
-          <Text style={[styles.value, { color: textColor }]}>{row.value}</Text>
+          <Text style={[styles.value, { color: chrome.textBody }]}>
+            {row.value}
+          </Text>
         </View>
       ))}
     </View>

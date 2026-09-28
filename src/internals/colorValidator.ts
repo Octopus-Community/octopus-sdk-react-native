@@ -13,6 +13,10 @@ const COLOR_KEYS: readonly (keyof OctopusColorSet)[] = [
   'onPrimary',
   'link',
   'background',
+  'gray100',
+  'gray200',
+  'gray300',
+  'gray700',
 ];
 
 /**

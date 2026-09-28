@@ -176,6 +176,11 @@ export function ThemePanel({
 
       <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
         <Text style={[styles.label, { color: textColor }]}>Custom logo</Text>
+        <Text style={[styles.hint, { color: chrome.textSecondary }]}>
+          Also overrides two icons (theme.icons): the post's "Comment" action
+          and the "more actions" button (horizontal dots instead of ⋮), plus the
+          illustration on empty post and comment lists.
+        </Text>
         <SegmentControl
           options={LOGO_OPTIONS}
           value={logoMode}

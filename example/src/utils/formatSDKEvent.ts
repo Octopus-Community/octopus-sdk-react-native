@@ -16,9 +16,9 @@ export function formatSDKEvent(event: SDKEvent): {
       detailParts.push(
         `postId: ${event.postId}`,
         `content: ${(event.content ?? []).join(', ')}`,
-        `textLength: ${event.textLength}`
+        `textLength: ${event.textLength}`,
+        `groupId: ${event.groupId}`
       );
-      if (event.topicId != null) detailParts.push(`topicId: ${event.topicId}`);
       return { title: 'Post created', details: detailParts.join(' · ') };
 
     case 'commentCreated':

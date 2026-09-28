@@ -119,6 +119,10 @@ class OctopusSDKInitializer {
         background = themeColor(colorsMap["background"])
       }
 
+      // `gray100` / `gray200` / `gray300` / `gray700` are deliberately not read: the native
+      // `OctopusTheme.Colors` declares its gray ramp as constants with no initializer
+      // parameter, so there is nothing to hand them to. The TS doc marks them Android-only.
+      //
       // A theme carrying only `link` or only `background` must not be dropped, so the
       // color set is built as soon as any one of the four resolved.
       if primarySet != nil || onPrimary != nil || link != nil || background != nil {
@@ -197,6 +201,17 @@ class OctopusSDKInitializer {
     return nil
   }
   
+  /// The host's icon overrides: dotted slot path → image URI, as flattened from `theme.icons`
+  /// by the TypeScript layer (`theme.iconOverrides` on the wire). `nil` when there are none.
+  func getIconSources(from options: [String: Any]) -> [String: String]? {
+    guard let themeMap = options["theme"] as? [String: Any],
+          let overrides = themeMap["iconOverrides"] as? [String: Any] else {
+      return nil
+    }
+    let sources = overrides.compactMapValues { $0 as? String }
+    return sources.isEmpty ? nil : sources
+  }
+
   func getFontConfiguration(from options: [String: Any]) -> [String: Any]? {
     guard let themeMap = options["theme"] as? [String: Any],
           let fontsMap = themeMap["fonts"] as? [String: Any] else {

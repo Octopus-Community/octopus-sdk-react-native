@@ -18,7 +18,7 @@ export interface CommunityScreenProps {
    * no host user for the degraded band to ask for and the band is not shown.
    */
   isSsoAuth: boolean;
-  /** Sends the reader where a user can be connected — Settings, then Account. */
+  /** Sends the reader where a user can be connected — the Settings › Account page itself. */
   onConnectUser: () => void;
   /**
    * Bumped by every runtime `switchCommunity`. Keys the embedded view: the SDK requires the

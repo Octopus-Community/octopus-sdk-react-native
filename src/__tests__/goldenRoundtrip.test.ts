@@ -173,9 +173,10 @@ const screenToWire = (screen: ScreenInfo): Wire => {
 const eventToWire = (event: SDKEvent): Wire => {
   switch (event.type) {
     case 'postCreated': {
-      const { type, postId, content, topicId, textLength, ...rest } = event;
+      const { type, postId, content, groupId, topicId, textLength, ...rest } =
+        event;
       noUnhandledFields(rest);
-      return { type, postId, content, topicId, textLength };
+      return { type, postId, content, groupId, topicId, textLength };
     }
     case 'commentCreated': {
       const { type, commentId, postId, textLength, ...rest } = event;
@@ -322,7 +323,8 @@ const EVENT_GOLDENS: Record<SDKEvent['type'], Wire> = {
     type: 'postCreated',
     postId: 'post-1',
     content: ['text', 'image', 'poll'],
-    topicId: 'topic-1',
+    groupId: 'group-1',
+    topicId: 'group-1',
     textLength: 42,
   },
   commentCreated: {

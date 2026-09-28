@@ -32,8 +32,28 @@ data class OctopusModeColors(
   val primaryHighContrast: String?,
   val onPrimary: String?,
   val link: String?,
-  val background: String?
+  val background: String?,
+  val grays: OctopusGrayRamp = OctopusGrayRamp.NONE
 )
+
+/**
+ * The optional `gray100` / `gray200` / `gray300` / `gray700` overrides of the native gray
+ * ramp. Each null slot keeps the native default. Unlike `link` and `background`, a dual-mode
+ * theme never borrows these from the other mode: the ramp is tuned per appearance.
+ */
+data class OctopusGrayRamp(
+  val gray100: String? = null,
+  val gray200: String? = null,
+  val gray300: String? = null,
+  val gray700: String? = null
+) {
+  val isEmpty: Boolean
+    get() = gray100 == null && gray200 == null && gray300 == null && gray700 == null
+
+  companion object {
+    val NONE = OctopusGrayRamp()
+  }
+}
 
 data class OctopusThemeConfig(
   val primaryColor: String?,
@@ -53,7 +73,16 @@ data class OctopusThemeConfig(
    * calls [resolvedFor] to re-select for the mode in effect *now*.
    */
   val lightColors: OctopusModeColors? = null,
-  val darkColors: OctopusModeColors? = null
+  val darkColors: OctopusModeColors? = null,
+  /** Gray-ramp overrides for the selected mode; [OctopusGrayRamp.NONE] keeps every default. */
+  val grays: OctopusGrayRamp = OctopusGrayRamp.NONE,
+  /**
+   * `theme.icons` overrides as the TypeScript layer flattened them: iOS dotted slot path
+   * (`content.post.commentCount`, `common.radio.on`, ...) to image URI. Null keeps the
+   * native icon set untouched; `OctopusIconOverrides.kt` maps each path onto the Android
+   * `OctopusIcons` field.
+   */
+  val iconSources: Map<String, String>? = null
 ) {
   /**
    * This config with its flat color slots re-selected for [isDark]. Only a dual-mode theme
@@ -62,7 +91,7 @@ data class OctopusThemeConfig(
    * change after `initialize()` re-selects the matching set instead of keeping the one chosen
    * once at init — which left the light `primaryLow` behind unread notifications in dark
    * mode (rn#215). Same fallback as at init: `link` and `background` given for one mode only
-   * apply to both.
+   * apply to both; the gray ramp never crosses modes.
    */
   fun resolvedFor(isDark: Boolean): OctopusThemeConfig {
     val light = lightColors ?: return this
@@ -75,7 +104,8 @@ data class OctopusThemeConfig(
       primaryHighContrastColor = selected.primaryHighContrast,
       onPrimaryColor = selected.onPrimary,
       linkColor = selected.link ?: other.link,
-      backgroundColor = selected.background ?: other.background
+      backgroundColor = selected.background ?: other.background,
+      grays = selected.grays
     )
   }
 

@@ -113,6 +113,26 @@ export function describeAppUpdateStatus(status: AppUpdateStatus): string {
 }
 
 /**
+ * The launch announcement's copy, aligned on the Flutter example's snackbar
+ * (same message, same `Update` action). The Android native sample words it
+ * without the versionCode; the number is kept here because it is what a tester
+ * compares against the build they were told to install.
+ */
+export function describeAppUpdateAnnouncement(versionCode: number): string {
+  return `Sample build ${versionCode} is available`;
+}
+
+/** The announcement's action — starts Play's flow directly, like the card. */
+export const APP_UPDATE_ANNOUNCEMENT_ACTION_LABEL = 'Update';
+
+/**
+ * How long the announcement stays up on its own. The Flutter example's value:
+ * long enough to read and reach the action, short enough not to sit over a
+ * scenario the tester is running. The dismiss button hides it sooner.
+ */
+export const APP_UPDATE_ANNOUNCEMENT_DURATION_MS = 8000;
+
+/**
  * Whether the state is one the tester should read as a problem. "Not installed
  * from Play Store" is not: it is the normal outcome of the commonest way this
  * sample reaches a device.

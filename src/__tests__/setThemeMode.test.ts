@@ -110,6 +110,62 @@ describe('setThemeMode', () => {
     expect(mockUpdateColorScheme).toHaveBeenLastCalledWith('dark', true);
   });
 
+  it('handles a native rejection instead of floating it (issue #257)', async () => {
+    // The bridge call is fired, never awaited: an unhandled rejection here reaches
+    // the host on a path it has no way to catch — including the example's launch
+    // restore, which is what turned one refused theme into a crash-loop.
+    const unhandled = jest.fn();
+    process.on('unhandledRejection', unhandled);
+    const rejection = Promise.reject(new Error('INVALID_ARGS'));
+    mockUpdateColorScheme.mockReturnValue(rejection);
+
+    expect(() => setThemeMode('dark')).not.toThrow();
+
+    await expect(rejection).rejects.toThrow('INVALID_ARGS');
+    // Two macrotask turns: enough for Node to have reported an unhandled rejection
+    // if nothing had attached a handler.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    process.off('unhandledRejection', unhandled);
+    expect(unhandled).not.toHaveBeenCalled();
+  });
+
+  it('keeps observing after a native rejection', () => {
+    // A rejection is the module answering, not the module being absent, so the
+    // appearance observers stay attached and the next change retries.
+    jest.spyOn(Appearance, 'getColorScheme').mockReturnValue('light');
+    colorSchemeManager.startListening();
+    mockUpdateColorScheme.mockReturnValue(Promise.reject(new Error('nope')));
+
+    setThemeMode('dark');
+
+    mockUpdateColorScheme.mockReset();
+    mockUpdateColorScheme.mockReturnValue(undefined);
+    setThemeMode('light');
+    expect(mockUpdateColorScheme).toHaveBeenCalledWith('light', true);
+  });
+
+  it('stops observing when the native module is not linked at all', () => {
+    // The synchronous throw of the `nativeModule` linking Proxy: nothing this
+    // manager does can ever succeed, so it unsubscribes rather than throwing on
+    // every future appearance change.
+    const remove = jest.fn();
+    const addChangeListenerSpy = jest
+      .spyOn(Appearance, 'addChangeListener')
+      .mockReturnValue({ remove } as unknown as ReturnType<
+        typeof Appearance.addChangeListener
+      >);
+    jest.spyOn(Appearance, 'getColorScheme').mockReturnValue('light');
+    colorSchemeManager.startListening();
+    mockUpdateColorScheme.mockImplementation(() => {
+      throw new Error("doesn't seem to be linked");
+    });
+
+    expect(() => setThemeMode('dark')).not.toThrow();
+    expect(remove).toHaveBeenCalled();
+
+    addChangeListenerSpy.mockRestore();
+  });
+
   it('does not leak a system Appearance change to the native module while forced', () => {
     // The TSDoc promises the forced value keeps winning even while this
     // module keeps reacting to system changes internally — capture the

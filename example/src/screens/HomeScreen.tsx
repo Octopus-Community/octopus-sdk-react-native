@@ -15,7 +15,7 @@ import {
   octopusServerLabel,
 } from '../config/demoConfig';
 import { sampleVersion } from '../config/sampleVersion';
-import { chromeColors } from '../theme/branding';
+import { chromeColors, OCTOPUS_BRAND } from '../theme/branding';
 
 export interface HomeScreenProps {
   config: DemoConfig;
@@ -178,13 +178,28 @@ export function HomeScreen({
       </ScrollView>
 
       {/* Anchored rather than scrolled away: presenting the community is the one thing a
-          tester does from Home on every single pass. */}
+          tester does from Home on every single pass. In dark the dock is not a band: it lets
+          the page (and its halo) through, and a short fade softens where the list is clipped. */}
       <View
         style={[
           styles.dock,
-          { backgroundColor: chrome.surface, borderTopColor: chrome.border },
+          isDark
+            ? styles.dockDark
+            : {
+                backgroundColor: chrome.surface,
+                borderTopColor: chrome.border,
+              },
         ]}
       >
+        {isDark && (
+          <View
+            pointerEvents="none"
+            style={[
+              styles.dockFade,
+              { experimental_backgroundImage: DOCK_FADE_DARK },
+            ]}
+          />
+        )}
         <PillButton
           testID="home-open-community-button"
           label="Open community"
@@ -207,6 +222,15 @@ export function HomeScreen({
     </View>
   );
 }
+
+/** Height of the fade over the list's bottom edge, above the dark dock. */
+const DOCK_FADE_HEIGHT = 24;
+
+/**
+ * Dark dock fade: transparent to the page ink. The halo is centred top-right with a radius of
+ * the window width, so at the dock the page is plain ink and the fade lands on it seamlessly.
+ */
+const DOCK_FADE_DARK = `linear-gradient(to bottom, rgba(7,13,23,0), ${OCTOPUS_BRAND.darkBackground})`;
 
 /** "started at 14:32" / "not started yet" — the session line of the SDK card. */
 function describeSession(startedAt: number | null): string {
@@ -275,5 +299,16 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  dockDark: {
+    backgroundColor: 'transparent',
+    borderTopWidth: 0,
+  },
+  dockFade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: -DOCK_FADE_HEIGHT,
+    height: DOCK_FADE_HEIGHT,
   },
 });

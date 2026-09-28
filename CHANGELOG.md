@@ -1,5 +1,82 @@
 # @octopus-community/react-native
 
+## 1.14.0
+
+### Minor Changes
+
+- bfb6801: Add four optional, Android-only theme colors — `gray100`, `gray200`, `gray300` and `gray700` on `OctopusColorSet` — that override steps of the native neutral ramp the community UI paints its surfaces, borders and secondary text with. Each mode of a `{ light, dark }` theme keeps its own grays; an omitted key keeps the native default, so existing themes render unchanged. iOS ignores them (its native ramp is not overridable).
+
+  The example app now hands its dark navy ladder to the SDK through these keys, and its dark theme glows from the top-right corner: a brand-blue radial halo fixed behind a transparent header on every example-owned screen, never over the embedded community view. The Home action dock is no longer an opaque band in dark: it lets the page through, with a short fade where the list is clipped.
+
+- 7bd58a5: Bump the wrapped native Octopus SDKs to **1.14.0** on both platforms (Android from 1.13.4,
+  iOS from 1.13.2). The embedded community gains, with no JavaScript change: a "who reacted"
+  list behind the reaction counters, a Comments tab on the profile and Activity screens, and
+  empty / loading / error states with Retry on every list and detail screen. Android 1.14.0
+  also fixes a crash when the notifications token is registered before `initialize()`, and
+  makes links in feed bodies tappable. iOS 1.14.0 ships a privacy manifest, and its
+  installation id now survives deleting and reinstalling the app (Android is unchanged) — see
+  `MIGRATING.md` for the host-side follow-ups.
+- 7b1d0d7: `PostCreatedEvent` gains a non-null `groupId`, the id of the group the post was created in,
+  matching the field name of both native SDKs (iOS renamed it in 1.11).
+
+  **Deprecated:** `PostCreatedEvent.topicId`. It still carries the same value as `groupId` on both
+  platforms, so nothing breaks today; read `groupId` instead. It will be removed in a future major
+  version.
+
+- 01cc86a: Let hosts override the SDK icons through a new, optional `theme.icons` passed to `initialize()`
+  (additive: a theme without it renders exactly as before). Groups and slot names follow the iOS SDK
+  (`OctopusTheme.Assets.Icons`) and the bridge maps each one onto its Android counterpart; only slots
+  both native SDKs expose are available, including single images and the `radio`, `checkbox` and
+  `toggle` on/off pairs, which take both images or none. Every slot is optional and an absent one keeps the
+  native default. Icons are tinted with the theme colors, reactions and screen-state illustrations excepted. An invalid value or
+  an unknown key is dropped at `initialize` with a warning, the rest still applies. The native 1.14
+  empty and failed-load illustrations are overridable through `screenStates`.
+
+  The package's `exports["."]` now lists a `source` condition first, pointing at the TypeScript
+  sources in `src/`. Only a toolchain that explicitly requests `source` resolves it; default React
+  Native, Expo, Jest and TypeScript setups still resolve the built `lib/` output.
+
+  The example app sends two action icon overrides and an empty-content illustration alongside its custom logo.
+
+### Patch Changes
+
+- da0e8f3: Stop a failed `updateColorScheme` from taking the host app down. The internal color-scheme
+  manager only caught a _synchronous_ throw from the bridge, so a native rejection escaped as
+  an unhandled rejection on a path nothing awaits — including the one a persisted appearance
+  replays at every cold start (#257). The rejection is now logged through the SDK logger and
+  swallowed, and the observers stay attached so the next appearance change retries.
+
+  `updateColorScheme` also gained a failure path on both natives: a forced scheme that is
+  neither `light` nor `dark` is rejected with `INVALID_ARGS` instead of being silently
+  degraded to "follow the system", and iOS now resolves from inside the main-queue hop, once
+  the interface-style override is actually on the hosting controllers.
+
+- 1ce9bcb: Target default demo community content in the sample post, notification, member and group scenarios, with optional environment overrides. Sample only.
+- dbab970: Make the Android hardware Back pop the sample's own navigation first: a Settings page, a Scenario route or the Config revisit goes back one level, a root tab returns to Home, and Back on Home backgrounds the app instead of finishing it. The embedded community still pops its own screens first. Sample only.
+- d6b4575: Declare the sample's iOS export compliance in its Info.plist, so a TestFlight upload is testable without a manual compliance answer. Sample only.
+- 9d5f6b9: Example app: links that name one setting now land on it — Config opens scrolled to the requested section, Scenarios opens the requested section, Community's Connect and the SDK's host callbacks land on Settings › Account, and Developer tools' Events log and Debug info open two distinct views. Wrong pointers in the Settings and Scenarios hints are fixed.
+- ef5a671: Move the sample's Unified Profile override to Scenarios › Sign-in & user, as on Android: a collapsed "Unified Profile (exposeClientUserId)" section with "Use backend value" / "Force active" / "Force inactive", applied live without restarting the SDK, and a read-out of the effective flag. A profile tap now lands on a host "Client profile" screen showing `fetchCommunityData(clientUserId)`. Sample only.
+- cd22478: Announce a new sample build with a snackbar carrying an Update action that starts the Play in-app update flow, instead of a toast pointing at Settings. Sample only, Android only.
+- 23b0e8d: Make the Android hardware Back in the sample's in-app WebView behave like a browser tab: it goes back one page while the WebView has history, and closes the modal only once that history is empty. The app bar's close button still closes straight away. Sample only.
+- a576f50: Docs: iOS frameworks must be linked statically (`use_frameworks! :linkage => :static`); the README no longer offers `:dynamic`, with which the first Octopus screen crashes on a missing resource bundle. Troubleshooting documents that crash and the gRPC link conflict with Firebase Firestore, fixed by the `gRPC-Swift.podspec.json` override from the native SDK repository. Docs only.
+- 06f3713: `MIGRATING.md`: the 1.13.0 and 1.14.0 sections now carry their release numbers instead of
+  "Unreleased". The 1.13.0 section states the `ScreenType` union break against the native
+  **1.13.0** boundary that caused it, instead of against a pinned **1.13.2** that the per-platform
+  pin policy has since made false for Android (1.13.3, #236). The 1.14.0 section adds the
+  `PostCreatedEvent.topicId` deprecation and the iOS installation id that now survives a reinstall.
+- 3e4722f: Bump the wrapped Android Octopus SDK to **1.14.1** (iOS stays on 1.14.0). A single-fix patch:
+  stopping the SDK, switching community or initializing it again while it is still starting up no
+  longer closes the app (present since native 1.12). No JavaScript or native API change.
+- 9b6d92b: Rework the example app's dark theme on the octopuscommunity.com navy ladder: navy cards and inset surfaces instead of neutral greys, brighter text, blue-tinted badges, a stronger frame on the current-configuration block, and an explicit SDK background with a distinct `primaryLowContrast` container. The dark-mode halo is described with the gray-ramp change. Light mode is unchanged.
+- dddbf55: Rework the README for a quick evaluation (requirements, quickstart, sample app) and move the detailed integration material to `docs/integration-guide.md`.
+- e9a0545: Sample: scenario Customize mode with Reset to preset, "You will see" and Result zones, Copy log on the debug console, and optional Send feedback / Design reference rows (hidden unless configured).
+- 006d02d: Android: the fullscreen UI now measures a translucent top-bar colour over the background it is
+  drawn on before choosing light or dark status-bar icons, instead of ignoring its alpha. The
+  light/dark crossover is now the exact WCAG value (0.1791 instead of 0.179), so a handful of
+  opaque colours whose luminance sits between the two now get light icons, which contrast
+  slightly better there.
+- 826e727: Android: the fullscreen Octopus screen now colors the status and navigation bars from the resolved SDK theme, so bar icons stay legible when the app forces a theme opposite to the system one.
+
 ## 1.13.3
 
 ### Patch Changes

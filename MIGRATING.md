@@ -8,7 +8,61 @@ are listed in [`CHANGELOG.md`](./CHANGELOG.md) and don't need a migration entry.
 > One file, one section per version — we do **not** create per-version
 > `MIGRATION_x_y.md` files (a versioned filename multiplies docs over time).
 
-## Unreleased — towards 1.13.0
+## 1.14.0
+
+The wrapped native SDKs move to the **1.14** line (Android 1.14.1, iOS 1.14.0). No breaking
+JavaScript API change: the new APIs (`theme.icons`, the Android-only `gray*`
+theme colors, `PostCreatedEvent.groupId`) are additive and listed in
+[`CHANGELOG.md`](./CHANGELOG.md). One deprecation and three host-side checks.
+
+### Deprecated — `PostCreatedEvent.topicId`
+
+`PostCreatedEvent` gains `groupId`, the name both native SDKs use. `topicId` is
+deprecated: it still carries the same value on both platforms, so nothing breaks
+today, but it will be removed in a future major version.
+
+```ts
+// Before
+addSDKEventListener((event) => {
+  if (event.type === 'postCreated') track(event.topicId);
+});
+
+// After
+addSDKEventListener((event) => {
+  if (event.type === 'postCreated') track(event.groupId);
+});
+```
+
+### Android — nine string overrides are now unused
+
+Native Android 1.14.0 replaced its empty-list texts with the new screen states
+and removed these string resources. If your app overrides any of them in its own
+`res/values*/strings.xml`, the override no longer shows anywhere — delete it:
+
+`notifications_list_empty`, `post_create_incentive_button1` to
+`post_create_incentive_button4`, `post_create_incentive_button6`,
+`post_create_incentive_explanation`, `post_list_empty`,
+`post_list_other_user_empty`.
+
+### iOS — privacy manifest
+
+Native iOS 1.14.0 ships a `PrivacyInfo.xcprivacy` inside the `OctopusCommunity`
+pod, declaring the data the SDK collects and the required-reason APIs it uses.
+Check that the App Privacy section of your App Store Connect page still matches
+what your app, including the SDK, declares.
+
+### iOS — the installation id survives a reinstall
+
+Native iOS 1.14.0 keeps its installation id in the Keychain instead of the app
+container, so deleting and reinstalling the app no longer hands out a new one —
+a device-level ban is no longer shed by a reinstall. Existing installations keep
+the id they already have, and a reinstall still signs the user out. Android
+storage is unchanged: the id lives in the app's data, so it is reset whenever that
+data is deleted and not restored from a backup. If your App Store
+privacy answers or your own support flows assume a reinstall resets the device
+identity, update them.
+
+## 1.13.0
 
 The SDK is catching up to the 1.12/1.13 public surface already shipped by the
 native Android/iOS SDKs and the Flutter plugin (typed `OctopusResult`, `profile`
@@ -18,9 +72,14 @@ gap and the planned API shape are tracked in the **1.12 API parity** issue.
 
 ### Breaking — the `ScreenType` union changed
 
-The wrapped native SDKs now sit at **1.13.2** (they were 1.11.0). Two changes to
-the union, both breaking for the same consumer code, both shipped in this one
-release so hosts pay the migration once:
+What follows is the consequence of the wrapped native SDKs crossing the
+**1.13.0** boundary (they were 1.11.0) — that is the release that changed the
+union, and the only version number this section depends on. The pins move on
+past it independently per platform, so read `android/gradle.properties` and
+`OctopusReactNativeSdk.podspec` for where they actually stand today rather than
+a number frozen into this prose. Two changes to the union, both breaking for the
+same consumer code, both shipped in this one release so hosts pay the migration
+once:
 
 1. `'settingsAbout'` is **removed**.
 2. `'unknown'` is **added**.

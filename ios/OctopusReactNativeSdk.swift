@@ -21,6 +21,7 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
   )
   private var theme: OctopusTheme?
   private var logoSource: [String: Any]?
+  private var iconSources: [String: String]?
   private var fontConfiguration: [String: Any]?
   private var uiConfiguration: OctopusUIConfiguration?
   private var topAppBar: OctopusTopAppBarConfig?
@@ -61,6 +62,7 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
       self.ssoAuthenticator = OctopusSSOAuthenticator(octopusSDK: self.octopusSDK!, eventManager: eventManager)
       self.theme = sdkInitializer.parseTheme(from: options)
       self.logoSource = sdkInitializer.getLogoSource(from: options)
+      self.iconSources = sdkInitializer.getIconSources(from: options)
       self.fontConfiguration = sdkInitializer.getFontConfiguration(from: options)
       self.uiConfiguration = sdkInitializer.parseUIConfiguration(from: options)
       self.topAppBar = sdkInitializer.parseTopAppBar(from: options)
@@ -277,6 +279,7 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
           octopus: octopus,
           theme: self.theme,
           logoSource: self.logoSource,
+          iconSources: self.iconSources,
           fontConfiguration: self.fontConfiguration,
           uiConfiguration: self.uiConfiguration,
           notificationUserInfo: notificationUserInfo,
@@ -500,6 +503,7 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
       octopus: octopus,
       theme: theme,
       logoSource: logoSource,
+      iconSources: iconSources,
       fontConfiguration: fontConfiguration,
       uiConfiguration: uiConfiguration,
       interceptUrls: interceptUrls,
@@ -527,10 +531,28 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
     switch (forced, colorScheme) {
     case (true, "dark"): style = .dark
     case (true, "light"): style = .light
+    case (true, _):
+      // A forced scheme that is neither "light" nor "dark" used to fall into the `default`
+      // arm and silently become `.unspecified`: the caller was told the force had been
+      // applied while the UI kept following the system. Reported instead, with the same
+      // (code, message, error) triple every other rejection here uses and the same
+      // INVALID_ARGS code Android answers with — `RCTPromiseRejectBlock` is
+      // `(NSString *code, NSString *message, NSError *error)`, and anything else in the
+      // third slot aborts inside `RCTJSErrorFromCodeMessageAndNSError` (issue #257).
+      reject(
+        "INVALID_ARGS",
+        "Unknown color scheme: \(colorScheme ?? "null"). Expected \"light\" or \"dark\" when forced.",
+        nil
+      )
+      return
     default: style = .unspecified
     }
-    DispatchQueue.main.async { self.uiManager.setForcedInterfaceStyle(style) }
-    resolve(nil)
+    // Resolved from inside the hop, so the promise settles once the override is actually on
+    // the hosting controllers rather than one run loop before it.
+    DispatchQueue.main.async {
+      self.uiManager.setForcedInterfaceStyle(style)
+      resolve(nil)
+    }
   }
 
   // MARK: - Notification management
@@ -1002,6 +1024,7 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
           octopus: octopus,
           theme: self.theme,
           logoSource: self.logoSource,
+          iconSources: self.iconSources,
           fontConfiguration: self.fontConfiguration,
           uiConfiguration: self.uiConfiguration,
           topAppBar: self.topAppBar,

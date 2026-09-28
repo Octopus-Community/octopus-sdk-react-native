@@ -17,7 +17,9 @@ class OctopusEventSerializer {
         "type": "postCreated",
         "postId": context.postId,
         "content": contentList,
-        "topicId": context.topicId,
+        "groupId": context.groupId,
+        // Deprecated alias of `groupId`, kept for hosts still reading the pre-rename key.
+        "topicId": context.groupId,
         "textLength": context.textLength
       ]
       

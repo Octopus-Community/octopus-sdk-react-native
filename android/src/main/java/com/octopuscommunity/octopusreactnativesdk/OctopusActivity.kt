@@ -7,11 +7,13 @@ import android.content.IntentFilter
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import androidx.activity.SystemBarStyle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import com.octopuscommunity.sdk.OctopusSDK
 import com.octopuscommunity.sdk.domain.model.CreatePostScreenInfo
 import com.octopuscommunity.sdk.domain.model.OctopusPrefilledPost
@@ -132,7 +134,25 @@ class OctopusActivity : ComponentActivity() {
         // the fullscreen UI reaches JS through the module-level `backRequested` event, while
         // the embedded view reaches the same behaviour through its per-view `onBackRequested`
         // direct event (see OctopusUIViewManager, issue #36).
-        navBarLeadingAction = navBarLeadingAction
+        navBarLeadingAction = navBarLeadingAction,
+        onSystemBarColors = { top, bottom ->
+          // Explicit palettes keep forced app modes independent from the OS. The legacy
+          // navigation fallback stays dark on Android versions without dark icons. Icon
+          // lightness follows the WCAG crossover (see SystemBarContrast.kt). The status bar
+          // sits over the top app bar, itself drawn over the content background, so a
+          // translucent top colour is measured over `bottom`; `bottom` is the resolved
+          // background and is expected opaque (see OctopusContent's palette pick), so both
+          // paths drop its alpha the same way rather than compositing it over black.
+          val lightTopIcons = prefersLightIcons(top, under = bottom)
+          val lightBottomIcons = prefersLightIcons(bottom.copy(alpha = 1f))
+          enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(top.toArgb(), top.toArgb()) { lightTopIcons },
+            navigationBarStyle = SystemBarStyle.auto(
+              bottom.toArgb(),
+              if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) android.graphics.Color.BLACK else bottom.toArgb()
+            ) { lightBottomIcons }
+          )
+        }
       )
     }
   }

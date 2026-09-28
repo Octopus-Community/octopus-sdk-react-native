@@ -34,6 +34,17 @@ Fix `OctopusUIView` ignoring `interceptUrls` prop updates on Android.
 
 Docs-only, CI, and other non-user-facing changes don't need a changeset.
 
+### Sample-only changes
+
+A user-visible change to the example app is filed against
+`@octopus-community/react-native` too, with a name starting `example-` and a
+summary ending **"Sample only."** — so it lands in the library changelog,
+clearly marked. The example workspace (`@octopus-community/react-native-example`)
+is in `ignore` in `config.json` and is never versioned, so a changeset naming
+only that package would reach no changelog. The sample ships to the public
+mirror and to Play Internal Testing, so its changes are recorded where hosts
+read, rather than lost.
+
 ## How a release happens
 
 1. PRs land on `main`, each carrying its changeset(s).

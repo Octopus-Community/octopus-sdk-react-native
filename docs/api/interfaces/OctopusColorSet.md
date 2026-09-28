@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.13.3**](../README.md)
+[**@octopus-community/react-native v1.14.0**](../README.md)
 
 ---
 
@@ -26,6 +26,58 @@ Background color of the community screens (hex format: #FF6B35 or FF6B35).
 
 Omit it to keep the native default: the Octopus light/dark scheme background on
 Android, the system background on iOS.
+
+---
+
+### gray100?
+
+> `optional` **gray100**: `string`
+
+**Android only.** First step of the native SDK's neutral gray ramp, the one nearest the
+page: snackbar and tooltip ink, and the default page background in dark mode
+(hex format: #FF6B35 or FF6B35). Overriding it does not move the page background:
+set [background](#background) for that.
+
+The four `gray*` keys let a host move the community's neutral surfaces, hairlines and
+body text onto its own ladder — a navy dark theme rather than the default neutral
+grays. Each one is optional and independent: an omitted key keeps the native default,
+so a theme that sets none of them renders exactly as before.
+
+Unlike [link](#link) and [background](#background), a gray given in one mode of a
+`{ light, dark }` set is **not** applied to the other mode: the ramp is tuned per
+appearance, and a dark gray reused in light mode would invert the contrast. A single
+color set still applies to both modes, as every other key does.
+
+Ignored on iOS, whose native SDK does not expose its gray ramp for customization.
+
+---
+
+### gray200?
+
+> `optional` **gray200**: `string`
+
+**Android only.** Second step of the native gray ramp: low-contrast fills such as poll
+bars and disabled content (hex format: #FF6B35 or FF6B35). Same rules as
+[gray100](#gray100).
+
+---
+
+### gray300?
+
+> `optional` **gray300**: `string`
+
+**Android only.** Third step of the native gray ramp: hairlines, dividers and borders,
+and the default `disabled` color (hex format: #FF6B35 or FF6B35). Same rules as
+[gray100](#gray100); overriding it does not move `disabled`.
+
+---
+
+### gray700?
+
+> `optional` **gray700**: `string`
+
+**Android only.** Secondary-text step of the native gray ramp: post metadata,
+counters and toggles (hex format: #FF6B35 or FF6B35). Same rules as [gray100](#gray100).
 
 ---
 

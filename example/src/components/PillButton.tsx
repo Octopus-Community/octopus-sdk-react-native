@@ -78,7 +78,9 @@ export function PillButton({
             ? pressed
               ? chrome.accentPressed
               : chrome.accent
-            : chrome.surface,
+            : pressed
+              ? chrome.surfacePressed
+              : chrome.surface,
           borderColor,
         },
         fullWidth && styles.fullWidth,

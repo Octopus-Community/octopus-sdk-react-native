@@ -169,6 +169,17 @@ class OctopusReactModule(reactContext: ReactApplicationContext) :
     // effective scheme either way, and OctopusContent re-selects a dual-mode set from it.
     // No theme configured yet is not a reason to drop the update: a setThemeMode() with no
     // `theme` at initialize() must still force the base palette, so the config is created.
+    if (forced && colorScheme != "light" && colorScheme != "dark") {
+      // Same refusal and same code as iOS (issue #257): a forced scheme neither side can map
+      // used to be stored verbatim here and silently dropped on iOS, so the caller was told a
+      // force had been applied that nothing honoured.
+      promise.reject(
+        "INVALID_ARGS",
+        "Unknown color scheme: $colorScheme. Expected \"light\" or \"dark\" when forced.",
+        null
+      )
+      return
+    }
     val base = OctopusThemeManager.getThemeConfig() ?: OctopusThemeConfig.EMPTY
     OctopusThemeManager.setThemeConfig(base.copy(colorScheme = colorScheme))
     promise.resolve(null)
@@ -616,7 +627,7 @@ class OctopusReactModule(reactContext: ReactApplicationContext) :
       // (`OctopusReactNativeSdk.swift`'s `switchCommunity`) for the same SWITCH_COMMUNITY_ERROR
       // code — both are new to this PR, unlike the pre-existing, differently-worded
       // INITIALIZE_ERROR "Missing API key" guard above, which is out of this PR's scope.
-      promise.reject("SWITCH_COMMUNITY_ERROR", "apiKey is required")
+      promise.reject("SWITCH_COMMUNITY_ERROR", "apiKey is required", null)
       return
     }
     coroutineScope.launch {

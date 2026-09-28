@@ -26,7 +26,7 @@ export interface ScenarioResultPanelProps {
  * Live state/result panel shown under a scenario's presets. One per scenario, carrying the
  * catalog's `result_test_id`.
  *
- * Spec 09's three guardrails: Idle shows no block at all, Running shows a skeleton for at
+ * Spec 09's three guardrails: Idle shows “Not run yet”, Running shows a skeleton for at
  * least 300ms so a fast call is still visibly "doing something", and Result always attaches a
  * duration so replaying the same preset still reads as a new call.
  */
@@ -45,12 +45,23 @@ export function ScenarioResultPanel({
   ) : null;
 
   if (state.status === 'idle') {
-    // Spec 09: idle is empty — no block, no duration. `info` (standing state) still shows.
-    return infoLine ? (
-      <View testID={testID} style={styles.infoOnly}>
+    return (
+      <View
+        testID={testID}
+        style={[
+          styles.panel,
+          { backgroundColor: chrome.surfaceRaised, borderColor: chrome.border },
+        ]}
+      >
+        <Text style={[styles.resultHeader, { color: chrome.text }]}>
+          Result
+        </Text>
         {infoLine}
+        <Text style={[styles.text, { color: chrome.textSecondary }]}>
+          Not run yet
+        </Text>
       </View>
-    ) : null;
+    );
   }
 
   if (state.status === 'running') {
@@ -62,6 +73,9 @@ export function ScenarioResultPanel({
           { backgroundColor: chrome.surfaceRaised, borderColor: chrome.border },
         ]}
       >
+        <Text style={[styles.resultHeader, { color: chrome.text }]}>
+          Result
+        </Text>
         {infoLine}
         <View style={styles.runningRow}>
           <ActivityIndicator size="small" color={chrome.textSecondary} />
@@ -89,6 +103,7 @@ export function ScenarioResultPanel({
         { backgroundColor: chrome.surfaceRaised, borderColor: chrome.border },
       ]}
     >
+      <Text style={[styles.resultHeader, { color: chrome.text }]}>Result</Text>
       {infoLine}
       <View style={styles.resultHeaderRow}>
         <Text style={[styles.resultHeader, { color: headerColor }]}>
@@ -102,7 +117,11 @@ export function ScenarioResultPanel({
       </View>
       {isSuccess && !isPresentation ? (
         <View
-          style={[styles.codeBlock, { backgroundColor: chrome.codeSurface }]}
+          style={[
+            styles.codeBlock,
+            { backgroundColor: chrome.codeSurface },
+            isDark && [styles.darkFrame, { borderColor: chrome.border }],
+          ]}
         >
           <Text style={[styles.codeText, { color: chrome.onCodeSurface }]}>
             {state.message}
@@ -118,6 +137,9 @@ export function ScenarioResultPanel({
 }
 
 const styles = StyleSheet.create({
+  darkFrame: {
+    borderWidth: 1,
+  },
   panel: {
     borderWidth: 1,
     borderRadius: 8,
@@ -125,9 +147,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     marginTop: 8,
     gap: 6,
-  },
-  infoOnly: {
-    marginTop: 8,
   },
   infoText: {
     fontSize: 11.5,

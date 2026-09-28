@@ -230,3 +230,19 @@ listed in [`CHANGELOG.md`](../CHANGELOG.md).
 ## Troubleshooting
 
 Any error that might be intercepted by the React Native module will be rejected in the methods you call. If it cannot be intercepted, you may see the underlying SDK's logs in your native logs.
+
+- **iOS crashes when the Octopus UI opens, in `Assets+Generated.swift`** (`Fatal error`, image not
+  found) — the pods are linked as dynamic frameworks. The native UI pod only finds its resource
+  bundle with static frameworks: use `use_frameworks! :linkage => :static` in your `Podfile`, or
+  `"useFrameworks": "static"` in `expo-build-properties` on Expo. Static is the only linkage the
+  example app and the native SDK's CocoaPods validation app are built and tested with. CocoaPods
+  applies it to every pod of the target, so your other pods are linked statically too.
+- **iOS link fails with `Undefined symbol: grpc_…` / `gpr_…`** — another pod depends on
+  `gRPC-Core` (typically Firebase Firestore). Copy
+  [`gRPC-Swift.podspec.json`](https://github.com/Octopus-Community/octopus-sdk-swift/blob/main/CocoaPodsValidationApp/gRPC-Swift.podspec.json)
+  from the native SDK repository next to your `Podfile`, add this line to your app target, then
+  run `pod install` again:
+  ```ruby
+  pod 'gRPC-Swift', :podspec => 'gRPC-Swift.podspec.json'
+  ```
+  `pod 'gRPC-Swift', :modular_headers => true` does not fix this link error.

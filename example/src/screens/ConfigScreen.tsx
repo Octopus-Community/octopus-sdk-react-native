@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import type { LayoutChangeEvent } from 'react-native';
 import { MaterialIcons } from '@react-native-vector-icons/material-icons/static';
 
 import { SegmentControl } from '../components/SegmentControl';
@@ -33,6 +34,8 @@ import type {
   ProfileTapMode,
   UrlOpeningMode,
 } from './SettingsScreen';
+import type { ConfigSection, NavRequest } from '../navigation/anchors';
+import { useAnchorScroll } from '../navigation/useAnchorScroll';
 
 /**
  * Which of the screen's two accesses this is.
@@ -74,13 +77,6 @@ export interface ConfigScreenProps {
   onUrlOpeningModeChange: (next: UrlOpeningMode) => void;
   profileTapMode: ProfileTapMode;
   onProfileTapModeChange: (next: ProfileTapMode) => void;
-  /**
-   * Debug-only: forces the `exposeClientUserId` community flag (Unified Profile
-   * activation) via `debugOverrideExposeClientUserId`, so profile-tap routing is
-   * testable before the backend serves the flag.
-   */
-  isExposeClientUserIdForced: boolean;
-  onExposeClientUserIdForcedChange: (next: boolean) => void;
   displayMode: DisplayMode;
   onDisplayModeChange: (next: DisplayMode) => void;
   /** Host callbacks (Config §5) — the ones with a real, individually-disableable binding listener. */
@@ -90,11 +86,17 @@ export interface ConfigScreenProps {
   onUnreadCountCallbackEnabledChange: (next: boolean) => void;
   isEventCallbackEnabled: boolean;
   onEventCallbackEnabledChange: (next: boolean) => void;
+  /**
+   * The section a link asked for (`config/<section>`): the screen opens scrolled to it, so a
+   * link that names one setting lands on that setting rather than on the top of the form.
+   * Absent or null, the screen opens at the top.
+   */
+  sectionRequest?: NavRequest<ConfigSection> | null;
 }
 
 /**
  * The sample's one configuration screen, reached two ways: before the shell on first launch,
- * and from Settings → Server & community afterwards.
+ * and from Settings → Change Configuration afterwards.
  *
  * Deliberately not two screens. A tester who configures the sample at launch and a tester who
  * re-points it at another community are answering the same questions in the same order; two
@@ -131,8 +133,6 @@ export function ConfigScreen({
   onUrlOpeningModeChange,
   profileTapMode,
   onProfileTapModeChange,
-  isExposeClientUserIdForced,
-  onExposeClientUserIdForcedChange,
   displayMode,
   onDisplayModeChange,
   isAuthRequiredCallbackEnabled,
@@ -141,6 +141,7 @@ export function ConfigScreen({
   onUnreadCountCallbackEnabledChange,
   isEventCallbackEnabled,
   onEventCallbackEnabledChange,
+  sectionRequest,
 }: ConfigScreenProps) {
   const hasNamedKeys = injectedApiKeys.length > 0;
   const [apiKeySource, setApiKeySource] = useState<ApiKeySource>(
@@ -184,9 +185,13 @@ export function ConfigScreen({
 
   const effectiveUserId = userId.trim() === '' ? octopusUserId : userId.trim();
 
+  // Host callbacks, the one collapsible section, needs no help here: the screen mounts afresh
+  // on every visit and the section starts expanded, so a link that names it finds it open.
+  const { scrollRef, onSectionLayout } = useAnchorScroll(sectionRequest);
+
   return (
     <View testID="config-screen" style={styles.root}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.content}>
         <Text style={[styles.intro, { color: secondaryColor }]}>
           {mode === 'onboarding'
             ? 'Point the sample at a community, then start the SDK.'
@@ -194,7 +199,12 @@ export function ConfigScreen({
         </Text>
 
         {/* 1 — Community */}
-        <Section title="Community" isDark={isDark}>
+        <Section
+          title="Community"
+          isDark={isDark}
+          testID="config-section-community"
+          onLayout={onSectionLayout('community')}
+        >
           {hasNamedKeys ? (
             <View
               testID="config-apiKeySource-select"
@@ -302,7 +312,12 @@ export function ConfigScreen({
         </Section>
 
         {/* 2 — Server environment */}
-        <Section title="Server environment" isDark={isDark}>
+        <Section
+          title="Server environment"
+          isDark={isDark}
+          testID="config-section-server"
+          onLayout={onSectionLayout('server')}
+        >
           {/* Driven by the *host*, not by the ServerEnv the build carries: that type
               only distinguishes prod from custom, so on the demo backend it read
               "Custom" directly above a legend saying "Demo". */}
@@ -330,7 +345,12 @@ export function ConfigScreen({
         </Section>
 
         {/* 3 — Authentication */}
-        <Section title="Authentication (SSO)" isDark={isDark}>
+        <Section
+          title="Authentication (SSO)"
+          isDark={isDark}
+          testID="config-section-auth"
+          onLayout={onSectionLayout('auth')}
+        >
           <SegmentControl<AuthMode>
             testID="config-authMode-select"
             options={[
@@ -375,7 +395,11 @@ export function ConfigScreen({
                     styles.chip,
                     {
                       backgroundColor: selected ? chrome.tint : chrome.surface,
-                      borderColor: selected ? chrome.accent : chrome.border,
+                      borderColor: selected
+                        ? isDark
+                          ? chrome.tintBorder
+                          : chrome.accent
+                        : chrome.border,
                     },
                   ]}
                 >
@@ -406,7 +430,12 @@ export function ConfigScreen({
         </Section>
 
         {/* 4 — Theme */}
-        <Section title="Theme" isDark={isDark}>
+        <Section
+          title="Theme"
+          isDark={isDark}
+          testID="config-section-theme"
+          onLayout={onSectionLayout('theme')}
+        >
           <Text style={[styles.fieldLabel, { color: secondaryColor }]}>
             Appearance
           </Text>
@@ -451,7 +480,12 @@ export function ConfigScreen({
 
         {/* Display mode — not one of the 7 host callbacks (spec 01 §5), so it gets its
             own small section rather than living inside "Host callbacks". */}
-        <Section title="Display mode" isDark={isDark}>
+        <Section
+          title="Display mode"
+          isDark={isDark}
+          testID="config-section-displayMode"
+          onLayout={onSectionLayout('displayMode')}
+        >
           <SegmentControl<DisplayMode>
             testID="config-displayMode-select"
             options={[
@@ -472,6 +506,8 @@ export function ConfigScreen({
 
         {/* 5 — Host callbacks (SDK -> app), expanded by default */}
         <View
+          testID="config-section-integration"
+          onLayout={onSectionLayout('integration')}
           style={[
             styles.collapsible,
             { backgroundColor: cardBg, borderColor: chrome.border },
@@ -503,19 +539,11 @@ export function ConfigScreen({
               <ToggleRow
                 testID="config-callback-onNavigateToProfile"
                 title="onNavigateToProfile"
-                subtitle="Opens the host's own profile screen"
+                subtitle="Opens the host's own profile screen. Also needs exposeClientUserId — Scenarios › Sign-in & user › Unified Profile."
                 value={profileTapMode === 'appScreens'}
                 onValueChange={(next) =>
                   onProfileTapModeChange(next ? 'appScreens' : 'sdkScreens')
                 }
-                isDark={isDark}
-              />
-              <ToggleRow
-                testID="config-force-exposeClientUserId"
-                title="Force exposeClientUserId"
-                subtitle="Debug override: activates Unified Profile without the backend flag"
-                value={isExposeClientUserIdForced}
-                onValueChange={onExposeClientUserIdForcedChange}
                 isDark={isDark}
               />
               <ToggleRow
@@ -614,15 +642,19 @@ export function ConfigScreen({
 function Section({
   title,
   isDark,
+  testID,
+  onLayout,
   children,
 }: {
   title: string;
   isDark: boolean;
+  testID?: string;
+  onLayout?: (event: LayoutChangeEvent) => void;
   children: React.ReactNode;
 }) {
   const chrome = chromeColors(isDark);
   return (
-    <View style={styles.section}>
+    <View testID={testID} onLayout={onLayout} style={styles.section}>
       <Text style={[styles.sectionTitle, { color: chrome.text }]}>{title}</Text>
       {children}
     </View>

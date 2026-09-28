@@ -27,12 +27,13 @@ export interface AppBarProps {
 }
 
 /**
- * The sample's app bar — navy in light theme, carrying the screen title and, glued to
- * it, the platform pill.
+ * The sample's app bar — navy in light theme, transparent in dark theme so the shell's
+ * top-right halo glows through it with no hard edge — carrying the screen title and, glued
+ * to it, the platform pill.
  *
  * The pill is deliberately a monochrome glyph plus the platform name on a translucent
- * white fill: never a multicolor logo (a stylized React or React Native mark is a
- * trademark this sample must not draw), and never a text-only chip either. `code` is
+ * white fill in light mode and a Signal blue tint in dark mode. A stylized React or
+ * React Native mark is a trademark this sample must not draw. `code` is
  * the Material glyph the shared identity assigns to the JavaScript/React Native leg.
  */
 export function AppBar({
@@ -46,7 +47,7 @@ export function AppBar({
   return (
     <View
       testID="sample-app-bar"
-      style={[styles.bar, { backgroundColor: chrome.appBar }]}
+      style={[styles.bar, { backgroundColor: chrome.header }]}
     >
       {onBack !== undefined && (
         <TouchableOpacity
@@ -68,10 +69,18 @@ export function AppBar({
         {title}
       </Text>
       {showPlatformBadge && (
-        <View style={styles.pill}>
-          <MaterialIcons name="code" size={12} color={chrome.onAppBar} />
+        <View style={[styles.pill, chrome.badge]}>
+          <MaterialIcons
+            name="code"
+            size={12}
+            color={chrome.badgeText?.color ?? chrome.onAppBar}
+          />
           <Text
-            style={[styles.pillText, { color: chrome.onAppBar }]}
+            style={[
+              styles.pillText,
+              { color: chrome.onAppBar },
+              chrome.badgeText,
+            ]}
             maxFontSizeMultiplier={1.2}
           >
             React Native

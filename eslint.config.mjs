@@ -36,7 +36,9 @@ export default defineConfig([
     ignores: [
       'node_modules/',
       'lib/',
-      '.claude/'
+      '.claude/',
+      // Gradle output — e.g. the HTML test report of the bridge's JVM unit tests.
+      '**/build/'
     ],
   },
 ]);

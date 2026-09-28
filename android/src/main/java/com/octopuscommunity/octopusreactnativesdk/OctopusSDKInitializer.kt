@@ -3,6 +3,7 @@ package com.octopuscommunity.octopusreactnativesdk
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableMap
+import com.facebook.react.bridge.ReadableType
 import com.octopuscommunity.sdk.ApiServer
 import com.octopuscommunity.sdk.OctopusSDK
 import com.octopuscommunity.sdk.domain.model.ConnectionMode
@@ -13,7 +14,7 @@ class OctopusSDKInitializer {
   fun initialize(context: ReactApplicationContext, options: ReadableMap, promise: Promise): Boolean {
     val apiKey = options.getString("apiKey")
     if (apiKey == null) {
-      promise.reject("INITIALIZE_ERROR", "Missing API key")
+      promise.reject("INITIALIZE_ERROR", "Missing API key", null)
       return false
     }
 
@@ -67,10 +68,12 @@ class OctopusSDKInitializer {
     var onPrimaryColor: String? = null
     var linkColor: String? = null
     var backgroundColor: String? = null
+    var grays = OctopusGrayRamp.NONE
     var logoSource: ReadableMap? = null
     var fontsConfig: OctopusFontsConfig? = null
     var lightSet: OctopusModeColors? = null
     var darkSet: OctopusModeColors? = null
+    val iconSources = themeMap?.let { parseIconSources(it) }
 
     // Parse colors from theme if available
     themeMap?.let { theme ->
@@ -97,6 +100,8 @@ class OctopusSDKInitializer {
           // implements through its adaptive colors.
           linkColor = colorFrom(selectedColors, "link") ?: colorFrom(otherColors, "link")
           backgroundColor = colorFrom(selectedColors, "background") ?: colorFrom(otherColors, "background")
+          // The gray ramp is tuned per appearance, so it is never borrowed from the other mode.
+          grays = grayRamp(selectedColors)
         } else {
           // Single-mode theme (backward compatibility)
           primaryColor = colorFrom(colors, "primary")
@@ -105,6 +110,7 @@ class OctopusSDKInitializer {
           onPrimaryColor = colorFrom(colors, "onPrimary")
           linkColor = colorFrom(colors, "link")
           backgroundColor = colorFrom(colors, "background")
+          grays = grayRamp(colors)
         }
       }
 
@@ -138,10 +144,12 @@ class OctopusSDKInitializer {
       }
     }
 
-    // Only create theme config if we have at least one customization. `link` and
-    // `background` count: a theme carrying only one of them must not be dropped.
+    // Only create theme config if we have at least one customization. `link`,
+    // `background` and the gray ramp count: a theme carrying only one of them must not be
+    // dropped. A dual-mode theme whose grays sit in the other mode only is kept by its sets.
     if (primaryColor != null || linkColor != null || backgroundColor != null ||
-      logoSource != null || colorScheme != null || fontsConfig != null
+      !grays.isEmpty || lightSet?.grays?.isEmpty == false || darkSet?.grays?.isEmpty == false ||
+      logoSource != null || colorScheme != null || fontsConfig != null || iconSources != null
     ) {
       return OctopusThemeConfig(
         primaryColor = primaryColor,
@@ -154,7 +162,9 @@ class OctopusSDKInitializer {
         colorScheme = colorScheme,
         fonts = fontsConfig,
         lightColors = lightSet,
-        darkColors = darkSet
+        darkColors = darkSet,
+        grays = grays,
+        iconSources = iconSources
       )
     }
 
@@ -274,13 +284,39 @@ class OctopusSDKInitializer {
     }
   }
 
+  /**
+   * Reads `theme.iconOverrides`, the flat `slot path -> uri` map the TypeScript layer builds
+   * from `theme.icons` (already validated there). Non-string values are skipped. Null when
+   * nothing usable remains, so the native icon set stays untouched.
+   */
+  private fun parseIconSources(themeMap: ReadableMap): Map<String, String>? {
+    val overrides = themeMap.getMap("iconOverrides") ?: return null
+    val result = mutableMapOf<String, String>()
+    val iterator = overrides.keySetIterator()
+    while (iterator.hasNextKey()) {
+      val key = iterator.nextKey()
+      if (overrides.getType(key) == ReadableType.String) {
+        overrides.getString(key)?.takeIf { it.isNotEmpty() }?.let { result[key] = it }
+      }
+    }
+    return result.takeIf { it.isNotEmpty() }
+  }
+
   private fun modeColors(colors: ReadableMap) = OctopusModeColors(
     primary = colorFrom(colors, "primary"),
     primaryLowContrast = colorFrom(colors, "primaryLowContrast"),
     primaryHighContrast = colorFrom(colors, "primaryHighContrast"),
     onPrimary = colorFrom(colors, "onPrimary"),
     link = colorFrom(colors, "link"),
-    background = colorFrom(colors, "background")
+    background = colorFrom(colors, "background"),
+    grays = grayRamp(colors)
+  )
+
+  private fun grayRamp(colors: ReadableMap) = OctopusGrayRamp(
+    gray100 = colorFrom(colors, "gray100"),
+    gray200 = colorFrom(colors, "gray200"),
+    gray300 = colorFrom(colors, "gray300"),
+    gray700 = colorFrom(colors, "gray700")
   )
 
   private fun colorFrom(colors: ReadableMap, key: String): String? =

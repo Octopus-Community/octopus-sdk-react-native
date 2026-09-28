@@ -7,6 +7,7 @@ import {
 import { useState } from 'react';
 import { Text, TextInput, TouchableOpacity, View } from 'react-native';
 
+import { sampleFixtures } from '../../config/sampleFixtures';
 import { debugLog } from '../../debug/debugLog';
 import { panelColors, panelStyles } from './panelStyles';
 
@@ -25,7 +26,7 @@ export function SyncFollowGroupsPanel({
   primaryColor: string;
 }) {
   const c = panelColors(isDark);
-  const [groupId, setGroupId] = useState('');
+  const [groupId, setGroupId] = useState(sampleFixtures.topic.default);
   const [results, setResults] = useState<SyncFollowGroupResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -65,7 +66,7 @@ export function SyncFollowGroupsPanel({
         ]}
         value={groupId}
         onChangeText={setGroupId}
-        placeholder="Group id (e.g. group-123)"
+        placeholder="Group id"
         placeholderTextColor={c.placeholder}
         autoCapitalize="none"
         autoCorrect={false}

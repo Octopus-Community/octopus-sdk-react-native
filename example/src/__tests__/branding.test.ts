@@ -1,8 +1,25 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+// The parser resolves colours through the native platform module, absent under Jest; the
+// test is about geometry, so colours pass through unchanged.
+jest.mock('react-native/Libraries/StyleSheet/processColor', () => ({
+  __esModule: true,
+  default: (color: unknown) => color,
+}));
+
+// Untyped Flow module: the renderer's own parser, which is what the halo test has to pin.
+const processBackgroundImage: (value: string) => unknown[] = jest.requireActual(
+  'react-native/Libraries/StyleSheet/processBackgroundImage'
+).default;
+
+import { darkHaloBackgroundImage } from '../components/DarkHalo';
 import type { ChromeColors } from '../theme/branding';
-import { chromeColors, OCTOPUS_SDK_THEME } from '../theme/branding';
+import {
+  chromeColors,
+  OCTOPUS_BRAND,
+  OCTOPUS_SDK_THEME,
+} from '../theme/branding';
 
 // The palette's contrast claims used to live only in its own comments, and three of them
 // were wrong. This measures them instead: every fill/ink pair the sample actually paints,
@@ -110,7 +127,9 @@ describe('the contrast helper itself', () => {
     expect(contrast('#FFFFFF', '#FFFFFF')).toBeCloseTo(1, 2);
     // The two values the design contract calls fill-only, as white ink: both fail.
     expect(contrast('#FFFFFF', '#1D88FE')).toBeCloseTo(3.5, 1);
-    expect(contrast('#FFFFFF', '#6FB2FF')).toBeCloseTo(2.21, 1);
+    expect(contrast('#FFFFFF', OCTOPUS_SDK_THEME.dark.primary)).toBeLessThan(
+      TEXT_FLOOR
+    );
   });
 
   it('composites an alpha layer onto what is under it', () => {
@@ -160,6 +179,68 @@ describe.each(PALETTES)('%s chrome palette', (_name, chrome) => {
     );
     expect(contrast(chrome.text, chrome.background)).toBeGreaterThanOrEqual(
       TEXT_FLOOR
+    );
+  });
+
+  it('keeps the snackbar message, dismiss glyph and action readable', () => {
+    expect(contrast(chrome.onSnackbar, chrome.snackbar)).toBeGreaterThanOrEqual(
+      TEXT_FLOOR
+    );
+    expect(
+      contrast(chrome.snackbarAction, chrome.snackbar)
+    ).toBeGreaterThanOrEqual(TEXT_FLOOR);
+  });
+
+  it.each(['surface', 'elevated'] as const)(
+    'keeps body and danger text readable on %s',
+    (surface) => {
+      expect(contrast(chrome.textBody, chrome[surface])).toBeGreaterThanOrEqual(
+        TEXT_FLOOR
+      );
+      expect(contrast(chrome.danger, chrome[surface])).toBeGreaterThanOrEqual(
+        TEXT_FLOOR
+      );
+    }
+  );
+});
+
+describe('dark chrome affordances', () => {
+  const chrome = chromeColors(true);
+
+  it.each(['surface', 'surfaceRaised', 'elevated', 'appBar'] as const)(
+    'keeps neutral badge ink readable on its fill composited over %s',
+    (surface) => {
+      const { badge, badgeText } = chrome;
+      if (badge === undefined || badgeText === undefined) {
+        throw new Error('The dark palette must define neutral badge styles');
+      }
+      const { r, g, b } = parseColor(badgeText.color).rgb;
+      expect(
+        contrast(
+          `rgba(${r},${g},${b},${badgeText.opacity})`,
+          chrome[surface],
+          badge.backgroundColor
+        )
+      ).toBeGreaterThanOrEqual(TEXT_FLOOR);
+    }
+  );
+
+  it('keeps caption ink readable where the halo peaks over the page', () => {
+    expect(
+      contrast(chrome.textSecondary, chrome.background, OCTOPUS_BRAND.darkHalo)
+    ).toBeGreaterThanOrEqual(TEXT_FLOOR);
+  });
+
+  it('keeps the off-track distinguishable from the card', () => {
+    expect(contrast(chrome.track, chrome.surface)).toBeGreaterThanOrEqual(3);
+  });
+
+  it('keeps both inactive ink and the active pill distinct on the segment track', () => {
+    expect(
+      contrast(chrome.textSecondary, chrome.segmentTrack)
+    ).toBeGreaterThanOrEqual(TEXT_FLOOR);
+    expect(contrast(chrome.accent, chrome.segmentTrack)).toBeGreaterThanOrEqual(
+      3
     );
   });
 });
@@ -217,5 +298,76 @@ describe("the Config screen's CTA", () => {
     expect(
       contrast(role(chrome, inkRole), role(chrome, pressedRole))
     ).toBeGreaterThanOrEqual(TEXT_FLOOR);
+  });
+});
+
+describe('dark halo (shared cross-platform spec)', () => {
+  it('glows from the top-right corner, radius = window width, accent 12 % to 0', () => {
+    expect(darkHaloBackgroundImage(411.4)).toBe(
+      'radial-gradient(ellipse 411px 411px at 100% 0%, rgba(29,136,254,0.12), rgba(29,136,254,0))'
+    );
+    expect(OCTOPUS_BRAND.darkHalo).toBe('rgba(29,136,254,0.12)');
+    expect(OCTOPUS_BRAND.darkHaloEnd).toBe('rgba(29,136,254,0)');
+  });
+
+  it("survives React Native's own gradient parser with the corner and radius intact", () => {
+    // The string is only half the contract: RN 0.81 mis-parses `circle <r> at …` into a
+    // centred gradient without any warning, so check what the renderer actually receives.
+    const [parsed] = processBackgroundImage(darkHaloBackgroundImage(411.4));
+    expect(parsed).toMatchObject({
+      type: 'radial-gradient',
+      size: { x: 411, y: 411 },
+      position: { top: '0%', left: '100%' },
+    });
+  });
+
+  it('lets the halo through the dark header and screens, and only there', () => {
+    const dark = chromeColors(true);
+    const light = chromeColors(false);
+    expect(dark.header).toBe('transparent');
+    expect(dark.screen).toBe('transparent');
+    // System bars keep their behaviour: the inset colour is unchanged in both themes.
+    expect(dark.appBar).toBe(OCTOPUS_BRAND.darkBackground);
+    expect(light.appBar).toBe(OCTOPUS_BRAND.navy);
+    // Light theme unchanged: the header is the navy bar, the screen the page colour.
+    expect(light.header).toBe(light.appBar);
+    expect(light.screen).toBe(light.background);
+  });
+});
+
+describe('dark palette (shared cross-platform spec)', () => {
+  const chrome = chromeColors(true);
+
+  it('pins the dark ladder values', () => {
+    expect({
+      background: chrome.background,
+      surface: chrome.surface,
+      elevated: chrome.elevated,
+      border: chrome.border,
+      textBody: chrome.textBody,
+      text: chrome.text,
+      textSecondary: chrome.textSecondary,
+    }).toEqual({
+      background: '#070D17',
+      surface: '#0F1B2D',
+      elevated: '#16243A',
+      border: '#1E2A3D',
+      textBody: '#E9F0FA',
+      text: '#F2F6FC',
+      textSecondary: '#8C9AB0',
+    });
+    expect(OCTOPUS_BRAND.darkBorderStrong).toBe('#243349');
+  });
+
+  it('hands the SDK the Android gray ramp mapping in dark only', () => {
+    expect(OCTOPUS_SDK_THEME.dark).toMatchObject({
+      gray100: '#070D17',
+      gray200: '#0F1B2D',
+      gray300: '#1E2A3D',
+      gray700: '#E9F0FA',
+    });
+    expect(Object.keys(OCTOPUS_SDK_THEME.light)).not.toEqual(
+      expect.arrayContaining(['gray100'])
+    );
   });
 });

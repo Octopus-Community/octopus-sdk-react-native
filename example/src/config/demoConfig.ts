@@ -1,4 +1,4 @@
-// Sample demo configuration (API key sources + SSO test users + demo fixtures).
+// Sample demo configuration (API key sources + SSO test users).
 //
 // Committed on purpose and contains NO secret — it only reads build-time values
 // injected by `react-native-dotenv` from `example/.env` (gitignored), mirroring
@@ -134,12 +134,6 @@ export const ENTITLEMENT_LABELS: Record<EntitlementVariant, string> = {
 export function hasUserToken(variant: EntitlementVariant): boolean {
   return octopusUserTokens[variant] !== '';
 }
-
-/**
- * A real post id on the demo community. Prefills the fixtures that need one;
- * empty on a keyless build.
- */
-export const octopusDemoPostId: string = process.env.OCTOPUS_DEMO_POST_ID ?? '';
 
 /** The default Octopus backend, which every published native SDK targets. */
 export const PRODUCTION_HOST = 'api.8pus.io';

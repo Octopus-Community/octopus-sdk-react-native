@@ -94,7 +94,7 @@ export function ConnectionStateCard({
         >
           {badge}
         </Text>
-        <Text style={[styles.subtitle, { color: chrome.text }]}>
+        <Text style={[styles.subtitle, { color: chrome.textBody }]}>
           {subtitle}
         </Text>
       </View>

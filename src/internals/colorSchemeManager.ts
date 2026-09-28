@@ -1,5 +1,7 @@
 import { Appearance, AppState } from 'react-native';
 import { OctopusReactNativeSdk } from './nativeModule';
+import { log } from './logger';
+import { LogLevel } from '../enums/LogLevel.enum';
 import type { OctopusTheme } from '../initialize';
 
 let isListening = false;
@@ -153,14 +155,33 @@ export class ColorSchemeManager {
   private updateNativeColorScheme(): void {
     // This is the single call site both the system listeners above and setForcedThemeMode
     // funnel through, so no path can push a system value while a force is active.
+    let pending: unknown;
     try {
-      OctopusReactNativeSdk.updateColorScheme(
+      pending = OctopusReactNativeSdk.updateColorScheme(
         forcedColorScheme ?? undefined,
         forcedColorScheme != null
       );
     } catch (error) {
+      // Synchronous throw: the native module is not linked at all (the `nativeModule` Proxy).
+      // Nothing this manager does can succeed, so it stops observing rather than throwing on
+      // every future appearance change.
+      log(LogLevel.ERROR, 'updateColorScheme is unreachable', error);
       this.stopListening();
+      return;
     }
+    // A *rejected* promise is a different failure and the try/catch above never sees it: it
+    // is the module answering, not the module being absent. Left unhandled it surfaced as an
+    // unhandled rejection on a path the host never awaits — including the one the launch
+    // restore takes, which is what made issue #257 a crash-loop rather than a failed call.
+    // Logged and swallowed: the observers stay attached, so the next appearance change or
+    // setThemeMode() retries.
+    Promise.resolve(pending).catch((error) => {
+      log(
+        LogLevel.WARN,
+        'updateColorScheme was rejected by the native module',
+        error
+      );
+    });
   }
 }
 

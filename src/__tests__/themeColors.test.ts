@@ -227,3 +227,67 @@ describe('initialize canonicalizes theme colors for both bridges', () => {
     expect(mockInitialize.mock.calls[0][0].theme.colors.link).toBe('#C2410C');
   });
 });
+
+describe('initialize forwards the optional gray ramp', () => {
+  it('forwards the four gray keys per mode, canonicalized', async () => {
+    await initialize({
+      apiKey: 'k',
+      connectionMode: { type: 'octopus' },
+      theme: {
+        colors: {
+          light: { primary: '#0F1B2D' },
+          dark: {
+            primary: '#66B0FF',
+            gray100: '070d17',
+            gray200: '#0F1B2D',
+            gray300: '#1e2a3d',
+            gray700: 'E9F0FA',
+          },
+        },
+      },
+    });
+    const payload = mockInitialize.mock.calls[0][0];
+    expect(payload.theme.colors.dark).toEqual({
+      primary: '#66B0FF',
+      gray100: '#070D17',
+      gray200: '#0F1B2D',
+      gray300: '#1E2A3D',
+      gray700: '#E9F0FA',
+    });
+    // Never copied across modes: the light set stays exactly as given.
+    expect(payload.theme.colors.light).toEqual({ primary: '#0F1B2D' });
+  });
+
+  it('keeps a theme carrying only a gray', async () => {
+    await initialize({
+      apiKey: 'k',
+      connectionMode: { type: 'octopus' },
+      theme: { colors: { gray300: '#1E2A3D' } },
+    });
+    const payload = mockInitialize.mock.calls[0][0];
+    expect(payload.theme.colors).toEqual({ gray300: '#1E2A3D' });
+  });
+
+  it('adds no gray when none is set', async () => {
+    await initialize({
+      apiKey: 'k',
+      connectionMode: { type: 'octopus' },
+      theme: { colors: { primary: '#3B82F6' } },
+    });
+    const payload = mockInitialize.mock.calls[0][0];
+    expect(Object.keys(payload.theme.colors)).toEqual(['primary']);
+  });
+
+  it('warns on an invalid gray and names the key', async () => {
+    const logger = jest.fn();
+    setLogger(logger);
+    await initialize({
+      apiKey: 'k',
+      connectionMode: { type: 'octopus' },
+      theme: { colors: { light: {}, dark: { gray700: 'navy' } } },
+    });
+    const warnings = warningsOf(logger);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('theme.colors.dark.gray700');
+  });
+});

@@ -92,4 +92,6 @@ dependencies {
 
   api "com.octopuscommunity:octopus-sdk:$octopus_community_version"
   api "com.octopuscommunity:octopus-sdk-ui:$octopus_community_version"
+
+  testImplementation "junit:junit:4.13.2"
 }

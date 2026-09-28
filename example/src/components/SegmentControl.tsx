@@ -46,7 +46,8 @@ export function SegmentControl<T extends string>({
       testID={testID}
       style={[
         styles.wrapper,
-        { backgroundColor: chrome.track },
+        { backgroundColor: chrome.segmentTrack },
+        isDark && [styles.darkFrame, { borderColor: chrome.border }],
         disabled && styles.wrapperDisabled,
         style,
       ]}
@@ -82,6 +83,9 @@ export function SegmentControl<T extends string>({
 }
 
 const styles = StyleSheet.create({
+  darkFrame: {
+    borderWidth: 1,
+  },
   wrapper: {
     flexDirection: 'row',
     borderRadius: 8,

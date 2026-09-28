@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,6 +58,9 @@ import com.octopuscommunity.sdk.ui.octopusComposables
 import com.octopuscommunity.sdk.ui.octopusDarkColorScheme
 import com.octopuscommunity.sdk.ui.octopusLightColorScheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
@@ -132,6 +136,8 @@ internal fun OctopusContent(
    * [showNavBar] is `false` — [OctopusHomeContent] renders no top app bar to put an icon on.
    */
   navBarLeadingAction: NavigationIconType? = null,
+  // Only the fullscreen owner may style a window; embedded content belongs to its host.
+  onSystemBarColors: ((Color, Color) -> Unit)? = null,
 ) {
   val context = LocalContext.current
 
@@ -172,12 +178,34 @@ internal fun OctopusContent(
     }
   }
 
+  // `theme.icons` overrides: loaded off the main thread, keyed on the (value-equal) source
+  // map so a recomposition never reloads them. Until they arrive — and for any override that
+  // fails to load — the native default icon is shown.
+  var iconPainters by remember { mutableStateOf<Map<String, Painter>>(emptyMap()) }
+
+  LaunchedEffect(themeConfig?.iconSources) {
+    val sources = themeConfig?.iconSources
+    iconPainters = if (sources.isNullOrEmpty()) {
+      emptyMap()
+    } else {
+      coroutineScope {
+        sources
+          .map { (path, uri) -> async { loadImageFromUri(uri, context)?.let { path to it } } }
+          .awaitAll()
+          .filterNotNull()
+          .toMap()
+      }
+    }
+  }
+
   // Create images based on theme config
   val currentLogo = logoPainter
+  val currentIconPainters = iconPainters
+  val icons = remember(currentIconPainters) { octopusIconsWithOverrides(currentIconPainters) }
   val images = if (currentLogo != null) {
-    OctopusImagesDefaults.images(logo = { currentLogo })
+    OctopusImagesDefaults.images(logo = { currentLogo }, icons = icons)
   } else {
-    OctopusImagesDefaults.images()
+    OctopusImagesDefaults.images(icons = icons)
   }
 
   // Resolve the theme-wide font overrides once: the family is a `res/font/` resource
@@ -229,6 +257,14 @@ internal fun OctopusContent(
   // keeps every slot the host did not set in contrast with the surface it is drawn on.
   // Hosts passing a background per mode are unaffected: their background already agrees
   // with the scheme it was declared for.
+  //
+  // The 0.5 threshold is deliberately NOT the WCAG crossover used for the system-bar icons
+  // (SystemBarContrast.kt): it is the native SDK's own cut-off in `toOctopusColorScheme`, and
+  // matching it is what makes a host background resolve to the same palette through this
+  // wrapper as in a native app. A background between the two thresholds therefore gets the
+  // dark palette with dark bar icons — the icons pick whichever of black or white contrasts
+  // more, the palette follows the native SDK. `luminance()` ignores alpha: `backgroundColor`
+  // is expected opaque here, as it is by the native SDK.
   val hostBackground = themeConfig?.backgroundColor?.let { Color(it.toColorInt()) }
   val baseColorScheme = when {
     hostBackground != null ->
@@ -242,7 +278,11 @@ internal fun OctopusContent(
     primaryHigh = themeConfig?.primaryHighContrastColor?.let { Color(it.toColorInt()) } ?: baseColorScheme.primaryHigh,
     onPrimary = themeConfig?.onPrimaryColor?.let { Color(it.toColorInt()) } ?: baseColorScheme.onPrimary,
     link = themeConfig?.linkColor?.let { Color(it.toColorInt()) } ?: baseColorScheme.link,
-    background = hostBackground ?: baseColorScheme.background
+    background = hostBackground ?: baseColorScheme.background,
+    gray100 = themeConfig?.grays?.gray100?.let { Color(it.toColorInt()) } ?: baseColorScheme.gray100,
+    gray200 = themeConfig?.grays?.gray200?.let { Color(it.toColorInt()) } ?: baseColorScheme.gray200,
+    gray300 = themeConfig?.grays?.gray300?.let { Color(it.toColorInt()) } ?: baseColorScheme.gray300,
+    gray700 = themeConfig?.grays?.gray700?.let { Color(it.toColorInt()) } ?: baseColorScheme.gray700
   )
 
   // The top app bar title has no dedicated typography role of its own: the SDK renders it
@@ -274,6 +314,13 @@ internal fun OctopusContent(
   // Parity wave — navigation & theme: a per-call override wins over the global topAppBar
   // config, which wins over the plain default — same precedence for all three overrides.
   val effectiveColoredBackground = navBarPrimaryColorOverride ?: topAppBarConfig?.coloredBackground ?: false
+
+  SideEffect {
+    onSystemBarColors?.invoke(
+      if (effectiveColoredBackground) resolvedColorScheme.primary else resolvedColorScheme.background,
+      resolvedColorScheme.background
+    )
+  }
 
   // Build a primary-colored top app bar when requested; otherwise use the default.
   val octopusTopAppBar = if (effectiveColoredBackground) {

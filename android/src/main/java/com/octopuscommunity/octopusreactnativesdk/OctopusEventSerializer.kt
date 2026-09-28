@@ -29,6 +29,8 @@ object OctopusEventSerializer {
         val contentArray = Arguments.createArray()
         contentList.forEach { contentArray.pushString(it) }
         map.putArray("content", contentArray)
+        map.putString("groupId", event.groupId)
+        // Deprecated alias of `groupId`, kept for hosts still reading the pre-rename key.
         map.putString("topicId", event.groupId)
         map.putInt("textLength", event.textLength)
         map

@@ -2,8 +2,8 @@
 
 [![npm package](https://img.shields.io/npm/v/@octopus-community/react-native.svg)](https://www.npmjs.com/package/@octopus-community/react-native)
 [![Platforms](https://img.shields.io/badge/platforms-Android_7.0%2B_%7C_iOS_15.1%2B-lightgrey)](#requirements)
-[![Android SDK](https://img.shields.io/badge/Android_SDK-1.13.4-34a853?logo=android&logoColor=white)](https://github.com/Octopus-Community/octopus-sdk-android)
-[![iOS SDK](https://img.shields.io/badge/iOS_SDK-1.13.2-f05138?logo=apple&logoColor=white)](https://github.com/Octopus-Community/octopus-sdk-swift)
+[![Android SDK](https://img.shields.io/badge/Android_SDK-1.14.1-34a853?logo=android&logoColor=white)](https://github.com/Octopus-Community/octopus-sdk-android)
+[![iOS SDK](https://img.shields.io/badge/iOS_SDK-1.14.0-f05138?logo=apple&logoColor=white)](https://github.com/Octopus-Community/octopus-sdk-swift)
 [![License](https://img.shields.io/badge/license-Octopus_SDK_License-lightgrey)](LICENSE.md)
 
 Add a branded community (feed, posts, comments, reactions, profiles, groups) to your React Native
@@ -17,8 +17,8 @@ and [iOS](https://github.com/Octopus-Community/octopus-sdk-swift) SDKs behind on
 - **Native UI, no webview**: the community screens are the native SDKs' own (Jetpack Compose on
   Android, SwiftUI on iOS), opened fullscreen with `openUI()` or embedded with the
   `OctopusUIView` component.
-- **Your brand**: colors (single set or light/dark pairs), fonts, logo and top app bar, all passed
-  to `initialize()`. See the [theming guide](./docs/theming.md).
+- **Your brand**: colors (single set or light/dark pairs), fonts, logo, icons, screen-state illustrations and top app bar,
+  all passed to `initialize()`. See the [theming guide](./docs/theming.md).
 - **Your accounts**: connect your signed-in users through SSO with a JWT signed on your backend,
   or let Octopus run its own sign-in flow.
 - **Nothing to host**: Octopus runs the backend and storage, the moderation, and the web dashboard
@@ -32,7 +32,7 @@ and [iOS](https://github.com/Octopus-Community/octopus-sdk-swift) SDKs behind on
 
 | React Native version(s) | Android       | iOS   | Old arch | New arch      | Octopus native SDK          |
 | ----------------------- | ------------- | ----- | -------- | ------------- | --------------------------- |
-| v0.81.x (tested 0.81.4) | 7.0+ (API 24) | 15.1+ | ✅       | Interop layer | Android 1.13.4 · iOS 1.13.2 |
+| v0.81.x (tested 0.81.4) | 7.0+ (API 24) | 15.1+ | ✅       | Interop layer | Android 1.14.1 · iOS 1.14.0 |
 
 * Older React Native versions (e.g. v0.78+) may work but are untested
 * New architecture is supported via the React Native interoperability layer
@@ -51,13 +51,18 @@ and [iOS](https://github.com/Octopus-Community/octopus-sdk-swift) SDKs behind on
 npm install @octopus-community/react-native
 ```
 
-**iOS**: the native SDK is distributed as frameworks, so enable `use_frameworks!` in your `Podfile`,
-then run `pod install`:
+**iOS**: the native SDK is distributed as frameworks and must be linked **statically** — with
+dynamic frameworks the native UI cannot find its resource bundle and the first Octopus screen
+crashes. Enable it in your `Podfile`, then run `pod install`:
 
 ```ruby
 # Podfile
-use_frameworks! :linkage => :static # or :dynamic
+use_frameworks! :linkage => :static
 ```
+
+CocoaPods applies this to every pod of the target. Next to Firebase Firestore (or another pod that
+depends on `gRPC-Core`), the link can fail with `Undefined symbol: grpc_…`: see
+[Troubleshooting](./docs/integration-guide.md#troubleshooting).
 
 **Expo**: set the same option through `expo-build-properties`:
 

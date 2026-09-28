@@ -128,6 +128,18 @@ export interface PostCreatedEvent extends BaseSDKEvent {
   type: 'postCreated';
   postId: string;
   content: PostContentType[];
+  /**
+   * Id of the group the post was created in. Always set: both native SDKs report
+   * a post's group as non-null.
+   */
+  groupId: string;
+  /**
+   * Id of the group the post was created in — same value as {@link groupId}.
+   *
+   * @deprecated Use {@link groupId}. The native SDKs renamed this field to a
+   * non-null `groupId` (iOS 1.11); it is still emitted for compatibility and
+   * will be removed in a future major version.
+   */
   topicId: string | null;
   textLength: number;
 }

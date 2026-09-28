@@ -61,6 +61,12 @@ class AppDelegate: RCTAppDelegate, UNUserNotificationCenterDelegate {
     }
   }
 
+  override func createRootViewController() -> UIViewController {
+    let controller = SampleRootViewController()
+    SampleSystemBars.rootViewController = controller
+    return controller
+  }
+
   override func sourceURL(for bridge: RCTBridge) -> URL? {
     self.bundleURL()
   }
@@ -71,5 +77,29 @@ class AppDelegate: RCTAppDelegate, UNUserNotificationCenterDelegate {
 #else
     Bundle.main.url(forResource: "main", withExtension: "jsbundle")
 #endif
+  }
+}
+
+/// The RN shell owns its status bar; fullscreen SDK controllers own theirs.
+final class SampleRootViewController: UIViewController {
+  var statusBarStyle: UIStatusBarStyle = .lightContent {
+    didSet { setNeedsStatusBarAppearanceUpdate() }
+  }
+
+  override var preferredStatusBarStyle: UIStatusBarStyle { statusBarStyle }
+}
+
+/// Sample-only bridge. RN's built-in StatusBar writes UIApplication state, which is
+/// deliberately disabled now that native presentations use controller-based appearance.
+@objc(SampleSystemBars)
+class SampleSystemBars: NSObject {
+  static weak var rootViewController: SampleRootViewController?
+
+  @objc static func requiresMainQueueSetup() -> Bool { true }
+
+  @objc func setStyle(_ style: String) {
+    DispatchQueue.main.async {
+      Self.rootViewController?.statusBarStyle = style == "dark" ? .darkContent : .lightContent
+    }
   }
 }

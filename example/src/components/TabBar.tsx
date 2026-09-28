@@ -28,11 +28,11 @@ export interface TabBarProps {
 }
 
 /**
- * `testId` is the shared cross-platform handle from the scenario catalog's `shell.tabs` map
- * (kept in the internal QA tooling's shared config), applied verbatim so the QA pipeline drives
- * the same id here as on the other samples. The catalog names exactly these four tabs and the
- * example ships exactly these four — every other capability is a scenario card, and the event
- * log is the Debug console (reached from Settings, `debug-open-button`).
+ * `testId` is the shared cross-platform handle from the scenario catalog's `shell.tabs` map,
+ * applied verbatim so the QA pipeline drives the same id here as on the other samples. The
+ * catalog names exactly these four tabs and the example ships exactly these four — every other
+ * capability is a scenario card, and the event log is the Debug console (reached from Settings,
+ * `debug-open-button`).
  *
  * `icon` is the glyph the shared sample design identity assigns to that tab — Material
  * filled `home` / `science` / `forum` / `settings`, the same four on Android, Flutter and

@@ -1,3 +1,4 @@
+import { sampleSupport } from './config/sampleSupport';
 /* eslint-disable react-native/no-inline-styles */
 import * as Octopus from '@octopus-community/react-native';
 import {
@@ -6,21 +7,20 @@ import {
   UrlOpeningStrategy,
   overrideDefaultLocale,
   registerPushNotificationToken,
+  type OctopusIcons,
 } from '@octopus-community/react-native';
 import {
   View,
   Image,
-  Appearance,
   useColorScheme,
   StyleSheet,
   Modal,
+  Platform,
   Text,
-  useWindowDimensions,
   ActivityIndicator,
-  StatusBar,
   AppState,
-  ToastAndroid,
 } from 'react-native';
+import { SampleSystemBars } from './components/SampleSystemBars';
 import { WebView } from 'react-native-webview';
 import {
   SafeAreaView,
@@ -28,15 +28,22 @@ import {
 } from 'react-native-safe-area-context';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppBar } from './components/AppBar';
+import { DarkHalo } from './components/DarkHalo';
 import { TabBar, type TabId } from './components/TabBar';
+import { AppUpdateSnackbar } from './components/AppUpdateSnackbar';
 import { chromeColors, OCTOPUS_SDK_THEME } from './theme/branding';
-import {
-  runAppUpdateCheck,
-  subscribeToAppUpdate,
-  takeAppUpdateAnnouncement,
-} from './update/appUpdateStore';
+import { restoreThemeMode } from './theme/themeMode';
+import { runAppUpdateCheck } from './update/appUpdateStore';
 import { isAppUpdateSupported } from './update/appUpdate';
 import { setupOctopusPush } from './push';
+import {
+  resolveShellBack,
+  resolveWebViewBack,
+} from './navigation/backDispatcher';
+import {
+  useHardwareBack,
+  useHardwareBackListener,
+} from './navigation/useHardwareBack';
 import {
   SettingsScreen,
   type UrlOpeningMode,
@@ -50,6 +57,8 @@ import type { ConfigScreenMode } from './screens/ConfigScreen';
 import { DebugScreen } from './screens/DebugScreen';
 import { HomeScreen } from './screens/HomeScreen';
 import { ScenariosScreen } from './screens/ScenariosScreen';
+import { ClientProfileScreen } from './screens/ClientProfileScreen';
+import type { ExposeClientUserIdOverride } from './scenarios/unifiedProfile';
 import { ProductionWarningBanner } from './components/ProductionWarningBanner';
 import type {
   AppThemeChoice,
@@ -58,10 +67,12 @@ import type {
   SwitchCommunityTarget,
 } from './config/demoConfig';
 import {
+  apiKeySourceLabel,
   applySwitchedCommunity,
   communityLabel,
   ENTITLEMENT_LABELS,
   octopusApiServer,
+  octopusHostLabel,
   octopusServerLabel,
   octopusIsProdServer,
   octopusUserId,
@@ -73,7 +84,21 @@ import {
   loadPersistedDemoConfig,
   persistDemoConfig,
 } from './config/configStorage';
+import { buildDebugInfoCards } from './debug/debugInfo';
 import { debugLog } from './debug/debugLog';
+import {
+  sampleBuild,
+  sampleVersion,
+  sampleVersionLabel,
+} from './config/sampleVersion';
+import { nextNavRequest } from './navigation/anchors';
+import type {
+  ConfigSection,
+  DebugView,
+  NavRequest,
+  ScenarioSectionId,
+  SettingsPage,
+} from './navigation/anchors';
 import { formatSDKEvent } from './utils/formatSDKEvent';
 import type {
   ThemeMode,
@@ -94,6 +119,31 @@ import {
 const resolvedLogo = Image.resolveAssetSource(
   require('../assets/images/logo.png')
 );
+
+/**
+ * A minimal `theme.icons` override, sent with the custom logo: two tinted glyphs replacing the
+ * post's "comment" action and the "more actions" button, plus the custom logo on empty lists.
+ * Every other slot keeps its SDK default.
+ */
+const exampleIcons: OctopusIcons = {
+  screenStates: {
+    emptyContent: resolvedLogo,
+  },
+  content: {
+    comment: {
+      creation: {
+        open: Image.resolveAssetSource(
+          require('../assets/images/icon-comment.png')
+        ),
+      },
+    },
+  },
+  common: {
+    moreActions: Image.resolveAssetSource(
+      require('../assets/images/icon-more.png')
+    ),
+  },
+};
 
 /** App bar title per tab — the tab's own label, so the bar never contradicts the bar below. */
 const TAB_TITLES: Record<TabId, string> = {
@@ -246,6 +296,13 @@ export default function App() {
     debugLog.apiCall('initialize', 'retry requested from the Community tab');
   }, []);
   const [isDebugVisible, setIsDebugVisible] = useState(false);
+  // Which of Developer tools' two destinations the modal shows. Kept apart from visibility
+  // so the view does not flip to its default while the modal slides out.
+  const [debugView, setDebugView] = useState<DebugView>('events');
+  const openDebug = useCallback((view: DebugView) => {
+    setDebugView(view);
+    setIsDebugVisible(true);
+  }, []);
   const [isInitializationTriggered, setIsInitializationTriggered] =
     useState(false);
   const [isConnectingUser, setIsConnectingUser] = useState(false);
@@ -272,6 +329,29 @@ export default function App() {
     null
   );
   const [activeTab, setActiveTab] = useState<TabId>('home');
+  // Anchors: where a link inside the app asked to land. Each screen applies its request on
+  // mount and on every new nonce; the tab bar clears them, so a plain tab visit opens the
+  // screen at its top instead of replaying the last link.
+  const [configRequest, setConfigRequest] =
+    useState<NavRequest<ConfigSection> | null>(null);
+  const [settingsRequest, setSettingsRequest] =
+    useState<NavRequest<SettingsPage> | null>(null);
+  const [scenariosRequest, setScenariosRequest] =
+    useState<NavRequest<ScenarioSectionId> | null>(null);
+  const openSettingsPage = useCallback((page: SettingsPage) => {
+    setSettingsRequest((previous) => nextNavRequest(previous, page));
+    setActiveTab('settings');
+  }, []);
+  const openScenariosSection = useCallback((section: ScenarioSectionId) => {
+    setScenariosRequest((previous) => nextNavRequest(previous, section));
+    setActiveTab('scenarios');
+  }, []);
+  useEffect(() => {
+    if (activeTab !== 'settings' && activeTab !== 'scenarios') {
+      sampleSupport.breadcrumb = activeTab === 'home' ? 'Home' : 'Community';
+    }
+  }, [activeTab]);
+
   const [hasAccessToCommunity, setHasAccessToCommunity] = useState<
     boolean | null
   >(null);
@@ -295,11 +375,17 @@ export default function App() {
     useState<UrlOpeningMode>('inAppWebView');
   const [profileTapMode, setProfileTapMode] =
     useState<ProfileTapMode>('appScreens');
-  // Debug-only: forces the `exposeClientUserId` community flag (Unified Profile activation)
-  // through `debugOverrideExposeClientUserId`, so the routing is testable before the demo
-  // backend serves the flag. Session-only, like `profileTapMode` — never persisted.
-  const [isExposeClientUserIdForced, setIsExposeClientUserIdForced] =
-    useState(false);
+  // Debug-only: the `exposeClientUserId` community flag (Unified Profile activation)
+  // through `debugOverrideExposeClientUserId` — `null` follows the backend, `true`/`false`
+  // force it. Driven from Scenarios › Sign-in & user › Unified Profile, applied live.
+  // Session-only, like on Android — never persisted.
+  const [exposeClientUserIdOverride, setExposeClientUserIdOverride] =
+    useState<ExposeClientUserIdOverride>(null);
+  // The member a Unified Profile tap handed to the host: non-null shows the host's own
+  // profile screen, the way a real host app would push it.
+  const [hostProfileClientUserId, setHostProfileClientUserId] = useState<
+    string | null
+  >(null);
   const [isAuthRequiredCallbackEnabled, setIsAuthRequiredCallbackEnabled] =
     useState(true);
   // Read inside the initialize effect's listener without adding the toggle to that
@@ -316,6 +402,10 @@ export default function App() {
   const [communityLocaleOverride, setCommunityLocaleOverride] =
     useState<CommunityLocaleOverride>('system');
   const [webViewUrl, setWebViewUrl] = useState<string | null>(null);
+  const webViewRef = useRef<WebView>(null);
+  // Last `canGoBack` the WebView reported. A ref, not state: only hardware Back reads it,
+  // and every page load would otherwise re-render the whole App.
+  const webViewCanGoBackRef = useRef(false);
   const [userCallbackMessage, setUserCallbackMessage] = useState<string | null>(
     null
   );
@@ -324,16 +414,18 @@ export default function App() {
   > | null>(null);
 
   /**
-   * Surfaces a transient message on the Settings tab — the tab that carries "Connect user",
-   * which is why the SDK's host callbacks land there. The text must say what the SDK asked
-   * and what to do next: a bare listener name reads as a bug to a tester who just tapped
-   * Activity as a guest and got sent to Settings. Stable, so effects can depend on it.
+   * Surfaces a transient message on Settings › Account — the page that carries "Connect
+   * user", which is why the SDK's host callbacks land there, and the only page that renders
+   * the message. The text must say what the SDK asked and what to do next: a bare listener
+   * name reads as a bug to a tester who just tapped Activity as a guest and got sent to
+   * Settings. Stable, so effects can depend on it.
    */
   const showUserCallbackMessage = useCallback((message: string) => {
     if (userCallbackMessageTimeoutRef.current) {
       clearTimeout(userCallbackMessageTimeoutRef.current);
       userCallbackMessageTimeoutRef.current = null;
     }
+    setSettingsRequest((previous) => nextNavRequest(previous, 'account'));
     setActiveTab('settings');
     setUserCallbackMessage(message);
     userCallbackMessageTimeoutRef.current = setTimeout(() => {
@@ -343,7 +435,6 @@ export default function App() {
   }, []);
 
   const systemColorScheme = useColorScheme();
-  const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const colorScheme = themeMode ?? systemColorScheme;
   // undefined for the 'unset' preset — see BOTTOM_INSET_VALUES and the `ui` spread below.
@@ -433,36 +524,29 @@ export default function App() {
    * and the launch restore. A path that only wrote `themeMode` and skipped
    * `Appearance.setColorScheme` would leave the picker showing one appearance and the
    * screen rendering the other.
+   *
+   * It takes an `unknown` on purpose: one of its callers replays a value read back from
+   * device storage, and the launch restore is the path where a bad or failing appearance
+   * repeats on every cold start instead of once (issue #257). `restoreThemeMode` narrows
+   * and applies it, never throws, and returns the mode actually in effect — which is what
+   * the picker is set from, so the control can never show an appearance that was refused.
    */
-  const handleThemeModeChange = useCallback((mode: ThemeMode) => {
-    if (mode === 'system') {
-      setThemeMode(null);
-      Appearance.setColorScheme(undefined);
-    } else {
-      setThemeMode(mode);
-      Appearance.setColorScheme(mode);
-    }
+  const handleThemeModeChange = useCallback((mode: unknown) => {
+    const applied = restoreThemeMode(mode);
+    setThemeMode(applied === 'system' ? null : applied);
   }, []);
 
   // In-app update. The card itself lives in Settings — a tab a tester running a
   // scenario has no reason to open — so the shell announces a new build once,
-  // with a toast. `takeAppUpdateAnnouncement` returns a versionCode at most once
-  // per build, so re-checks do not re-announce.
+  // with `<AppUpdateSnackbar>` (mounted below) and its `Update` action. The
+  // store hands out a versionCode at most once per build, so re-checks do not
+  // re-announce. This effect only drives the checks.
   //
   // Re-checked when the app comes back to the foreground: unlike a check on
   // every render, `active` transitions are rare, and a tester who leaves to
   // install from Play returns through exactly this path.
   useEffect(() => {
     if (!isAppUpdateSupported()) return;
-    const announce = () => {
-      const version = takeAppUpdateAnnouncement();
-      if (version === null) return;
-      ToastAndroid.show(
-        `Sample build ${version} is available — see Settings`,
-        ToastAndroid.LONG
-      );
-    };
-    const unsubscribe = subscribeToAppUpdate(announce);
     const appStateSub = AppState.addEventListener('change', (next) => {
       if (next === 'active') {
         runAppUpdateCheck();
@@ -470,7 +554,6 @@ export default function App() {
     });
     runAppUpdateCheck();
     return () => {
-      unsubscribe();
       appStateSub.remove();
     };
   }, []);
@@ -515,6 +598,7 @@ export default function App() {
       } catch {
         // Embed mode: nothing to close, continue to open WebView.
       }
+      webViewCanGoBackRef.current = false;
       setWebViewUrl(url);
       return UrlOpeningStrategy.handledByApp;
     });
@@ -527,22 +611,35 @@ export default function App() {
     if (profileTapMode !== 'appScreens') return;
     const subscription = Octopus.addNavigateToProfileListener(
       ({ clientUserId }) => {
-        // A real host would push its own profile screen here. The demo only proves the
-        // client user id crossed the bridge.
+        // What a real host does: close the presented community, push its own profile
+        // screen for that member — the Android sample's ClientProfileScreen.
         if (displayMode === 'fullscreen') {
           Octopus.closeUI().catch(() => {
             // Embed mode: nothing is presented, nothing to close.
           });
         }
-        showUserCallbackMessage(
-          `Profile tap — the SDK handed the profile to the app (navigateToProfile listener), clientUserId: ${clientUserId}. A real host would open its own profile screen here.`
-        );
+        debugLog.apiCall('navigateToProfile', `clientUserId=${clientUserId}`);
+        setHostProfileClientUserId(clientUserId);
       }
     );
     return () => subscription.remove();
-  }, [profileTapMode, displayMode, showUserCallbackMessage]);
+  }, [profileTapMode, displayMode]);
 
-  const closeWebView = useCallback(() => setWebViewUrl(null), []);
+  const closeWebView = useCallback(() => {
+    webViewCanGoBackRef.current = false;
+    setWebViewUrl(null);
+  }, []);
+
+  // Hardware Back in the WebView modal behaves like a browser tab: one page back while there
+  // is history, close only once it is empty. The Modal receives the press through
+  // `onRequestClose` (its own Android window), so this is wired there, not on the dispatcher.
+  const onWebViewHardwareBack = useCallback(() => {
+    if (resolveWebViewBack(webViewCanGoBackRef.current) === 'goBackInHistory') {
+      webViewRef.current?.goBack();
+      return;
+    }
+    closeWebView();
+  }, [closeWebView]);
 
   // Registered at mount, deliberately before anything can call `initialize()`: the bridge's
   // event emitter is unbuffered, so a state listener added after initialization can miss the
@@ -606,7 +703,10 @@ export default function App() {
         ? {
             ...(currentThemeColors && { colors: currentThemeColors }),
             ...(currentThemeFonts && { fonts: currentThemeFonts }),
-            ...(hasLogo && { logo: { image: resolvedLogo } }),
+            ...(hasLogo && {
+              logo: { image: resolvedLogo },
+              icons: exampleIcons,
+            }),
           }
         : undefined;
 
@@ -834,6 +934,7 @@ export default function App() {
   const handleStart = useCallback(
     (next: DemoConfig) => {
       setInitError(null);
+      setConfigRequest(null);
       setActiveTab('home');
       handleThemeModeChange(next.theme);
       setRestoredConfig(null);
@@ -900,7 +1001,19 @@ export default function App() {
       handleStart(restored);
       setIsRestoringConfig(false);
       debugLog.apiCall('restoreConfig', 'restored the previous session');
-    })();
+    })().catch((e) => {
+      // The one path in this app that repeats itself on every cold start: whatever it
+      // throws, it throws again on the next launch, so an unhandled rejection here is a
+      // crash-loop and not an incident (issue #257). Land on a blank Config screen
+      // instead — the state the app would be in with nothing persisted at all — and say
+      // so where a tester can read it.
+      if (cancelled) return;
+      setIsRestoringConfig(false);
+      debugLog.apiCall(
+        'restoreConfig',
+        `failed — starting blank (${e instanceof Error ? e.message : String(e)})`
+      );
+    });
     return () => {
       cancelled = true;
     };
@@ -955,9 +1068,19 @@ export default function App() {
     setSwitchedCommunity(null);
     debugLog.apiCall('reconfigure', 'back to the Config screen');
   }, [activeConfig, isMockUserConnected, handleDisconnectUser]);
+  // A link that names one Config section: the request is set first, so the screen that
+  // `handleReconfigure` brings up mounts with it. No need to clear it on the plain path —
+  // `handleStart`, the only way out of Config, already did.
+  const openConfigSection = useCallback(
+    (section: ConfigSection) => {
+      setConfigRequest((previous) => nextNavRequest(previous, section));
+      handleReconfigure();
+    },
+    [handleReconfigure]
+  );
 
   /**
-   * Cancels a Settings → Server & community revisit, leaving the running session alone.
+   * Cancels a Settings → Change Configuration revisit, leaving the running session alone.
    *
    * Only reachable in `revisit` mode: `handleReconfigure` always seeds `restoredConfig`
    * with the config that was running before it tore the SDK down, so re-`handleStart`ing
@@ -1150,11 +1273,34 @@ export default function App() {
   const primaryColor = chrome.control;
   const onPrimaryColor = chrome.onControl;
   const backgroundColor = chrome.background;
+  // Every example-owned screen paints this at its root: transparent in dark, so the shell's
+  // page colour and top-right halo show through (see `DarkHalo`).
+  const screenColor = chrome.screen;
   const tabBarBg = chrome.navSurface;
 
   // A connectable demo user needs an injected token; the user id always has a fallback.
   const hasSsoUser = octopusUserTokens.none !== '';
   const isSsoAuth = config === null || config.authMode === 'sso';
+  const debugInfoCards = useMemo(
+    () =>
+      activeConfig === null
+        ? []
+        : buildDebugInfoCards({
+            sampleVersionLabel,
+            sdkVersion: sampleVersion,
+            build: sampleBuild,
+            serverLabel: octopusServerLabel,
+            host: octopusHostLabel,
+            community: communityLabel(activeConfig),
+            apiKeySource: apiKeySourceLabel(activeConfig),
+            authMode: activeConfig.authMode,
+            userId: activeConfig.userId,
+            displayMode,
+            urlOpeningMode,
+            profileTapMode,
+          }),
+    [activeConfig, displayMode, urlOpeningMode, profileTapMode]
+  );
   // What the SDK actually is, not merely what was attempted: a refused `initialize` — or
   // one the sample refused to make — leaves nothing initialized.
   const isSdkInitialized = isInitializationTriggered && initError === null;
@@ -1166,12 +1312,31 @@ export default function App() {
   // re-applies it there.
   useEffect(() => {
     if (!isSdkInitialized) return;
-    Octopus.debugOverrideExposeClientUserId(
-      isExposeClientUserIdForced ? true : null
-    ).catch((err) =>
-      console.error('debugOverrideExposeClientUserId error', err)
+    Octopus.debugOverrideExposeClientUserId(exposeClientUserIdOverride).catch(
+      (err) => console.error('debugOverrideExposeClientUserId error', err)
     );
-  }, [isSdkInitialized, isExposeClientUserIdForced, sessionStartedAt]);
+  }, [isSdkInitialized, exposeClientUserIdOverride, sessionStartedAt]);
+
+  // The Scenarios choice: records it (the effect above re-applies it to every new SDK
+  // instance) and applies it right away, so the section's read-out can re-read the
+  // effective flag once the native side has it.
+  const handleExposeClientUserIdOverrideChange = useCallback(
+    async (next: ExposeClientUserIdOverride) => {
+      setExposeClientUserIdOverride(next);
+      if (!isSdkInitialized) return;
+      try {
+        await Octopus.debugOverrideExposeClientUserId(next);
+        debugLog.apiCall(
+          'debugOverrideExposeClientUserId',
+          `✓ ${next === null ? 'backend value' : String(next)}`
+        );
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        debugLog.apiCall('debugOverrideExposeClientUserId', `✕ ${message}`);
+      }
+    },
+    [isSdkInitialized]
+  );
   const showTabBar = config !== null && isInitializationTriggered;
   // One app bar for the whole shell, so its title is the only thing that varies: the tab's
   // own name once the SDK is up, and "Configuration" for the one screen mounted at both
@@ -1227,36 +1392,108 @@ export default function App() {
         openCommunityFullscreen();
         return;
       }
+      // A tab-bar visit is not a link: drop what the last link asked for.
+      setSettingsRequest(null);
+      setScenariosRequest(null);
       setActiveTab(tab);
     },
     [displayMode, openCommunityFullscreen]
   );
 
+  const communityOwnsTopBar = showTabBar && activeTab === 'community';
+  const communityColors = getCurrentThemeColors()?.[isDark ? 'dark' : 'light'];
+  const communityBackground =
+    communityColors && 'background' in communityColors
+      ? communityColors.background
+      : isDark
+        ? '#000000'
+        : '#FFFFFF';
+  // The dark halo belongs to the example's own screens; the embedded native community
+  // view draws its own surfaces, so the glow stops at its tab.
+  const showHalo = isDark && !communityOwnsTopBar;
+  // Dark: the page colour, under the halo, so the transparent header and the status-bar
+  // strip glow as one surface. Light: the navy bar colour.
+  const topBackground = communityOwnsTopBar
+    ? communityBackground
+    : isDark
+      ? backgroundColor
+      : chrome.appBar;
+
+  // Android hardware / gesture Back. One listener for the whole sample; the screens register
+  // their own sub-navigation with it (Settings pages, Scenario routes) and are asked first.
+  // What is left is the shell: Config revisit → Cancel, a root tab → Home, and on Home the
+  // press goes to the platform, which backgrounds the app (`MainActivity`).
+  const canCancelConfig =
+    config === null && configMode === 'revisit' && restoredConfig !== null;
+  useHardwareBackListener();
+  useHardwareBack('shell', () => {
+    switch (
+      resolveShellBack({
+        isOnConfig: !isRestoringConfig && activeConfig === null,
+        canCancelConfig,
+        isShellVisible: showTabBar,
+        activeTab,
+      })
+    ) {
+      case 'cancelReconfigure':
+        handleCancelReconfigure();
+        return true;
+      case 'goHome':
+        setActiveTab('home');
+        return true;
+      case 'none':
+        return false;
+    }
+  });
+
   return (
     <SafeAreaView
-      style={{ flex: 1, backgroundColor: chrome.appBar }}
+      style={{ flex: 1, backgroundColor: topBackground }}
       edges={['top']}
     >
-      {/* The top inset is painted in the app bar's background color in both appearances, so
-          the status bar content is always light — a dark-content bar would be invisible on
-          it. */}
-      <StatusBar barStyle="light-content" backgroundColor={chrome.appBar} />
-      <AppBar
-        title={appBarTitle}
-        isDark={isDark}
-        // Only the revisit access can go "back" — the pre-shell one has no running
-        // session to return to, and `restoredConfig` is what Cancel resumes.
-        onBack={
-          config === null && configMode === 'revisit' && restoredConfig !== null
-            ? handleCancelReconfigure
-            : undefined
+      {/* First child, so everything below paints over it: fixed to the window (it lives
+          outside every ScrollView) and centred on its top-right corner. */}
+      <DarkHalo visible={showHalo} />
+      <SampleSystemBars
+        statusBar={
+          communityOwnsTopBar &&
+          !isDebugVisible &&
+          webViewUrl === null &&
+          !isDark
+            ? 'dark'
+            : 'light'
         }
-        backTestID="config-cancel-button"
+        isDark={isDark}
       />
+      {!communityOwnsTopBar && (
+        <SafeAreaView
+          edges={['left', 'right']}
+          style={{ backgroundColor: chrome.header }}
+        >
+          <AppBar
+            title={appBarTitle}
+            isDark={isDark}
+            // Only the revisit access can go "back" — the pre-shell one has no running
+            // session to return to, and `restoredConfig` is what Cancel resumes.
+            onBack={canCancelConfig ? handleCancelReconfigure : undefined}
+            backTestID="config-cancel-button"
+          />
+        </SafeAreaView>
+      )}
       {/* Under the app bar but above every screen, Config included: the server a build talks
           to is a property of the build, so the warning is true before the SDK is started. */}
-      <ProductionWarningBanner />
-      <View style={{ flex: 1, backgroundColor }}>
+      <SafeAreaView edges={['left', 'right']}>
+        <ProductionWarningBanner />
+      </SafeAreaView>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: screenColor,
+          paddingBottom: showTabBar ? 0 : insets.bottom,
+          paddingLeft: insets.left,
+          paddingRight: insets.right,
+        }}
+      >
         {isRestoringConfig ? (
           // Held rather than falling through to the Config screen: a resumable session
           // would otherwise flash the form for the length of one storage read.
@@ -1271,14 +1508,13 @@ export default function App() {
             mode={configMode}
             initialConfig={restoredConfig}
             onStart={handleStart}
+            sectionRequest={configRequest}
             themeSet={selectedThemeSet}
             onThemeSetChange={setSelectedThemeSet}
             urlOpeningMode={urlOpeningMode}
             onUrlOpeningModeChange={setUrlOpeningMode}
             profileTapMode={profileTapMode}
             onProfileTapModeChange={setProfileTapMode}
-            isExposeClientUserIdForced={isExposeClientUserIdForced}
-            onExposeClientUserIdForcedChange={setIsExposeClientUserIdForced}
             displayMode={displayMode}
             onDisplayModeChange={setDisplayMode}
             isAuthRequiredCallbackEnabled={isAuthRequiredCallbackEnabled}
@@ -1310,7 +1546,7 @@ export default function App() {
                 entitlements={profile?.entitlements ?? []}
                 hasFailedConnection={connectionError !== null}
                 themeSummary={themeSummary}
-                languageSummary={languageSummary}
+                languageSummary={languageSummary ?? communityLocaleOverride}
                 sessionStartedAt={sessionStartedAt}
                 effectiveApiKey={
                   switchedCommunity?.key ?? resolveApiKey(activeConfig)
@@ -1325,7 +1561,10 @@ export default function App() {
                 hasSsoUser={hasSsoUser}
                 isSsoAuth={isSsoAuth}
                 onReconfigure={handleReconfigure}
-                onOpenDebug={() => setIsDebugVisible(true)}
+                onOpenConfigSection={openConfigSection}
+                onOpenScenariosSection={openScenariosSection}
+                onOpenDebug={openDebug}
+                pageRequest={settingsRequest}
                 isConnectingUser={isConnectingUser}
                 isMockUserConnected={isMockUserConnected}
                 isUserConnected={
@@ -1357,9 +1596,15 @@ export default function App() {
                 onPrimaryColor={onPrimaryColor}
                 interceptUrls={urlOpeningMode === 'inAppWebView'}
                 interceptProfileTaps={profileTapMode === 'appScreens'}
+                exposeClientUserIdOverride={exposeClientUserIdOverride}
+                onExposeClientUserIdOverrideChange={
+                  handleExposeClientUserIdOverrideChange
+                }
                 clientUserId={activeConfig.userId}
                 isSsoAuth={isSsoAuth}
                 onVerifyInCommunity={() => handleTabChange('community')}
+                onOpenConfigSection={openConfigSection}
+                sectionRequest={scenariosRequest}
                 isMockUserConnected={isMockUserConnected}
                 isConnectingUser={isConnectingUser}
                 onConnectUser={handleConnectUserForScenarios}
@@ -1420,12 +1665,21 @@ export default function App() {
                   !connectionState.isGuest
                 }
                 isSsoAuth={isSsoAuth}
-                onConnectUser={() => handleTabChange('settings')}
+                onConnectUser={() => openSettingsPage('account')}
                 communitySessionNonce={communitySessionNonce}
               />
             )}
           </>
         )}
+        {/* Last child of the content area, so it floats over every screen but always above
+            the tab bar, which is a sibling below this view. Without the tab bar (Config,
+            before the shell is up) the content area runs to the bottom of the window —
+            the root only pads the top edge — so the offset has to clear the system bar
+            itself. */}
+        <AppUpdateSnackbar
+          isDark={isDark}
+          bottomOffset={showTabBar ? 8 : insets.bottom + 8}
+        />
       </View>
 
       {showTabBar && (
@@ -1433,6 +1687,8 @@ export default function App() {
           style={{
             width: '100%',
             backgroundColor: tabBarBg,
+            paddingLeft: insets.left,
+            paddingRight: insets.right,
             borderTopWidth: StyleSheet.hairlineWidth,
             borderTopColor: chrome.border,
           }}
@@ -1456,19 +1712,25 @@ export default function App() {
         animationType="slide"
         onRequestClose={() => setIsDebugVisible(false)}
         statusBarTranslucent
+        // Keep status-bar ownership with the sample root controller on iOS.
+        presentationStyle="overFullScreen"
       >
         {/* Same header shape as the WebView modal below: a `SafeAreaView` inside a Modal
             does not receive the top inset on iOS, so the bar slid under the status bar and
             its back button became untappable. Paint the inset by hand from `insets.top`. */}
         <View style={[styles.modalRoot, { backgroundColor }]}>
+          {/* Dark: the same halo as the shell — the console is an example-owned screen too. */}
+          <DarkHalo visible={isDark} />
           <View
             style={{
-              backgroundColor: chrome.appBar,
+              backgroundColor: chrome.header,
               paddingTop: insets.top,
+              paddingLeft: Platform.OS === 'ios' ? insets.left : 0,
+              paddingRight: Platform.OS === 'ios' ? insets.right : 0,
             }}
           >
             <AppBar
-              title="Events log"
+              title={debugView === 'info' ? 'Debug info' : 'Events log'}
               isDark={isDark}
               onBack={() => setIsDebugVisible(false)}
               backTestID="debug-close-button"
@@ -1477,15 +1739,24 @@ export default function App() {
           {/* Repeated here: a modal renders in its own window, above the banner the
               screens below carry, so without this the console is the one place that
               does not say which server the build talks to. */}
-          <ProductionWarningBanner />
+          <View
+            style={{
+              paddingLeft: Platform.OS === 'ios' ? insets.left : 0,
+              paddingRight: Platform.OS === 'ios' ? insets.right : 0,
+            }}
+          >
+            <ProductionWarningBanner />
+          </View>
           {/* The safe area is painted in the bar's background color, so the screen itself
               carries the page background — and the bottom inset as padding, which keeps the
               last log row clear of the home indicator without tinting that strip. */}
           <View
             style={{
               flex: 1,
-              backgroundColor,
+              backgroundColor: screenColor,
               paddingBottom: insets.bottom,
+              paddingLeft: Platform.OS === 'ios' ? insets.left : 0,
+              paddingRight: Platform.OS === 'ios' ? insets.right : 0,
             }}
           >
             <DebugScreen
@@ -1497,8 +1768,57 @@ export default function App() {
               hasAccessToCommunity={hasAccessToCommunity}
               notSeenNotificationsCount={notSeenNotificationsCount}
               pushToken={pushToken}
+              view={debugView}
+              infoCards={debugInfoCards}
+              onOpenHostCallbacks={() => {
+                setIsDebugVisible(false);
+                openConfigSection('integration');
+              }}
             />
           </View>
+        </View>
+      </Modal>
+
+      {/* The host's own profile screen, pushed by a Unified Profile tap from any surface
+          (Community tab, embedded preview, fullscreen). */}
+      <Modal
+        visible={hostProfileClientUserId !== null}
+        animationType="slide"
+        onRequestClose={() => setHostProfileClientUserId(null)}
+        statusBarTranslucent
+        presentationStyle="overFullScreen"
+      >
+        <View style={[styles.modalRoot, { backgroundColor }]}>
+          <View
+            style={{
+              backgroundColor: chrome.appBar,
+              paddingTop: insets.top,
+              paddingLeft: Platform.OS === 'ios' ? insets.left : 0,
+              paddingRight: Platform.OS === 'ios' ? insets.right : 0,
+            }}
+          >
+            <AppBar
+              title="Client profile (host app)"
+              isDark={isDark}
+              onBack={() => setHostProfileClientUserId(null)}
+              backTestID="clientProfile-back"
+            />
+          </View>
+          {hostProfileClientUserId !== null && (
+            <View
+              style={{
+                flex: 1,
+                paddingBottom: insets.bottom,
+                paddingLeft: Platform.OS === 'ios' ? insets.left : 0,
+                paddingRight: Platform.OS === 'ios' ? insets.right : 0,
+              }}
+            >
+              <ClientProfileScreen
+                isDark={isDark}
+                clientUserId={hostProfileClientUserId}
+              />
+            </View>
+          )}
         </View>
       </Modal>
 
@@ -1506,14 +1826,18 @@ export default function App() {
       <Modal
         visible={webViewUrl !== null}
         animationType="slide"
-        onRequestClose={closeWebView}
+        onRequestClose={onWebViewHardwareBack}
         statusBarTranslucent
+        // Keep status-bar ownership with the sample root controller on iOS.
+        presentationStyle="overFullScreen"
       >
         <View style={[styles.modalRoot, { backgroundColor }]}>
           <View
             style={{
               backgroundColor: chrome.appBar,
               paddingTop: insets.top,
+              paddingLeft: Platform.OS === 'ios' ? insets.left : 0,
+              paddingRight: Platform.OS === 'ios' ? insets.right : 0,
             }}
           >
             <AppBar
@@ -1523,11 +1847,29 @@ export default function App() {
               backTestID="webview-close-button"
             />
           </View>
-          <ProductionWarningBanner />
+          <View
+            style={{
+              paddingLeft: Platform.OS === 'ios' ? insets.left : 0,
+              paddingRight: Platform.OS === 'ios' ? insets.right : 0,
+            }}
+          >
+            <ProductionWarningBanner />
+          </View>
           {webViewUrl !== null && (
             <WebView
+              // A new URL is a new tab: remount so no history leaks from the previous one.
+              key={webViewUrl}
+              ref={webViewRef}
               source={{ uri: webViewUrl }}
-              style={{ width, flex: 1 }}
+              onNavigationStateChange={(navState) => {
+                webViewCanGoBackRef.current = navState.canGoBack;
+              }}
+              style={{
+                flex: 1,
+                marginBottom: Platform.OS === 'ios' ? insets.bottom : 0,
+                marginLeft: Platform.OS === 'ios' ? insets.left : 0,
+                marginRight: Platform.OS === 'ios' ? insets.right : 0,
+              }}
               onError={closeWebView}
             />
           )}

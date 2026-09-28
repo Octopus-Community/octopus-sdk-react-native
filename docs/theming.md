@@ -1,6 +1,6 @@
 # Theming
 
-Match the Octopus UI to your app's branding: colors, fonts, logo and navigation bar,
+Match the Octopus UI to your app's branding: colors, fonts, logo, icons and navigation bar,
 with light/dark support. Everything on this page is configured through
 [`initialize()`](./api/functions/initialize.md) — there is no separate theming call.
 
@@ -14,6 +14,7 @@ with light/dark support. Everything on this page is configured through
 - [Dark/Light Mode Management](#darklight-mode-management)
 - [Dual-Mode Color Themes](#dual-mode-color-themes)
 - [Font Customization](#font-customization)
+- [Icon Customization](#icon-customization)
 - [Theme Application](#theme-application)
 - [Complete Theme Example](#complete-theme-example)
 - [Dynamic Theme Switching](#dynamic-theme-switching)
@@ -179,6 +180,75 @@ await initialize({
 });
 ```
 
+## Icon Customization
+
+`theme.icons` replaces individual SDK icons with your own images. Every slot is optional: an
+absent slot keeps the native default, and omitting `icons` leaves the native icon set untouched.
+
+```ts
+import { Image } from 'react-native';
+
+await initialize({
+  apiKey: 'YOUR_OCTOPUS_API_KEY',
+  connectionMode: { type: 'octopus' },
+  theme: {
+    icons: {
+      content: {
+        comment: {
+          creation: {
+            open: Image.resolveAssetSource(require('./assets/icons/comment.png')),
+          },
+        },
+      },
+      screenStates: {
+        emptyContent: Image.resolveAssetSource(require('./assets/empty-content.png')),
+        networkError: Image.resolveAssetSource(require('./assets/offline.png')),
+      },
+      common: {
+        moreActions: Image.resolveAssetSource(require('./assets/icons/more.png')),
+        // Two-state controls take both images, or none.
+        toggle: {
+          on: Image.resolveAssetSource(require('./assets/icons/toggle-on.png')),
+          off: Image.resolveAssetSource(require('./assets/icons/toggle-off.png')),
+        },
+      },
+    },
+  },
+});
+```
+
+- **Groups and names follow the iOS SDK** (`OctopusTheme.Assets.Icons`): `groups`, `content`
+  (`post`, `comment`, `reply`, `video`, `poll`, `reaction`, `delete`, `report`),
+  `gamification`, `settings`, `profile`, `common` and `screenStates`. The bridge maps each slot onto its Android
+  counterpart. Only the slots **both** native SDKs expose are available; the full list is the
+  [`OctopusIcons`](./api/interfaces/OctopusIcons.md) type.
+- **Icons are tinted** with the theme colors, so only the shape (alpha channel) of the image
+  matters. The exceptions are `content.reaction` and `screenStates`, drawn in their original colors.
+- **Action icon size**: square images, ideally 24×24 points with the drawn content around 14.5×14.5
+  (transparent borders of 4.75). Ship `@2x`/`@3x` variants as for any bundled image.
+- **Remote images** (`http(s)` URIs) are downloaded when the Octopus UI is built; the native
+  default shows until the download completes, and stays if it fails.
+- A slot whose value is not an image source, a key the SDK does not know, or a
+  `radio`/`checkbox`/`toggle` pair missing one side is dropped at `initialize` with a warning;
+  the rest of `icons` still applies.
+- **iOS caveat**: the native iOS SDK draws the gamification rules header from the `badge` image,
+  so `gamification.rulesHeader` only shows on Android, and a `badge` override also changes that
+  header on iOS.
+- **Android caveat**: the native Android SDK does not read
+  `content.post.creation.addPollOption` / `deletePollOption` or `common.checkbox` (it draws the
+  platform checkbox), so those overrides only show on iOS.
+- **Not drawn yet**: `content.post.commentCount`, `viewCount` and `moreReactions` are declared by
+  both native SDKs but no screen reads them at the current native versions, so an override is
+  accepted and has no visible effect.
+- **Screen states** follow the iOS reference API: `screenStates.emptyContent` for empty post
+  and comment lists, `emptyNotifications` for an empty notification list, `networkError` for
+  an offline first load, and `error` for other first-load failures. Supply full-color
+  illustrations with transparent backgrounds; absent slots keep their native defaults.
+  On native 1.14, both platforms render these slots instead of
+  `content.post.emptyFeedInGroups`, `emptyFeedInCurrentUserProfile`,
+  `emptyFeedInOtherUserProfile`, `content.comment.emptyFeed` and `profile.emptyNotifications`.
+  Those per-feature slots remain accepted for compatibility.
+
 ## Theme Application
 
 Themes are applied when the Octopus UI is opened. The SDK automatically detects the current system appearance (light/dark mode) and applies the appropriate theme configuration.
@@ -284,6 +354,14 @@ const switchToGreenTheme = async () => {
   default (the Octopus light/dark scheme background on Android, the system background
   on iOS). On Android it also selects the light or dark base palette by its luminance
   (see [Theme Application](#theme-application)).
+- `gray100`, `gray200`, `gray300`, `gray700` — **Android only**: steps of the native
+  neutral ramp the community UI draws its surfaces, fills, hairlines and secondary
+  text from (`gray100` the first surface step, `gray200` low-contrast fills,
+  `gray300` dividers and borders, `gray700` secondary text). An omitted key keeps the
+  native default, so a theme without them renders exactly as before. In a
+  [dual-mode theme](#dual-mode-color-themes) each mode keeps its own grays — unlike
+  `link` or `background`, a gray is never borrowed from the other mode. They are
+  ignored on iOS, whose native gray ramp cannot be overridden.
 
 Every color is optional and independent: a theme carrying only `link`, or only
 `background`, is applied as-is. A color that is not a parseable hex string is dropped —
@@ -332,6 +410,9 @@ typography role of its own and the style passed to it replaces the ambient one
 instead of merging with it, so a complete style has to be supplied. Use
 `textStyles.body1.fontSize` to control the resulting size. iOS is unaffected.
 
+**Icons (`icons`):** optional per-slot image overrides, tinted with the theme colors
+(reactions excepted). See [Icon Customization](#icon-customization).
+
 **Font Types:**
 - `default`: System default font
 - `serif`: Serif font family
@@ -359,6 +440,7 @@ Superseded by `fonts.fontFamily` when that resolves — see above.
   with or without the leading `#`. An 8-digit value is **`AARRGGBB` — alpha first**, as
   both native SDKs read it, *not* the `#RRGGBBAA` of CSS.
 - **Images**: Use `Image.resolveAssetSource(require('./path/to/image.png'))` for bundled assets
+  (the logo and every `icons` slot)
 - **Fonts**: `serif`, `monospace` or `default` per style, or a natively registered
   family name for the whole theme via `fonts.fontFamily`
 

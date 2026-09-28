@@ -39,6 +39,7 @@ class OctopusUIManager {
     octopus: OctopusSDK,
     theme: OctopusUI.OctopusTheme?,
     logoSource: [String: Any]?,
+    iconSources: [String: String]? = nil,
     fontConfiguration: [String: Any]?,
     uiConfiguration: OctopusUIConfiguration?,
     notificationUserInfo: [AnyHashable: Any]? = nil,
@@ -81,15 +82,15 @@ class OctopusUIManager {
         )
       }
 
-      // Then load logo asynchronously and update theme if logo loads
-      if let logoSource = logoSource {
-        loadLogo(from: logoSource) { [weak hostingController] logoImage in
+      // Then load the logo and icon overrides asynchronously and update the theme with them
+      if hasAssetOverrides(logoSource: logoSource, iconSources: iconSources) {
+        loadAssets(logoSource: logoSource, iconSources: iconSources) { [weak hostingController] assets in
           DispatchQueue.main.async {
-            if let logoImage = logoImage {
+            if let assets = assets {
               let updatedTheme = OctopusUI.OctopusTheme(
                 colors: customTheme.colors,
                 fonts: customTheme.fonts,
-                assets: OctopusUI.OctopusTheme.Assets(logo: logoImage)
+                assets: assets
               )
               hostingController?.rootView = OctopusThemedRoot {
                 self.makeHomeScreenView(
@@ -109,15 +110,15 @@ class OctopusUIManager {
           }
         }
       }
-    } else if let logoSource = logoSource {
-      // No theme but there's a logo - load it and create a theme with just the logo
-      loadLogo(from: logoSource) { [weak hostingController] logoImage in
+    } else if hasAssetOverrides(logoSource: logoSource, iconSources: iconSources) {
+      // No theme but there's a logo or icon overrides - load them and create a theme with just those
+      loadAssets(logoSource: logoSource, iconSources: iconSources) { [weak hostingController] assets in
         DispatchQueue.main.async {
-          if let logoImage = logoImage {
+          if let assets = assets {
             let logoTheme = OctopusUI.OctopusTheme(
               colors: OctopusUI.OctopusTheme.Colors(),
               fonts: OctopusUI.OctopusTheme.Fonts(),
-              assets: OctopusUI.OctopusTheme.Assets(logo: logoImage)
+              assets: assets
             )
             hostingController?.rootView = OctopusThemedRoot {
               self.makeHomeScreenView(
@@ -141,7 +142,55 @@ class OctopusUIManager {
     presentingViewController.present(hostingController, animated: true)
   }
   
-  private func loadLogo(from source: [String: Any], completion: @escaping (UIImage?) -> Void) {
+  private func hasAssetOverrides(logoSource: [String: Any]?, iconSources: [String: String]?) -> Bool {
+    logoSource != nil || !(iconSources?.isEmpty ?? true)
+  }
+
+  /// Loads the custom logo and every icon override concurrently, then hands back the theme
+  /// assets built from whatever loaded — or `nil` when nothing did, so the theme already on
+  /// screen is kept. An icon that fails to load keeps its SDK default (see `octopusIcons(from:)`).
+  /// The completion may run on any queue.
+  private func loadAssets(
+    logoSource: [String: Any]?,
+    iconSources: [String: String]?,
+    completion: @escaping (OctopusUI.OctopusTheme.Assets?) -> Void
+  ) {
+    let group = DispatchGroup()
+    let lock = NSLock()
+    var logoImage: UIImage?
+    var iconImages: [String: UIImage] = [:]
+
+    if let logoSource = logoSource {
+      group.enter()
+      loadImage(from: logoSource) { image in
+        lock.lock()
+        logoImage = image
+        lock.unlock()
+        group.leave()
+      }
+    }
+    for (path, uri) in iconSources ?? [:] {
+      group.enter()
+      loadImage(from: ["uri": uri]) { image in
+        if let image = image {
+          lock.lock()
+          iconImages[path] = image
+          lock.unlock()
+        }
+        group.leave()
+      }
+    }
+
+    group.notify(queue: .main) {
+      if logoImage == nil && iconImages.isEmpty {
+        completion(nil)
+      } else {
+        completion(OctopusUI.OctopusTheme.Assets(logo: logoImage, icons: octopusIcons(from: iconImages)))
+      }
+    }
+  }
+
+  private func loadImage(from source: [String: Any], completion: @escaping (UIImage?) -> Void) {
     // Handle React Native image source with URI (from Image.resolveAssetSource)
     guard let uri = source["uri"] as? String else {
       completion(nil)
@@ -231,6 +280,7 @@ class OctopusUIManager {
     octopus: OctopusSDK,
     theme: OctopusUI.OctopusTheme?,
     logoSource: [String: Any]?,
+    iconSources: [String: String]? = nil,
     fontConfiguration: [String: Any]?,
     uiConfiguration: OctopusUIConfiguration?,
     interceptUrls: Bool,
@@ -295,14 +345,15 @@ class OctopusUIManager {
       hostingController.didMove(toParent: parentVC)
     }
 
-    if let _ = theme, let logoSource = logoSource {
-      loadLogo(from: logoSource) { [weak hostingController] logoImage in
+    let hasAssets = hasAssetOverrides(logoSource: logoSource, iconSources: iconSources)
+    if let _ = theme, hasAssets {
+      loadAssets(logoSource: logoSource, iconSources: iconSources) { [weak hostingController] assets in
         DispatchQueue.main.async {
-          if let logoImage = logoImage {
+          if let assets = assets {
             let updatedTheme = OctopusUI.OctopusTheme(
               colors: customTheme.colors,
               fonts: customTheme.fonts,
-              assets: OctopusUI.OctopusTheme.Assets(logo: logoImage)
+              assets: assets
             )
             hostingController?.rootView = OctopusThemedRoot {
               self.makeHomeScreenView(
@@ -320,14 +371,14 @@ class OctopusUIManager {
           }
         }
       }
-    } else if let logoSource = logoSource {
-      loadLogo(from: logoSource) { [weak hostingController] logoImage in
+    } else if hasAssets {
+      loadAssets(logoSource: logoSource, iconSources: iconSources) { [weak hostingController] assets in
         DispatchQueue.main.async {
-          if let logoImage = logoImage {
+          if let assets = assets {
             let logoTheme = OctopusUI.OctopusTheme(
               colors: OctopusUI.OctopusTheme.Colors(),
               fonts: OctopusUI.OctopusTheme.Fonts(),
-              assets: OctopusUI.OctopusTheme.Assets(logo: logoImage)
+              assets: assets
             )
             hostingController?.rootView = OctopusThemedRoot {
               self.makeHomeScreenView(

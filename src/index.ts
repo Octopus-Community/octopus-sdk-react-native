@@ -81,6 +81,7 @@ export type { OctopusNavigationMode } from './types/octopusNavigationMode';
 export type { OctopusNavBarLeadingAction } from './types/octopusNavBarLeadingAction';
 export { setThemeMode } from './setThemeMode';
 export type { OctopusThemeMode } from './types/octopusThemeMode';
+export * from './types/octopusIcons';
 
 // Parity wave — client-object bridge
 export * from './fetchOrCreateClientObjectRelatedPost';
