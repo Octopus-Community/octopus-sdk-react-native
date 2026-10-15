@@ -29,7 +29,7 @@ describe('initialize forwards the link and background theme colors', () => {
   it('forwards them from a single color set', async () => {
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       theme: {
         colors: {
           primary: '#3B82F6',
@@ -49,7 +49,7 @@ describe('initialize forwards the link and background theme colors', () => {
   it('forwards them per mode from a dual-mode color set', async () => {
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       theme: {
         colors: {
           light: { link: '#C2410C', background: '#FFF7ED' },
@@ -71,7 +71,7 @@ describe('initialize forwards the link and background theme colors', () => {
   it('forwards a theme carrying only one of the two colors', async () => {
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       theme: { colors: { link: '#C2410C' } },
     });
     const payload = mockInitialize.mock.calls[0][0];
@@ -81,7 +81,7 @@ describe('initialize forwards the link and background theme colors', () => {
   it('adds no default when they are omitted', async () => {
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       theme: { colors: { primary: '#3B82F6' } },
     });
     const payload = mockInitialize.mock.calls[0][0];
@@ -96,7 +96,7 @@ describe('initialize warns on an invalid theme color', () => {
     setLogger(logger);
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       theme: { colors: { link: 'not-a-color', background: '#FFF7ED' } },
     });
     const warnings = warningsOf(logger);
@@ -109,7 +109,7 @@ describe('initialize warns on an invalid theme color', () => {
     setLogger(logger);
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       theme: {
         colors: {
           light: { background: '#FFF7ED' },
@@ -127,7 +127,7 @@ describe('initialize warns on an invalid theme color', () => {
     setLogger(logger);
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       theme: { colors: { link: 'nope', background: '#FFF7ED' } },
     });
     const payload = mockInitialize.mock.calls[0][0];
@@ -137,7 +137,10 @@ describe('initialize warns on an invalid theme color', () => {
   it('warns for nothing when no theme colors are set', async () => {
     const logger = jest.fn();
     setLogger(logger);
-    await initialize({ apiKey: 'k', connectionMode: { type: 'octopus' } });
+    await initialize({
+      apiKey: 'k',
+      connectionMode: { type: 'sso', appManagedFields: [] },
+    });
     expect(warningsOf(logger)).toHaveLength(0);
   });
 });
@@ -152,7 +155,7 @@ describe('initialize canonicalizes theme colors for both bridges', () => {
     setLogger(logger);
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       theme: {
         colors: {
           primary: '#F63',
@@ -181,7 +184,7 @@ describe('initialize canonicalizes theme colors for both bridges', () => {
   it('canonicalizes both sides of a dual-mode color set', async () => {
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       theme: {
         colors: {
           light: { link: 'c2410c', background: '#fff' },
@@ -205,7 +208,7 @@ describe('initialize canonicalizes theme colors for both bridges', () => {
     setLogger(logger);
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       theme: { colors: { link: 'nope', background: 'fff7ed' } },
     });
     const payload = mockInitialize.mock.calls[0][0];
@@ -220,7 +223,7 @@ describe('initialize canonicalizes theme colors for both bridges', () => {
     const colors = { link: 'c2410c' };
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       theme: { colors },
     });
     expect(colors.link).toBe('c2410c');
@@ -232,7 +235,7 @@ describe('initialize forwards the optional gray ramp', () => {
   it('forwards the four gray keys per mode, canonicalized', async () => {
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       theme: {
         colors: {
           light: { primary: '#0F1B2D' },
@@ -261,7 +264,7 @@ describe('initialize forwards the optional gray ramp', () => {
   it('keeps a theme carrying only a gray', async () => {
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       theme: { colors: { gray300: '#1E2A3D' } },
     });
     const payload = mockInitialize.mock.calls[0][0];
@@ -271,7 +274,7 @@ describe('initialize forwards the optional gray ramp', () => {
   it('adds no gray when none is set', async () => {
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       theme: { colors: { primary: '#3B82F6' } },
     });
     const payload = mockInitialize.mock.calls[0][0];
@@ -283,7 +286,7 @@ describe('initialize forwards the optional gray ramp', () => {
     setLogger(logger);
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       theme: { colors: { light: {}, dark: { gray700: 'navy' } } },
     });
     const warnings = warningsOf(logger);

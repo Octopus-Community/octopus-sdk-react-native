@@ -8,6 +8,92 @@ are listed in [`CHANGELOG.md`](./CHANGELOG.md) and don't need a migration entry.
 > One file, one section per version — we do **not** create per-version
 > `MIGRATION_x_y.md` files (a versioned filename multiplies docs over time).
 
+## 1.15.0
+
+The wrapped native SDKs move to the **1.15** line (Android 1.15.0, iOS 1.15.0), which removes
+Octopus-owned authentication. One breaking change, three deprecated icon slots; the new APIs
+are additive and listed in [`CHANGELOG.md`](./CHANGELOG.md).
+
+### Breaking — SSO-only authentication: the `octopus` connection mode is removed
+
+Your app now owns sign-in, aligned with the native SDKs' removal of Octopus-owned email
+Magic Link authentication in 1.15.0. The `type: 'octopus'` connection mode and its optional
+`deepLink` redirect field are removed from `initialize` and `switchCommunity`. The
+`connectionMode` field remains required and accepts only the SSO object. Native account
+settings, account deletion and logout flows are handled by your app.
+
+**Before:**
+
+```ts
+await initialize({
+  apiKey: 'YOUR_API_KEY',
+  connectionMode: { type: 'octopus', deepLink: 'yourapp://sign-in' },
+});
+await switchCommunity({
+  apiKey: 'YOUR_OTHER_API_KEY',
+  connectionMode: { type: 'octopus' },
+});
+```
+
+**After:**
+
+```ts
+import {
+  addLoginRequiredListener,
+  addUserTokenRequestListener,
+  connectUser,
+  initialize,
+  switchCommunity,
+} from '@octopus-community/react-native';
+
+const loginSubscription = addLoginRequiredListener(() => openAppLogin());
+const tokenSubscription = addUserTokenRequestListener(() => fetchTokenFromBackend());
+
+await initialize({
+  apiKey: 'YOUR_API_KEY',
+  connectionMode: { type: 'sso', appManagedFields: [] },
+});
+// Once your app signs its user in; handle connection rejections in your UI.
+await connectUser({ userId: signedInUser.id });
+
+await switchCommunity({
+  apiKey: 'YOUR_OTHER_API_KEY',
+  connectionMode: { type: 'sso', appManagedFields: [] },
+});
+await connectUser({ userId: signedInUser.id });
+```
+
+`openAppLogin` opens your app's sign-in UI. `fetchTokenFromBackend` returns a fresh JWT
+signed by your backend; never put the signing secret in the app. Register the provider
+before `connectUser`; React components can use `useUserTokenProvider` instead. Include
+`username`, `profilePicture` or `biography` in `appManagedFields` for fields owned by your
+app. Remove the subscriptions when their owner unmounts, call `disconnectUser` when your
+app signs out, and remount embedded views after switching community.
+
+Old JavaScript callers and unknown connection modes are rejected by native, without a
+fallback to SSO: `INITIALIZE_ERROR` for initialization or `SWITCH_COMMUNITY_ERROR` for a
+community switch, with the message:
+`Octopus-owned authentication was removed. SSO is required (connectionMode.type must be 'sso').`
+
+The example runs SSO only. Stored SSO configurations remain usable; a stored removed mode
+returns to Configuration. This change does not force a logout of a native stored session.
+
+### Deprecated — `settings.account`, `settings.logout` and `settings.deleteAccountWarning` icons
+
+The native screens that drew these three `theme.icons.settings` slots are gone with
+Octopus-owned authentication, so an override is still accepted but has no visible effect on
+either platform. Drop them from your theme; they will be removed in a future major version.
+`settings.help` is not deprecated by the native SDKs and stays, but no native 1.15 screen
+draws it either.
+
+```ts
+// Before
+theme: { icons: { settings: { account, info, logout, deleteAccountWarning } } }
+
+// After
+theme: { icons: { settings: { info } } }
+```
+
 ## 1.14.0
 
 The wrapped native SDKs move to the **1.14** line (Android 1.14.1, iOS 1.14.0). No breaking

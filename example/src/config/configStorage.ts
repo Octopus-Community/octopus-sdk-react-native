@@ -24,12 +24,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { debugLog } from '../debug/debugLog';
-import type {
-  ApiKeySource,
-  AppThemeChoice,
-  AuthMode,
-  DemoConfig,
-} from './demoConfig';
+import type { ApiKeySource, AppThemeChoice, DemoConfig } from './demoConfig';
 import { buildServerEnv, injectedApiKeys, octopusUserId } from './demoConfig';
 
 /**
@@ -47,12 +42,10 @@ interface PersistedDemoConfig {
   apiKeySource: ApiKeySource;
   selectedKeyId: string | null;
   userId: string;
-  authMode: AuthMode;
   theme: AppThemeChoice;
 }
 
 const API_KEY_SOURCES: ApiKeySource[] = ['demo', 'custom'];
-const AUTH_MODES: AuthMode[] = ['sso', 'octopus'];
 const THEMES: AppThemeChoice[] = ['system', 'light', 'dark'];
 
 /**
@@ -68,7 +61,6 @@ export function serializeDemoConfig(config: DemoConfig): PersistedDemoConfig {
     apiKeySource: config.apiKeySource,
     selectedKeyId: config.selectedKeyId,
     userId: config.userId,
-    authMode: config.authMode,
     theme: config.theme,
   };
 }
@@ -76,10 +68,9 @@ export function serializeDemoConfig(config: DemoConfig): PersistedDemoConfig {
 /**
  * Rebuilds a config from {@link serializeDemoConfig} output.
  *
- * Returns `null` when one of the three enums (`apiKeySource`, `authMode`,
- * `theme`) fails to parse — a renamed value, a blob from a future version — so a
- * stale entry sends the app back to a blank Config screen rather than into the
- * SDK with half a configuration. The other fields are not gates: `userId` is
+ * Returns `null` for an unknown `apiKeySource` / `theme` or a removed legacy
+ * authentication mode. A stale entry sends the app back to Config rather than
+ * starting the SDK with half a configuration. The other fields are not gates: `userId` is
  * back-filled from the build seed and `customApiKey` is never restored at all.
  *
  * Two values are re-derived from the current build rather than trusted:
@@ -96,7 +87,7 @@ export function deserializeDemoConfig(raw: unknown): DemoConfig | null {
   const theme = json.theme;
   if (
     !API_KEY_SOURCES.includes(apiKeySource as ApiKeySource) ||
-    !AUTH_MODES.includes(authMode as AuthMode) ||
+    (authMode !== undefined && authMode !== 'sso') ||
     !THEMES.includes(theme as AppThemeChoice)
   ) {
     return null;
@@ -128,7 +119,6 @@ export function deserializeDemoConfig(raw: unknown): DemoConfig | null {
     // Back-filled from the build seed: an empty id would connect nobody, and a
     // blob predating the picker has no id at all.
     userId: persistedUserId === '' ? octopusUserId : persistedUserId,
-    authMode: authMode as AuthMode,
     theme: theme as AppThemeChoice,
     serverEnv: buildServerEnv,
   };

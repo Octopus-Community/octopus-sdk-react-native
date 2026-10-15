@@ -15,7 +15,8 @@ private fun painterSlot(painter: Painter): @Composable () -> Painter = { painter
  * Every path is mapped onto its Android field here — the names differ in a few places
  * (`content.post.creation.open` is `post.creation.create`, `content.comment.creation.open`
  * is `post.openCommentCreation`, `content.reply.creation.open` is
- * `comment.openReplyCreation`, `profile.emptyNotifications` lives under `notifications`...).
+ * `comment.openReplyCreation`...). `profile.emptyNotifications` is accepted and ignored, as
+ * on iOS: both SDKs draw an empty notification list from `screenStates.emptyNotifications`.
  * An absent path keeps the SDK default; an on/off pair is applied only when both of its
  * images loaded, as the TypeScript layer only ever sends complete pairs.
  */
@@ -143,9 +144,6 @@ internal fun octopusIconsWithOverrides(overrides: Map<String, Painter>): Octopus
       notConnected = slot("profile.notConnected", profile.notConnected),
       blockUser = slot("profile.blockUser", profile.blockUser)
     ),
-    notifications = base.notifications.copy(
-      emptyNotifications = slot("profile.emptyNotifications", base.notifications.emptyNotifications)
-    ),
     screenStates = screenStates.copy(
       emptyContent = slot("screenStates.emptyContent", screenStates.emptyContent),
       emptyNotifications = slot("screenStates.emptyNotifications", screenStates.emptyNotifications),
@@ -157,6 +155,7 @@ internal fun octopusIconsWithOverrides(overrides: Map<String, Painter>): Octopus
     toggle = pair("common.toggle", base.toggle),
     moreActions = slot("common.moreActions", base.moreActions),
     activityButton = slot("common.activityButton", base.activityButton),
-    cellNavIndicator = slot("common.listCellNavIndicator", base.cellNavIndicator)
+    cellNavIndicator = slot("common.listCellNavIndicator", base.cellNavIndicator),
+    clearText = slot("common.clearText", base.clearText)
   )
 }

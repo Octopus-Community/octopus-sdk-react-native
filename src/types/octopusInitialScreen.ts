@@ -12,8 +12,8 @@ import type { OctopusPrefilledPost } from './octopusPrefilledPost';
  *   omitting `initialScreen` entirely.
  * - `post` — a specific post's detail screen (bridge mode).
  * - `group` — a specific group's feed (bridge mode).
- * - `activity` — the posts-only screen listing one member's Octopus posts
- *   (Unified Profile). See {@link OctopusInitialScreenActivity.member}.
+ * - `activity` — the member activity screen listing one member's Octopus posts
+ *   and, when the community exposes them, their comments (Unified Profile). See {@link OctopusInitialScreenActivity.member}.
  * - `profile` — one member's Octopus profile, or — with `clientUserId`
  *   omitted — the connected user's own, editable profile.
  * - `createPost` — the post editor, optionally prefilled. Equivalent to
@@ -56,7 +56,8 @@ export interface OctopusInitialScreenGroup {
 }
 
 /**
- * The posts-only screen listing one member's Octopus posts (Unified Profile).
+ * The member activity screen listing one member's Octopus posts and, when the
+ * community exposes them, their comments (Unified Profile).
  *
  * Open it from your own profile screen — typically the one you show after
  * intercepting a profile tap via `interceptProfileTaps` +
@@ -100,7 +101,7 @@ export interface OctopusInitialScreenProfile {
    *
    * There is deliberately no Octopus-profile-id variant: the iOS native
    * profile screen has no such form. Holding only an Octopus id, open the
-   * member's posts instead with `{ type: 'activity', member: { profileId } }`.
+   * member's activity instead with `{ type: 'activity', member: { profileId } }`.
    */
   clientUserId?: string;
 }

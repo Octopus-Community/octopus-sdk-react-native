@@ -1,6 +1,7 @@
 import { initialize } from '../initialize';
 import {
   flattenIconOverrides,
+  flattenIconOverridesWithScales,
   ICON_ON_OFF_PATHS,
   ICON_SLOT_PATHS,
 } from '../internals/iconOverrides';
@@ -145,6 +146,7 @@ const EVERY_SLOT: DeepRequired<OctopusIcons> = {
     moreActions: img('69'),
     activityButton: img('70'),
     listCellNavIndicator: img('71'),
+    clearText: img('76'),
   },
   screenStates: {
     emptyContent: img('72'),
@@ -170,8 +172,8 @@ describe('flattenIconOverrides', () => {
       ...ICON_ON_OFF_PATHS.flatMap((p) => [`${p}.on`, `${p}.off`]),
     ];
     expect(Object.keys(flat).sort()).toEqual([...expectedKeys].sort());
-    expect(expectedKeys).toHaveLength(75);
-    expect(new Set(Object.values(flat)).size).toBe(75);
+    expect(expectedKeys).toHaveLength(76);
+    expect(new Set(Object.values(flat)).size).toBe(76);
     expect(warnings()).toEqual([]);
   });
 
@@ -264,11 +266,113 @@ describe('flattenIconOverrides', () => {
   });
 });
 
+describe('flattenIconOverridesWithScales', () => {
+  it('carries the scale of each slot next to its URI, including both sides of a pair', () => {
+    const icons: OctopusIcons = {
+      content: { report: { ...img('r'), scale: 3 } },
+      common: {
+        radio: {
+          on: { ...img('on'), scale: 2 },
+          off: { ...img('off'), scale: 2 },
+        },
+      },
+    };
+    expect(flattenIconOverridesWithScales(icons)).toEqual({
+      uris: {
+        'content.report': 'asset_r',
+        'common.radio.on': 'asset_on',
+        'common.radio.off': 'asset_off',
+      },
+      scales: {
+        'content.report': 3,
+        'common.radio.on': 2,
+        'common.radio.off': 2,
+      },
+    });
+  });
+
+  it('leaves a slot without a usable scale out of the scales', () => {
+    const icons = {
+      content: {
+        report: { uri: 'https://example.com/r.png', scale: 'big' },
+        delete: { uri: 'https://example.com/d.png', scale: 0 },
+      },
+    } as unknown as OctopusIcons;
+    const flat = flattenIconOverridesWithScales(icons);
+    expect(Object.keys(flat?.uris ?? {})).toHaveLength(2);
+    expect(flat?.scales).toEqual({});
+  });
+
+  it('keeps flattenIconOverrides returning the URI map alone', () => {
+    const icons: OctopusIcons = {
+      content: { report: { ...img('r'), scale: 3 } },
+    };
+    expect(flattenIconOverrides(icons)).toEqual({
+      'content.report': 'asset_r',
+    });
+  });
+});
+
+describe('initialize sanitises the logo scale', () => {
+  const send = async (image: unknown) => {
+    await initialize({
+      apiKey: 'k',
+      connectionMode: { type: 'sso', appManagedFields: [] },
+      theme: { logo: { image: image as OctopusIconSource } },
+    });
+    return mockInitialize.mock.calls[0][0].theme.logo.image;
+  };
+
+  it('keeps a valid scale untouched', async () => {
+    expect(await send({ uri: 'u', scale: 3 })).toEqual({ uri: 'u', scale: 3 });
+  });
+
+  it.each([0, -1, Infinity, NaN, '3'])('drops the scale %p', async (scale) => {
+    expect(await send({ uri: 'u', width: 1, height: 1, scale })).toEqual({
+      uri: 'u',
+      width: 1,
+      height: 1,
+    });
+  });
+});
+
 describe('initialize forwards theme.icons as iconOverrides', () => {
+  it('sends the scale of each icon over the bridge as iconOverrideScales', async () => {
+    await initialize({
+      apiKey: 'k',
+      connectionMode: { type: 'sso', appManagedFields: [] },
+      theme: {
+        icons: { content: { report: { ...img('r'), scale: 3 } } },
+      },
+    });
+    const { theme } = mockInitialize.mock.calls[0][0];
+    expect(theme.iconOverrides).toEqual({ 'content.report': 'asset_r' });
+    expect(theme.iconOverrideScales).toEqual({ 'content.report': 3 });
+  });
+
+  it('omits iconOverrideScales when no icon carries a scale', async () => {
+    await initialize({
+      apiKey: 'k',
+      connectionMode: { type: 'sso', appManagedFields: [] },
+      theme: {
+        icons: {
+          content: {
+            report: { uri: 'https://example.com/r.png' },
+          } as unknown as OctopusIcons['content'],
+        },
+      },
+    });
+    const { theme } = mockInitialize.mock.calls[0][0];
+    expect(theme.iconOverrides).toEqual({
+      'content.report': 'https://example.com/r.png',
+    });
+    expect(theme).not.toHaveProperty('iconOverrideScales');
+  });
+
   it('sends the flat map and never the nested icons object', async () => {
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       theme: { icons: { content: { report: img('r') } } },
     });
     const { theme } = mockInitialize.mock.calls[0][0];
@@ -279,7 +383,7 @@ describe('initialize forwards theme.icons as iconOverrides', () => {
   it('forwards each screen-state illustration without changing its key or URI', async () => {
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       theme: { icons: { screenStates: EVERY_SLOT.screenStates } },
     });
     expect(mockInitialize.mock.calls[0][0].theme.iconOverrides).toEqual({
@@ -291,10 +395,44 @@ describe('initialize forwards theme.icons as iconOverrides', () => {
     expect(warnings()).toEqual([]);
   });
 
+  it('preserves deprecated empty-state slots alongside their screenStates replacements', async () => {
+    await initialize({
+      apiKey: 'k',
+      connectionMode: { type: 'sso', appManagedFields: [] },
+      theme: {
+        icons: {
+          content: {
+            post: {
+              emptyFeedInGroups: img('legacy-group'),
+              emptyFeedInCurrentUserProfile: img('legacy-current-user'),
+              emptyFeedInOtherUserProfile: img('legacy-other-user'),
+            },
+            comment: { emptyFeed: img('legacy-comment') },
+          },
+          profile: { emptyNotifications: img('legacy-notifications') },
+          screenStates: {
+            emptyContent: img('empty-content'),
+            emptyNotifications: img('empty-notifications'),
+          },
+        },
+      },
+    });
+    expect(mockInitialize.mock.calls[0][0].theme.iconOverrides).toEqual({
+      'content.post.emptyFeedInGroups': 'asset_legacy-group',
+      'content.post.emptyFeedInCurrentUserProfile': 'asset_legacy-current-user',
+      'content.post.emptyFeedInOtherUserProfile': 'asset_legacy-other-user',
+      'content.comment.emptyFeed': 'asset_legacy-comment',
+      'profile.emptyNotifications': 'asset_legacy-notifications',
+      'screenStates.emptyContent': 'asset_empty-content',
+      'screenStates.emptyNotifications': 'asset_empty-notifications',
+    });
+    expect(warnings()).toEqual([]);
+  });
+
   it('sends no iconOverrides key when the theme has no icons', async () => {
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       theme: { colors: { primary: '#123456' } },
     });
     const { theme } = mockInitialize.mock.calls[0][0];
@@ -306,7 +444,7 @@ describe('initialize forwards theme.icons as iconOverrides', () => {
   it('sends no iconOverrides key when every override is invalid', async () => {
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       theme: {
         logo: { image: img('logo') },
         icons: { bogus: img('b') } as unknown as OctopusIcons,

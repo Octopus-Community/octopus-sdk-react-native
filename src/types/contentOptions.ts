@@ -12,6 +12,12 @@ export interface ContentOptions {
     enablePictures?: boolean;
     /** Whether a post may be a poll. Defaults to `true`. */
     enablePolls?: boolean;
+    /**
+     * Whether a post requires text. Defaults to `true`. When `false`, a post with an image
+     * (with or without a poll) may omit text. A poll alone still requires text; native length
+     * validation still applies whenever text is present.
+     */
+    textRequired?: boolean;
   };
   comment?: {
     /** Whether a comment may include a picture. Defaults to `true`. */

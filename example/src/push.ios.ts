@@ -2,58 +2,49 @@ import { NativeEventEmitter, NativeModules } from 'react-native';
 import {
   isOctopusNotification,
   getOctopusNotification,
-  openNotification,
-  registerPushNotificationToken,
 } from '@octopus-community/react-native';
+import { pushInbox, pushTapId } from './navigation/pushInbox';
+import { formatRedactedError } from './config/apiKeyMask';
 
-// Native module defined in ios/OctopusReactNativeSdkExample/OctopusPushModule.swift.
-// iOS uses direct APNs (no Firebase): this forwards the APNs device token and
-// tapped notification userInfo from native to JS.
 const { OctopusPushModule } = NativeModules;
 const emitter = new NativeEventEmitter(OctopusPushModule);
-
 export interface SetupOctopusPushOptions {
-  /** Called with the device push token once available (debug aid). */
   onToken?: (token: string | null) => void;
 }
-
-function handle(userInfo: Record<string, any>): void {
+async function handle(userInfo: Record<string, any>): Promise<void> {
   if (!isOctopusNotification(userInfo)) return;
   const notification = getOctopusNotification(userInfo);
   if (!notification) return;
-  openNotification(notification).catch((err) =>
-    console.error('Octopus openNotification error', err)
-  );
+  await pushInbox.enqueue({
+    id: pushTapId(notification, userInfo.sample_push_id),
+    notification,
+  });
 }
 
-/**
- * Bootstraps Octopus push handling on iOS using native APNs (no Firebase).
- * Call once after the SDK has been initialized. Mirrors the Android entry point
- * in `push.ts`.
- */
+/** Listen before initialization so a warm tap remains pending during startup. */
 export async function setupOctopusPush(
   options?: SetupOctopusPushOptions
-): Promise<void> {
-  await OctopusPushModule.requestPermissions();
-
-  emitter.addListener('octopusPushToken', (token: string) => {
-    if (!token || token.length === 0) return;
-    options?.onToken?.(token);
-    registerPushNotificationToken(token).catch((err) =>
-      console.error('Octopus token register error', err)
-    );
+): Promise<() => void> {
+  const token = emitter.addListener('octopusPushToken', (value: string) => {
+    if (value) options?.onToken?.(value);
   });
-
-  emitter.addListener(
+  const opened = emitter.addListener(
     'octopusNotificationOpened',
     (userInfo: Record<string, any>) => {
-      handle(userInfo);
+      handle(userInfo).catch((error) =>
+        console.error('Push tap failed', formatRedactedError(error))
+      );
     }
   );
-
-  const initial = (await OctopusPushModule.getInitialNotification()) as Record<
-    string,
-    any
-  > | null;
-  if (initial) handle(initial);
+  try {
+    const initial = await OctopusPushModule.getInitialNotification();
+    if (initial) await handle(initial);
+    await OctopusPushModule.requestPermissions();
+  } catch (error) {
+    console.error('Octopus push setup error', formatRedactedError(error));
+  }
+  return () => {
+    opened.remove();
+    token.remove();
+  };
 }

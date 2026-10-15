@@ -129,7 +129,6 @@ describe('buildDebugInfoCards', () => {
     host: 'api-demo2.8pus.io',
     community: 'Demo community',
     apiKeySource: 'Demo (.env)',
-    authMode: 'sso',
     userId: 'qa-user',
     displayMode: 'embed',
     urlOpeningMode: 'defaultBrowser',
@@ -142,22 +141,27 @@ describe('buildDebugInfoCards', () => {
 
   it('describes the build and the configuration in force', () => {
     const cards = buildDebugInfoCards(base);
-    expect(cards.map((c) => c.title)).toEqual(['Build', 'Configuration']);
+    expect(cards.map((c) => c.title)).toEqual([
+      'Build',
+      'Feature toggles',
+      'Configuration',
+      'Host app integration',
+    ]);
     expect(value(cards, 'Build')).toBe('—');
     expect(value(cards, 'Server')).toBe('Demo — api-demo2.8pus.io');
-    expect(value(cards, 'SSO user id')).toBe('qa-user');
+    expect(value(cards, 'SSO user')).toBe('qa-user');
     expect(value(cards, 'Display mode')).toBe('Embedded');
   });
 
-  it('shows no SSO user in octopus mode, where there is no host user', () => {
-    const cards = buildDebugInfoCards({ ...base, authMode: 'octopus' });
-    expect(value(cards, 'Authentication')).toBe('Octopus');
-    expect(value(cards, 'SSO user id')).toBe('—');
+  it('shows SSO authentication and an empty user placeholder', () => {
+    const cards = buildDebugInfoCards({ ...base, userId: '' });
+    expect(value(cards, 'Auth mode')).toBe('SSO');
+    expect(value(cards, 'SSO user')).toBe('—');
   });
 
   it('carries the key provenance only, never a key', () => {
     const rows = buildDebugInfoCards(base).flatMap((c) => c.rows);
-    expect(rows.map((r) => r.label)).not.toContain('API key');
+    expect(rows.find((row) => row.label === 'API key')?.value).toBe('—');
     expect(value(buildDebugInfoCards(base), 'API key source')).toBe(
       'Demo (.env)'
     );

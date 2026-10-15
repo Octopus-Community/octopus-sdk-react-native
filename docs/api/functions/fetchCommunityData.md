@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.14.0**](../README.md)
+[**@octopus-community/react-native v1.15.0**](../README.md)
 
 ---
 
@@ -27,6 +27,8 @@ The member's community data, or `null` when the member is unknown.
 ## Throws
 
 A plain `Error` synchronously when `memberId` carries both or neither id.
+The promise rejects with code `SERVER_ERROR` when the native lookup fails (for example,
+a network, authentication, permission or server error), on both platforms.
 
 ## See
 

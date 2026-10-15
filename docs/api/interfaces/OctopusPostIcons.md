@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.14.0**](../README.md)
+[**@octopus-community/react-native v1.15.0**](../README.md)
 
 ---
 
@@ -16,7 +16,7 @@ Icons of posts.
 
 Next to the comment count of a post.
 
-**Not drawn at native 1.13.x:** declared by both native SDKs, but no screen reads it at
+**Not drawn at native 1.15.x:** declared by both native SDKs, but no screen reads it at
 the current pins, so an override is accepted and has no visible effect yet.
 
 ---
@@ -29,36 +29,54 @@ Icons of the post creation screen.
 
 ---
 
-### emptyFeedInCurrentUserProfile?
+### ~~emptyFeedInCurrentUserProfile?~~
 
 > `optional` **emptyFeedInCurrentUserProfile**: `ImageResolvedAssetSource`
 
 Illustration of the current user's empty post feed on their profile.
 
-Native 1.14 on iOS and Android renders [OctopusScreenStatesIcons.emptyContent](OctopusScreenStatesIcons.md#emptycontent)
-instead. This per-feature slot is accepted but has no visible effect with the native 1.14 SDKs.
+Native 1.15 on iOS and Android renders [OctopusScreenStatesIcons.emptyContent](OctopusScreenStatesIcons.md#emptycontent)
+instead. This per-feature slot is accepted but has no visible effect with the native 1.15 SDKs.
+
+#### Deprecated
+
+Use [OctopusScreenStatesIcons.emptyContent](OctopusScreenStatesIcons.md#emptycontent) via
+`theme.icons.screenStates.emptyContent` instead. This slot has no visible effect.
+It will be removed in a future major version together with the native SDKs.
 
 ---
 
-### emptyFeedInGroups?
+### ~~emptyFeedInGroups?~~
 
 > `optional` **emptyFeedInGroups**: `ImageResolvedAssetSource`
 
 Illustration of an empty group feed.
 
-Native 1.14 on iOS and Android renders [OctopusScreenStatesIcons.emptyContent](OctopusScreenStatesIcons.md#emptycontent)
-instead. This per-feature slot is accepted but has no visible effect with the native 1.14 SDKs.
+Native 1.15 on iOS and Android renders [OctopusScreenStatesIcons.emptyContent](OctopusScreenStatesIcons.md#emptycontent)
+instead. This per-feature slot is accepted but has no visible effect with the native 1.15 SDKs.
+
+#### Deprecated
+
+Use [OctopusScreenStatesIcons.emptyContent](OctopusScreenStatesIcons.md#emptycontent) via
+`theme.icons.screenStates.emptyContent` instead. This slot has no visible effect.
+It will be removed in a future major version together with the native SDKs.
 
 ---
 
-### emptyFeedInOtherUserProfile?
+### ~~emptyFeedInOtherUserProfile?~~
 
 > `optional` **emptyFeedInOtherUserProfile**: `ImageResolvedAssetSource`
 
 Illustration of another user's empty post feed on their profile.
 
-Native 1.14 on iOS and Android renders [OctopusScreenStatesIcons.emptyContent](OctopusScreenStatesIcons.md#emptycontent)
-instead. This per-feature slot is accepted but has no visible effect with the native 1.14 SDKs.
+Native 1.15 on iOS and Android renders [OctopusScreenStatesIcons.emptyContent](OctopusScreenStatesIcons.md#emptycontent)
+instead. This per-feature slot is accepted but has no visible effect with the native 1.15 SDKs.
+
+#### Deprecated
+
+Use [OctopusScreenStatesIcons.emptyContent](OctopusScreenStatesIcons.md#emptycontent) via
+`theme.icons.screenStates.emptyContent` instead. This slot has no visible effect.
+It will be removed in a future major version together with the native SDKs.
 
 ---
 
@@ -84,7 +102,7 @@ Shown on a moderated post.
 
 Opens the full reaction picker.
 
-**Not drawn at native 1.13.x:** declared by both native SDKs, but no screen reads it at
+**Not drawn at native 1.15.x:** declared by both native SDKs, but no screen reads it at
 the current pins, so an override is accepted and has no visible effect yet.
 
 ---
@@ -103,5 +121,5 @@ Shown in place of a post that is no longer available.
 
 Next to the view count of a post.
 
-**Not drawn at native 1.13.x:** declared by both native SDKs, but no screen reads it at
+**Not drawn at native 1.15.x:** declared by both native SDKs, but no screen reads it at
 the current pins, so an override is accepted and has no visible effect yet.

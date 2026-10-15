@@ -28,7 +28,7 @@ function warningsOf(logger: jest.Mock): string[] {
 async function initWithFonts(fonts: Record<string, unknown>) {
   await initialize({
     apiKey: 'k',
-    connectionMode: { type: 'octopus' },
+    connectionMode: { type: 'sso', appManagedFields: [] },
     theme: { fonts },
   });
   return mockInitialize.mock.calls[0][0].theme.fonts.parsedConfig;

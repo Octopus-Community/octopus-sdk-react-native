@@ -11,6 +11,7 @@
 		1DE8FEEB6087AF02D1E1D319 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 		4462EE9A5F390CA1D23598EE /* OctopusPushModule.m in Sources */ = {isa = PBXBuildFile; fileRef = F8125DCE3D555D92AE57DD2C /* OctopusPushModule.m */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
+		5CE0E1A02E8F4C3B00A1B2C3 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CE0E1A12E8F4C3B00A1B2C3 /* SceneDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		9181201A02617CA4ADBB4AF5 /* Pods_OctopusReactNativeSdkExample.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9EE954E721A287DAC03D4AD2 /* Pods_OctopusReactNativeSdkExample.framework */; };
 		F8024F1CDF4B06A3158429DD /* OctopusPushModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D8A003EE6FF511CB773F96E /* OctopusPushModule.swift */; };
@@ -25,6 +26,7 @@
 		4D8A003EE6FF511CB773F96E /* OctopusPushModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OctopusReactNativeSdkExample/OctopusPushModule.swift; sourceTree = "<group>"; };
 		5709B34CF0A7D63546082F79 /* Pods-OctopusReactNativeSdkExample.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-OctopusReactNativeSdkExample.release.xcconfig"; path = "Target Support Files/Pods-OctopusReactNativeSdkExample/Pods-OctopusReactNativeSdkExample.release.xcconfig"; sourceTree = "<group>"; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = OctopusReactNativeSdkExample/AppDelegate.swift; sourceTree = "<group>"; };
+		5CE0E1A12E8F4C3B00A1B2C3 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SceneDelegate.swift; path = OctopusReactNativeSdkExample/SceneDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = OctopusReactNativeSdkExample/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		9EE954E721A287DAC03D4AD2 /* Pods_OctopusReactNativeSdkExample.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_OctopusReactNativeSdkExample.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
@@ -48,6 +50,7 @@
 			children = (
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				761780EC2CA45674006654EE /* AppDelegate.swift */,
+				5CE0E1A12E8F4C3B00A1B2C3 /* SceneDelegate.swift */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
@@ -253,6 +256,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,
+				5CE0E1A02E8F4C3B00A1B2C3 /* SceneDelegate.swift in Sources */,
 				F8024F1CDF4B06A3158429DD /* OctopusPushModule.swift in Sources */,
 				4462EE9A5F390CA1D23598EE /* OctopusPushModule.m in Sources */,
 			);

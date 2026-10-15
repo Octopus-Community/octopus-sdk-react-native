@@ -1,6 +1,7 @@
 // Same approach as scenarioCustomize.test.tsx: host nodes instead of the real RN, so the
 // component's state and timer run without loading a second native bridge into Jest.
 jest.mock('react-native', () => ({
+  Platform: { select: (values: { default: string }) => values.default },
   Pressable: 'Pressable',
   Text: 'Text',
   View: 'View',

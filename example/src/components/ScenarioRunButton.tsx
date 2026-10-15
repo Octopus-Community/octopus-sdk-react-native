@@ -26,11 +26,11 @@ export function ScenarioRunButton({
   isDark,
   onPress,
   disabled = false,
-  idleLabel = 'Run',
+  idleLabel = 'Execute',
 }: ScenarioRunButtonProps) {
   const isRunning = state.status === 'running';
   const hasRun = state.status === 'success' || state.status === 'error';
-  const label = isRunning ? 'Running…' : hasRun ? 'Run again' : idleLabel;
+  const label = isRunning ? 'Running…' : hasRun ? 'Execute again' : idleLabel;
 
   return (
     <PillButton

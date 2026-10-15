@@ -1,19 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-// The parser resolves colours through the native platform module, absent under Jest; the
-// test is about geometry, so colours pass through unchanged.
-jest.mock('react-native/Libraries/StyleSheet/processColor', () => ({
-  __esModule: true,
-  default: (color: unknown) => color,
-}));
-
-// Untyped Flow module: the renderer's own parser, which is what the halo test has to pin.
-const processBackgroundImage: (value: string) => unknown[] = jest.requireActual(
-  'react-native/Libraries/StyleSheet/processBackgroundImage'
-).default;
-
-import { darkHaloBackgroundImage } from '../components/DarkHalo';
 import type { ChromeColors } from '../theme/branding';
 import {
   chromeColors,
@@ -202,6 +189,15 @@ describe.each(PALETTES)('%s chrome palette', (_name, chrome) => {
       );
     }
   );
+
+  it('keeps both inactive ink and the active pill distinct on the segment track', () => {
+    expect(
+      contrast(chrome.textSecondary, chrome.segmentTrack)
+    ).toBeGreaterThanOrEqual(TEXT_FLOOR);
+    expect(
+      contrast(chrome.control, chrome.segmentTrack)
+    ).toBeGreaterThanOrEqual(3);
+  });
 });
 
 describe('dark chrome affordances', () => {
@@ -225,27 +221,30 @@ describe('dark chrome affordances', () => {
     }
   );
 
-  it('keeps caption ink readable where the halo peaks over the page', () => {
-    expect(
-      contrast(chrome.textSecondary, chrome.background, OCTOPUS_BRAND.darkHalo)
-    ).toBeGreaterThanOrEqual(TEXT_FLOOR);
-  });
-
   it('keeps the off-track distinguishable from the card', () => {
     expect(contrast(chrome.track, chrome.surface)).toBeGreaterThanOrEqual(3);
-  });
-
-  it('keeps both inactive ink and the active pill distinct on the segment track', () => {
-    expect(
-      contrast(chrome.textSecondary, chrome.segmentTrack)
-    ).toBeGreaterThanOrEqual(TEXT_FLOOR);
-    expect(contrast(chrome.accent, chrome.segmentTrack)).toBeGreaterThanOrEqual(
-      3
-    );
   });
 });
 
 describe('OCTOPUS_SDK_THEME', () => {
+  it('keeps each community palette on its matching background with readable links', () => {
+    // Android picks its base palette from this luminance before applying host colors.
+    expect(
+      relativeLuminance(parseColor(OCTOPUS_SDK_THEME.light.background).rgb)
+    ).toBeGreaterThan(0.5);
+    expect(
+      relativeLuminance(parseColor(OCTOPUS_SDK_THEME.dark.background).rgb)
+    ).toBeLessThan(0.5);
+    for (const colors of [OCTOPUS_SDK_THEME.light, OCTOPUS_SDK_THEME.dark]) {
+      expect(
+        contrast(colors.primary, colors.background)
+      ).toBeGreaterThanOrEqual(TEXT_FLOOR);
+      expect(contrast(colors.link, colors.background)).toBeGreaterThanOrEqual(
+        TEXT_FLOOR
+      );
+    }
+  });
+
   it('keeps `onPrimary` readable on `primary` in both appearances', () => {
     expect(
       contrast(
@@ -301,37 +300,21 @@ describe("the Config screen's CTA", () => {
   });
 });
 
-describe('dark halo (shared cross-platform spec)', () => {
-  it('glows from the top-right corner, radius = window width, accent 12 % to 0', () => {
-    expect(darkHaloBackgroundImage(411.4)).toBe(
-      'radial-gradient(ellipse 411px 411px at 100% 0%, rgba(29,136,254,0.12), rgba(29,136,254,0))'
-    );
-    expect(OCTOPUS_BRAND.darkHalo).toBe('rgba(29,136,254,0.12)');
-    expect(OCTOPUS_BRAND.darkHaloEnd).toBe('rgba(29,136,254,0)');
-  });
-
-  it("survives React Native's own gradient parser with the corner and radius intact", () => {
-    // The string is only half the contract: RN 0.81 mis-parses `circle <r> at …` into a
-    // centred gradient without any warning, so check what the renderer actually receives.
-    const [parsed] = processBackgroundImage(darkHaloBackgroundImage(411.4));
-    expect(parsed).toMatchObject({
-      type: 'radial-gradient',
-      size: { x: 411, y: 411 },
-      position: { top: '0%', left: '100%' },
-    });
-  });
-
-  it('lets the halo through the dark header and screens, and only there', () => {
-    const dark = chromeColors(true);
-    const light = chromeColors(false);
-    expect(dark.header).toBe('transparent');
-    expect(dark.screen).toBe('transparent');
-    // System bars keep their behaviour: the inset colour is unchanged in both themes.
-    expect(dark.appBar).toBe(OCTOPUS_BRAND.darkBackground);
-    expect(light.appBar).toBe(OCTOPUS_BRAND.navy);
-    // Light theme unchanged: the header is the navy bar, the screen the page colour.
-    expect(light.header).toBe(light.appBar);
-    expect(light.screen).toBe(light.background);
+describe('sample backgrounds', () => {
+  it('paints flat sample backgrounds and readable headers in both themes', () => {
+    for (const dark of [false, true]) {
+      const chrome = chromeColors(dark);
+      expect(chrome.header).toBe(chrome.background);
+      expect(chrome.screen).toBe(chrome.background);
+      expect(chrome.appBar).toBe(chrome.background);
+      expect(contrast(chrome.onAppBar, chrome.header)).toBeGreaterThanOrEqual(
+        TEXT_FLOOR
+      );
+      expect(chrome.navIndicator).toBe(chrome.accentContainer);
+    }
+    expect(
+      readFileSync(join(__dirname, '..', 'App.tsx'), 'utf8')
+    ).not.toContain('<DarkHalo');
   });
 });
 
@@ -349,25 +332,129 @@ describe('dark palette (shared cross-platform spec)', () => {
       textSecondary: chrome.textSecondary,
     }).toEqual({
       background: '#070D17',
-      surface: '#0F1B2D',
-      elevated: '#16243A',
-      border: '#1E2A3D',
-      textBody: '#E9F0FA',
-      text: '#F2F6FC',
-      textSecondary: '#8C9AB0',
+      surface: '#18253B',
+      elevated: '#18253B',
+      border: '#4A5F80',
+      textBody: '#F2F5F9',
+      text: '#F2F5F9',
+      textSecondary: '#A3B0C2',
     });
-    expect(OCTOPUS_BRAND.darkBorderStrong).toBe('#243349');
+    expect(OCTOPUS_BRAND.darkBorderStrong).toBe('#4A5F80');
   });
 
   it('hands the SDK the Android gray ramp mapping in dark only', () => {
     expect(OCTOPUS_SDK_THEME.dark).toMatchObject({
       gray100: '#070D17',
-      gray200: '#0F1B2D',
-      gray300: '#1E2A3D',
-      gray700: '#E9F0FA',
+      gray200: '#18253B',
+      gray300: '#2B364B',
+      gray700: '#F2F5F9',
     });
     expect(Object.keys(OCTOPUS_SDK_THEME.light)).not.toEqual(
       expect.arrayContaining(['gray100'])
     );
+  });
+});
+
+// All text roles, including placeholders and semantics, on each actual host surface.
+describe.each(PALETTES)('%s R1 token floors', (_name, c) => {
+  it.each([
+    'background',
+    'surface',
+    'surfaceRaised',
+    'elevated',
+    'tint',
+  ] as const)(
+    'keeps text readable and control outlines distinct on %s',
+    (surface) => {
+      for (const ink of [
+        c.text,
+        c.textBody,
+        c.textSecondary,
+        c.textPlaceholder,
+        c.accentText,
+        c.success,
+        c.danger,
+      ]) {
+        expect(contrast(ink, c[surface])).toBeGreaterThanOrEqual(4.5);
+      }
+      expect(contrast(c.outline, c[surface])).toBeGreaterThanOrEqual(3);
+      expect(contrast(c.focus, c[surface])).toBeGreaterThanOrEqual(3);
+    }
+  );
+  it('keeps unread/update badges and warning/danger banners readable', () => {
+    expect(contrast(c.onBadge, c.badgeFill)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(c.warn, c.warnSurface)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(c.danger, c.dangerSurface)).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+// Launcher icon A3 "Pastille": the Octopus app symbol with its three dots on the navy
+// tile, and the real React logo in the small bubble — the same composition as every other
+// Octopus sample. `example/assets/launcher.svg` is the editable source; these checks keep
+// the Android layers and the iOS icon from drifting back to the old glyph.
+describe('launcher icon', () => {
+  const exampleRoot = join(__dirname, '..', '..');
+  const res = join(exampleRoot, 'android', 'app', 'src', 'main', 'res');
+  const read = (...parts: string[]) => readFileSync(join(...parts), 'utf8');
+  const svgPaths = (svg: string) =>
+    [
+      ...svg.matchAll(/<path\b[^>]*\sd="([^"]+)"[^>]*fill="(#[0-9A-F]{6})"/gi),
+    ].map((m) => `${m[2]!.toUpperCase()} ${m[1]}`);
+  const vectorPaths = (xml: string) =>
+    [
+      ...xml.matchAll(
+        /<path\b[^>]*android:fillColor="(#[0-9A-F]{6})"[^>]*android:pathData="([^"]+)"/gi
+      ),
+    ].map((m) => `${m[1]!.toUpperCase()} ${m[2]}`);
+
+  it.each(['ic_launcher.xml', 'ic_launcher_round.xml'])(
+    'declares the vector background, foreground and themed monochrome layers in %s',
+    (file) => {
+      const xml = read(res, 'mipmap-anydpi-v26', file);
+      expect(xml).toContain('@drawable/ic_launcher_background');
+      expect(xml).toContain('@drawable/ic_launcher_foreground');
+      expect(xml).toContain(
+        '<monochrome android:drawable="@drawable/ic_launcher_monochrome"'
+      );
+    }
+  );
+
+  it('draws the same symbol and React logo as the editable source', () => {
+    const source = svgPaths(read(exampleRoot, 'assets', 'launcher.svg'));
+    const foreground = vectorPaths(
+      read(res, 'drawable', 'ic_launcher_foreground.xml')
+    );
+    expect(foreground).toHaveLength(3);
+    expect(foreground).toEqual(source);
+    // The official React blue that holds on the white bubble (#61DAFB is 1.6:1 there).
+    expect(foreground[2]).toMatch(/^#087EA4 /);
+  });
+
+  it('cuts the React logo out of the themed symbol and keeps the dots solid', () => {
+    const monochrome = vectorPaths(
+      read(res, 'drawable', 'ic_launcher_monochrome.xml')
+    );
+    const [mark, dots, logo] = svgPaths(
+      read(exampleRoot, 'assets', 'launcher.svg')
+    ).map((p) => p.slice(8));
+    // One even-odd path: the symbol plus the logo as a hole, so the system tint shows it.
+    expect(monochrome.map((p) => p.slice(8))).toEqual([`${mark}${logo}`, dots]);
+  });
+
+  it('ships an opaque 1024 iOS app icon (App Store Connect rejects alpha)', () => {
+    const png = readFileSync(
+      join(
+        exampleRoot,
+        'ios',
+        'OctopusReactNativeSdkExample',
+        'Images.xcassets',
+        'AppIcon.appiconset',
+        'AppIcon.png'
+      )
+    );
+    expect(png.readUInt32BE(16)).toBe(1024);
+    expect(png.readUInt32BE(20)).toBe(1024);
+    // IHDR colour type 2 = truecolour without alpha.
+    expect(png[25]).toBe(2);
   });
 });

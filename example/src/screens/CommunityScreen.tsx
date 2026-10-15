@@ -1,7 +1,13 @@
 import { StyleSheet, View } from 'react-native';
 import * as Octopus from '@octopus-community/react-native';
 import { StatusBand } from '../components/StatusBand';
+import {
+  communityPushTarget,
+  type CommunityMode,
+} from '../navigation/communityNavigation';
+import type { OctopusNotification } from '@octopus-community/react-native';
 import { chromeColors } from '../theme/branding';
+import { useTabVisible } from '../navigation/tabVisibility';
 
 export interface CommunityScreenProps {
   interceptUrls: boolean;
@@ -13,11 +19,6 @@ export interface CommunityScreenProps {
   onRetryInit: () => void;
   /** Whether a host user is connected. False in guest and disconnected alike. */
   isUserConnected: boolean;
-  /**
-   * Whether the SDK runs in SSO mode. In `octopus` mode the SDK owns the login, so there is
-   * no host user for the degraded band to ask for and the band is not shown.
-   */
-  isSsoAuth: boolean;
   /** Sends the reader where a user can be connected — the Settings › Account page itself. */
   onConnectUser: () => void;
   /**
@@ -26,10 +27,13 @@ export interface CommunityScreenProps {
    * the SDK has just left.
    */
   communitySessionNonce: number;
+  notification?: OctopusNotification | null;
+  mode: CommunityMode;
+  onBackRequested?: () => void;
 }
 
 /**
- * Community tab: the embedded `OctopusUIView`, always on the main feed.
+ * Community surface: one retained native navigation stack for tab and full screen.
  *
  * The only tab that belongs to the SDK, so the sample draws NO chrome inside the SDK's
  * surface — not even a preset picker. What the host has to say about the SDK's state goes in
@@ -44,11 +48,14 @@ export function CommunityScreen({
   initError,
   onRetryInit,
   isUserConnected,
-  isSsoAuth,
   onConnectUser,
   communitySessionNonce,
+  notification = null,
+  mode,
+  onBackRequested,
 }: CommunityScreenProps) {
   const chrome = chromeColors(isDark);
+  const isVisible = useTabVisible();
 
   // The two persistent bands, in severity order. Blocking wins outright: with no SDK there is
   // nothing for the read-only band to be read-only about.
@@ -62,7 +69,7 @@ export function CommunityScreen({
         onAction={onRetryInit}
         isDark={isDark}
       />
-    ) : isSsoAuth && !isUserConnected ? (
+    ) : !isUserConnected ? (
       <StatusBand
         testID="community-band-degraded"
         kind="degraded"
@@ -79,6 +86,11 @@ export function CommunityScreen({
       <View style={styles.embedHost}>
         <Octopus.OctopusUIView
           key={communitySessionNonce}
+          isVisible={isVisible}
+          {...communityPushTarget(notification)}
+          showBackButton={mode === 'fullscreen'}
+          navBarLeadingAction={mode === 'fullscreen' ? 'close' : undefined}
+          onBackRequested={onBackRequested}
           interceptUrls={interceptUrls}
           interceptProfileTaps={interceptProfileTaps}
           style={StyleSheet.absoluteFill}

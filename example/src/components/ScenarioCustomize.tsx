@@ -1,3 +1,4 @@
+import { sampleRadius, sampleTypography } from '../theme/tokens';
 import { useRef, useState } from 'react';
 import {
   StyleSheet,
@@ -11,6 +12,7 @@ import { useScenarioRun } from '../debug/useScenarioRun';
 import { chromeColors } from '../theme/branding';
 import { PresetButton } from './PresetButton';
 import { ScenarioResultPanel } from './ScenarioResultPanel';
+import { ParametersPanel } from './SampleRecipes';
 
 export interface ScenarioPreset {
   label: string;
@@ -72,78 +74,79 @@ export function ScenarioCustomize({
 
   return (
     <View style={styles.content}>
-      <Text style={[styles.heading, { color: chrome.text }]}>Parameters</Text>
-      <View style={styles.header}>
-        <Text
-          style={[
-            styles.state,
-            { color: chrome.textSecondary, borderColor: chrome.border },
-            matching < 0 && styles.custom,
-          ]}
-        >
-          {matching < 0 ? 'Custom' : presets[matching]!.label}
-        </Text>
-        <TouchableOpacity
-          accessibilityRole="button"
-          disabled={busy}
-          style={styles.action}
-          onPress={() => {
-            if (customizing) {
-              setValues(presets[anchor]!.values);
-              setCustomizing(false);
-            } else {
-              if (matching >= 0) setAnchor(matching);
-              setCustomizing(true);
-            }
-          }}
-        >
-          <Text style={[styles.actionText, { color: chrome.accent }]}>
-            {customizing ? 'Reset to preset' : 'Customize ›'}
+      <ParametersPanel isDark={isDark}>
+        <Text style={[styles.heading, { color: chrome.text }]}>Parameters</Text>
+        <View style={styles.header}>
+          <Text
+            style={[
+              styles.state,
+              { color: chrome.textSecondary, borderColor: chrome.border },
+              matching < 0 && styles.custom,
+            ]}
+          >
+            {matching < 0 ? 'Custom' : presets[matching]!.label}
           </Text>
-        </TouchableOpacity>
-      </View>
-      {fields.map((field, index) => (
-        <View key={field.label} testID={field.testID} style={styles.field}>
-          <Text style={[styles.label, { color: chrome.textSecondary }]}>
-            {field.label}
-          </Text>
-          {customizing ? (
-            <TextInput
-              accessibilityLabel={field.label}
-              value={values[index]}
-              editable={!busy}
-              onChangeText={(text) =>
-                setValues((previous) =>
-                  previous.map((value, i) => (i === index ? text : value))
-                )
+          <TouchableOpacity
+            accessibilityRole="button"
+            disabled={busy}
+            style={styles.action}
+            onPress={() => {
+              if (customizing) {
+                setValues(presets[anchor]!.values);
+                setCustomizing(false);
+              } else {
+                if (matching >= 0) setAnchor(matching);
+                setCustomizing(true);
               }
-              placeholder={field.help}
-              placeholderTextColor={chrome.textPlaceholder}
-              autoCapitalize="none"
-              autoCorrect={false}
-              style={[
-                styles.input,
-                {
-                  color: chrome.text,
-                  borderColor: chrome.border,
-                  backgroundColor: chrome.surfaceRaised,
-                },
-              ]}
-            />
-          ) : (
-            <Text selectable style={[styles.value, { color: chrome.text }]}>
-              {values[index] || '(none)'}
+            }}
+          >
+            <Text style={[styles.actionText, { color: chrome.accentText }]}>
+              {customizing ? 'Reset to preset' : 'Customize ›'}
             </Text>
-          )}
+          </TouchableOpacity>
         </View>
-      ))}
+        {fields.map((field, index) => (
+          <View key={field.label} testID={field.testID} style={styles.field}>
+            <Text style={[styles.label, { color: chrome.textSecondary }]}>
+              {field.label}
+            </Text>
+            {customizing ? (
+              <TextInput
+                accessibilityLabel={field.label}
+                value={values[index]}
+                editable={!busy}
+                onChangeText={(text) =>
+                  setValues((previous) =>
+                    previous.map((value, i) => (i === index ? text : value))
+                  )
+                }
+                placeholder={field.help}
+                placeholderTextColor={chrome.textPlaceholder}
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={[
+                  styles.input,
+                  {
+                    color: chrome.text,
+                    borderColor: chrome.border,
+                    backgroundColor: chrome.surfaceRaised,
+                  },
+                ]}
+              />
+            ) : (
+              <Text selectable style={[styles.value, { color: chrome.text }]}>
+                {values[index] || '(none)'}
+              </Text>
+            )}
+          </View>
+        ))}
+      </ParametersPanel>
       {presets.map((preset, index) => (
         <PresetButton
           key={preset.testID}
           testID={preset.testID}
           label={preset.label}
           isDark={isDark}
-          primaryColor={chrome.accent}
           disabled={busy}
           onPress={() => {
             if (busyRef.current) return;
@@ -182,7 +185,7 @@ export function ScenarioCustomize({
 
 const styles = StyleSheet.create({
   content: { gap: 8, marginTop: 12 },
-  heading: { fontSize: 15, fontWeight: '600' },
+  heading: { ...sampleTypography.body, fontWeight: '600' },
   header: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -190,29 +193,29 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
   },
-  state: { fontSize: 13, flexShrink: 1 },
+  state: { ...sampleTypography.callout, flexShrink: 1 },
   custom: {
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderRadius: 16,
+    borderRadius: sampleRadius.xl,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
   action: { minHeight: 48, justifyContent: 'center' },
-  actionText: { fontSize: 14, fontWeight: '600' },
+  actionText: { ...sampleTypography.callout, fontWeight: '600' },
   field: { gap: 4 },
-  label: { fontSize: 13, lineHeight: 18 },
-  value: { fontSize: 14 },
+  label: { ...sampleTypography.callout, lineHeight: 18 },
+  value: { ...sampleTypography.callout },
   input: {
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: sampleRadius.md,
     padding: 10,
     minHeight: 48,
-    fontSize: 14,
+    ...sampleTypography.callout,
   },
   run: {
     minHeight: 48,
-    borderRadius: 8,
+    borderRadius: sampleRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
   },

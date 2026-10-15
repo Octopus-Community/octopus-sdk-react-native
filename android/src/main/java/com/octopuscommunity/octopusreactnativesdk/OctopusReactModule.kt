@@ -392,12 +392,12 @@ class OctopusReactModule(reactContext: ReactApplicationContext) :
     }
     coroutineScope.launch {
       try {
-        val data = if (profileId != null) {
-          OctopusSDK.fetchCommunityData(profileId)
+        val result = if (profileId != null) {
+          OctopusSDK.fetchCommunityDataResult(profileId)
         } else {
-          OctopusSDK.fetchCommunityDataByClientUserId(clientUserId!!)
+          OctopusSDK.fetchCommunityDataByClientUserIdResult(clientUserId!!)
         }
-        promise.resolve(data?.let { CommunityDataMapper.toWritableMap(it) })
+        CommunityDataMapper.resolveFetchResult(result, promise)
       } catch (e: Exception) {
         promise.reject("SERVER_ERROR", e.message ?: "Failed to fetch community data", e)
       }
@@ -528,6 +528,29 @@ class OctopusReactModule(reactContext: ReactApplicationContext) :
     }
   }
 
+  @OptIn(InternalOctopusApi::class)
+  @ReactMethod
+  fun debugOverrideForceNicknameChoice(enabled: ReadableMap?, promise: Promise) {
+    try {
+      val value = enabled?.takeIf { it.hasKey("value") && !it.isNull("value") }?.getBoolean("value")
+      OctopusSDK.debugOverrideForceNicknameChoice(value)
+      promise.resolve(null)
+    } catch (e: Exception) {
+      promise.reject("OVERRIDE_ERROR", e.message ?: "Failed to override forceNicknameChoice", e)
+    }
+  }
+
+  @OptIn(InternalOctopusApi::class)
+  @ReactMethod
+  fun debugOverrideConsentTexts(texts: ReadableMap?, promise: Promise) {
+    try {
+      OctopusSDK.debugOverrideConsentTexts(DebugOverrideMappers.toConsentTexts(texts))
+      promise.resolve(null)
+    } catch (e: Exception) {
+      promise.reject("OVERRIDE_ERROR", e.message ?: "Failed to override consentTexts", e)
+    }
+  }
+
   /**
    * Debug-only read of the community config the backend currently serves (GetConfig), so the
    * sample can display the live server state next to the API key it runs on. Resolves `null`
@@ -546,6 +569,8 @@ class OctopusReactModule(reactContext: ReactApplicationContext) :
         promise.resolve(
           Arguments.createMap().apply {
             putBoolean("exposeClientUserId", config.exposeClientUserId)
+            putBoolean("forceNicknameChoice", config.forceNicknameChoice)
+            putMap("consentTexts", DebugOverrideMappers.fromConsentTexts(config.consentTexts))
             putBoolean("forceLoginOnStrongActions", config.forceLoginOnStrongActions)
             putBoolean("displayAccountAge", config.displayAccountAge)
             putString("termsAcceptanceMode", config.termsAcceptanceMode.name)
@@ -633,13 +658,12 @@ class OctopusReactModule(reactContext: ReactApplicationContext) :
     coroutineScope.launch {
       try {
         val connectionMode = sdkInitializer.parseConnectionMode(options)
-        val deepLinksBasePaths = sdkInitializer.parseDeepLinksBasePaths(options)
         val apiServer = sdkInitializer.parseApiServer(options)
+        sdkInitializer.declareSdkFamily(options)
         OctopusSDK.switchCommunity(
           context = reactApplicationContext,
           apiKey = apiKey,
           connectionMode = connectionMode,
-          deepLinksBasePaths = deepLinksBasePaths,
           apiServer = apiServer
         )
         startObservingReactiveEvents()

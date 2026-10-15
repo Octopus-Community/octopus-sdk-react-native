@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.14.0**](../README.md)
+[**@octopus-community/react-native v1.15.0**](../README.md)
 
 ---
 
@@ -37,7 +37,7 @@ initialised the native SDK.
 if (!isInitialised()) {
   await initialize({
     apiKey: 'your-api-key',
-    connectionMode: { type: 'octopus' },
+    connectionMode: { type: 'sso', appManagedFields: [] },
   });
 }
 ```

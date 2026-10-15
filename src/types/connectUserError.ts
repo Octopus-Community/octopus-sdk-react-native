@@ -23,7 +23,7 @@
  * | `CONTENT_UNAVAILABLE` | The requested content was unavailable. | Android |
  * | `TOKEN_REQUEST_CANCELLED` | No token was ever signed, because `cancelUserTokenRequest` was called — or because `disconnectUser` cancelled the pending request while the connection was still in flight. | Android, iOS (see below) |
  * | `TOKEN_REQUEST_TIMEOUT` | The `userTokenRequest` event went unanswered for 60 s. Nothing is listening, or a listener received the request and never called `completeUserTokenRequest` / `cancelUserTokenRequest`. Register the listener **before** calling `connectUser`: the native event channel has no buffer, so a request emitted while no listener is attached is dropped. | Android, iOS (see below) |
- * | `CONNECT_USER_ERROR` | Anything else, including an unclassified native failure and — on iOS — calling `connectUser` before `initialize`. | Android, iOS |
+ * | `CONNECT_USER_ERROR` | Invalid profile picture syntax, undecodable base64 or a missing/unreadable local picture (the stored avatar is preserved), an unclassified native failure, or — on iOS — a failed/non-2xx remote picture download, undecodable remote/local picture bytes or calling `connectUser` before `initialize`. | Android, iOS |
  *
  * ### iOS: a token that never arrives does not always reject
  *

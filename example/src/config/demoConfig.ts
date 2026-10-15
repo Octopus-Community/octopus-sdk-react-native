@@ -13,6 +13,7 @@
 // allowlist only gates `import ... from '@env'`, not these `process.env` reads.
 
 import type { ApiServer } from '@octopus-community/react-native';
+import { maskApiKey, rememberApiKey } from './apiKeyMask';
 
 /**
  * One named demo API key injected at build time.
@@ -64,7 +65,9 @@ export function parseNamedApiKeys(raw: string | undefined): InjectedApiKey[] {
  * Generic demo API key — the one the sample used before named key sets existed.
  * Empty on a keyless build.
  */
-const octopusApiKey: string = process.env.OCTOPUS_COMMUNITY_API_KEY ?? '';
+const octopusApiKey: string = rememberApiKey(
+  process.env.OCTOPUS_COMMUNITY_API_KEY ?? ''
+);
 
 /**
  * The named key sets present in this build. Empty on a public / keyless build →
@@ -73,6 +76,7 @@ const octopusApiKey: string = process.env.OCTOPUS_COMMUNITY_API_KEY ?? '';
 export const injectedApiKeys: InjectedApiKey[] = parseNamedApiKeys(
   process.env.OCTOPUS_NAMED_API_KEYS
 );
+injectedApiKeys.forEach(({ key }) => rememberApiKey(key));
 
 /** Whether a generic demo key was injected. */
 export const hasInjectedApiKey: boolean = octopusApiKey !== '';
@@ -306,16 +310,6 @@ export const octopusServerLabel: 'Production' | 'Demo' | 'Custom' =
 export type ApiKeySource = 'demo' | 'custom';
 
 /**
- * Which `connectionMode` the SDK is initialized with.
- *
- * `sso` is the host-authenticated mode this sample mostly exercises: the app
- * owns the user and serves a signed JWT on demand. `octopus` hands login to the
- * SDK, which is why it disables the Connection scenario and the Settings
- * Connect button — in that mode the host has no user to connect.
- */
-export type AuthMode = 'sso' | 'octopus';
-
-/**
  * The backend the SDK is initialized against. Chosen at build time by
  * `OCTOPUS_API_HOST`, then applied at runtime through `initialize()`'s
  * `apiServer` — so it is not switchable from inside a running build.
@@ -334,13 +328,14 @@ export type AppThemeChoice = 'system' | 'light' | 'dark';
  */
 export interface DemoConfig {
   apiKeySource: ApiKeySource;
+  /** Session-only server override; never restored from disk. */
+  apiServer?: ApiServer;
   /** Set when {@link DemoConfig.apiKeySource} is `custom`. */
   customApiKey: string;
   /** Set when a named key set was picked. */
   selectedKeyId: string | null;
-  /** The JWT `sub` the Connection scenario connects with. Unused in `octopus` mode. */
+  /** The JWT `sub` the Connection scenario connects with. */
   userId: string;
-  authMode: AuthMode;
   theme: AppThemeChoice;
   /**
    * Never read by the app — the SDK is routed from {@link octopusApiServer},
@@ -352,7 +347,9 @@ export interface DemoConfig {
 
 /** The key `initialize()` is called with, or `''` when the config carries none. */
 export function resolveApiKey(config: DemoConfig): string {
-  if (config.apiKeySource === 'custom') return config.customApiKey.trim();
+  if (config.apiKeySource === 'custom') {
+    return config.customApiKey.trim();
+  }
   const named = injectedApiKeys.find((k) => k.id === config.selectedKeyId);
   return named?.key ?? octopusApiKey;
 }
@@ -371,7 +368,7 @@ export function apiKeyLabel(config: DemoConfig): string {
  * Split from {@link apiKeyLabel} because the shared configuration summary shows the two on
  * separate lines: *which community* the build talks to, and *where its key comes from*. A
  * named slot's label is the community's own name, so it answers the first question; the slot
- * id and the "pasted"/".env" provenance answer the second.
+ * id and the custom/default provenance answer the second.
  */
 export function communityLabel(config: DemoConfig): string {
   if (config.apiKeySource === 'custom') return 'Custom community';
@@ -496,11 +493,18 @@ export function resolveSwitchTarget(
 }
 
 /** Where the key handed to `initialize()` came from — provenance, not community name. */
-export function apiKeySourceLabel(config: DemoConfig): string {
-  if (config.apiKeySource === 'custom') return 'Custom (pasted)';
+export function apiKeySourceLabel(
+  config: DemoConfig,
+  effectiveApiKey = resolveApiKey(config)
+): string {
+  if (config.apiKeySource === 'custom') {
+    return `Custom · ${maskApiKey(effectiveApiKey)}`;
+  }
   const named = injectedApiKeys.find((k) => k.id === config.selectedKeyId);
-  if (named) return `Demo (${named.id})`;
-  return hasInjectedApiKey ? 'Demo (.env)' : 'None injected';
+  if (named) return `Demo preset · ${named.id}`;
+  return hasInjectedApiKey
+    ? 'Demo preset · Default'
+    : 'Demo preset · None injected';
 }
 
 /** The server env the build is actually routed to. */

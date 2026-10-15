@@ -69,7 +69,7 @@ export type PostClickedSource = 'feed' | 'profile';
 /**
  * Screen types displayed in the Octopus UI.
  *
- * Three members are **not** emitted by both pinned natives. Treat them as optional inputs
+ * Some members are **not** emitted by both pinned natives. Treat them as optional inputs
  * rather than as guarantees, and never assume one implies the absence of the other:
  *
  * - `'postsFeed'` is kept in the union for source compatibility only — it is not emitted by
@@ -77,8 +77,9 @@ export type PostClickedSource = 'feed' | 'profile';
  *   native SDKs split it into: Android's `ScreenDisplayed.PostsFeed` has been `@Deprecated`
  *   with zero emission sites since native 1.13.3, and iOS's `Screen.postsFeed` has been
  *   deprecated and unreachable since native 1.13.2.
- * - `'settingsList'` is emitted on Android only since native SDK 1.13: iOS deleted the
- *   settings-list screen, so nothing emits it there anymore.
+ * - `'settingsList'`, `'settingsAccount'` and `'deleteAccount'` are kept for source
+ *   compatibility only. Neither platform emits them in native SDK 1.15: settings moved
+ *   to the profile menu and account management is owned by the host app.
  * - `'activity'` is emitted on Android only. The native iOS SDK models no separate screen
  *   for the connected user's own Unified Profile activity and reports `'profile'` for it,
  *   so the same user action yields `'activity'` on Android and `'profile'` on iOS. A host

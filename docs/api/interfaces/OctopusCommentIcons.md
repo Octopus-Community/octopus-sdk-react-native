@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.14.0**](../README.md)
+[**@octopus-community/react-native v1.15.0**](../README.md)
 
 ---
 
@@ -18,14 +18,20 @@ Icons of the comment creation field.
 
 ---
 
-### emptyFeed?
+### ~~emptyFeed?~~
 
 > `optional` **emptyFeed**: `ImageResolvedAssetSource`
 
 Illustration of a post without comments.
 
-Native 1.14 on iOS and Android renders [OctopusScreenStatesIcons.emptyContent](OctopusScreenStatesIcons.md#emptycontent)
-instead. This per-feature slot is accepted but has no visible effect with the native 1.14 SDKs.
+Native 1.15 on iOS and Android renders [OctopusScreenStatesIcons.emptyContent](OctopusScreenStatesIcons.md#emptycontent)
+instead. This per-feature slot is accepted but has no visible effect with the native 1.15 SDKs.
+
+#### Deprecated
+
+Use [OctopusScreenStatesIcons.emptyContent](OctopusScreenStatesIcons.md#emptycontent) via
+`theme.icons.screenStates.emptyContent` instead. This slot has no visible effect.
+It will be removed in a future major version together with the native SDKs.
 
 ---
 

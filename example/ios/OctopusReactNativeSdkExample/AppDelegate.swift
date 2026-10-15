@@ -14,6 +14,10 @@ class AppDelegate: RCTAppDelegate, UNUserNotificationCenterDelegate {
     // They will be passed down to the ViewController used by React Native.
     self.initialProps = [:]
 
+    // UIScene life cycle (required by the iOS 27 SDK): `SceneDelegate` creates the window
+    // and starts React Native through the factory `super` builds below.
+    self.automaticallyLoadReactNativeWindow = false
+
     // Native push: become the notification delegate and ask iOS to register
     // with APNs. The device token + taps are forwarded to JS by OctopusPushModule.
     UNUserNotificationCenter.current().delegate = self
@@ -27,7 +31,7 @@ class AppDelegate: RCTAppDelegate, UNUserNotificationCenterDelegate {
     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
   ) {
     let hex = deviceToken.map { String(format: "%02x", $0) }.joined()
-    OctopusPushModule.shared?.emitToken(hex)
+    OctopusPushModule.tokenReceived(hex)
   }
 
   override func application(
@@ -43,7 +47,10 @@ class AppDelegate: RCTAppDelegate, UNUserNotificationCenterDelegate {
     didReceive response: UNNotificationResponse,
     withCompletionHandler completionHandler: @escaping () -> Void
   ) {
-    OctopusPushModule.shared?.emitNotificationOpened(response.notification.request.content.userInfo)
+    OctopusPushModule.notificationOpened(
+      response.notification.request.content.userInfo,
+      id: response.notification.request.identifier
+    )
     completionHandler()
   }
 
@@ -53,7 +60,6 @@ class AppDelegate: RCTAppDelegate, UNUserNotificationCenterDelegate {
     willPresent notification: UNNotification,
     withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
   ) {
-    OctopusPushModule.shared?.emitNotificationOpened(notification.request.content.userInfo)
     if #available(iOS 14.0, *) {
       completionHandler([.banner, .sound])
     } else {

@@ -17,7 +17,7 @@ describe('initialize forwards the navBarItem text style', () => {
   it('includes navBarItem in the parsed font configuration', async () => {
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       theme: {
         fonts: {
           textStyles: {
@@ -37,7 +37,7 @@ describe('initialize forwards the navBarItem text style', () => {
   it('forwards a theme carrying only navBarItem', async () => {
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       theme: {
         fonts: { textStyles: { navBarItem: { fontSize: { size: 15 } } } },
       },
@@ -51,7 +51,7 @@ describe('initialize forwards the navBarItem text style', () => {
   it('adds no navBarItem entry when it is omitted', async () => {
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       theme: {
         fonts: { textStyles: { body1: { fontSize: { size: 16 } } } },
       },

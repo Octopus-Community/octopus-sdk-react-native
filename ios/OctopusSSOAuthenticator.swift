@@ -1,4 +1,6 @@
+import Foundation
 import Octopus
+import OSLog
 
 class OctopusSSOAuthenticator {
   /// How long a `userTokenRequest` may stay unanswered before `connectUser` gives up.
@@ -236,8 +238,18 @@ class OctopusSSOAuthenticator {
     let biography = profileParams["biography"] as? String
     
     var profilePictureData: Data? = nil
-    if let pictureUrl = profileParams["profilePicture"] as? String, !pictureUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-      profilePictureData = try await loadImageData(from: pictureUrl)
+    if let picture = profileParams["profilePicture"] as? String {
+      do {
+        // The loader requires HTTP 2xx and decodable image bytes before creating the SDK profile.
+        profilePictureData = try await ProfilePictureInput.load(picture, loadRemote: { url in
+          try await URLSession.shared.data(from: url)
+        }, logFailure: {
+          Logger(subsystem: "\(Bundle.main.bundleIdentifier ?? "").octopusSDK", category: "Connection")
+            .error("Failed to load profile picture; rejecting connection.")
+        })
+      } catch {
+        throw AuthenticationError.profilePictureLoadError
+      }
     }
     
     return ClientUser.Profile(
@@ -247,41 +259,6 @@ class OctopusSSOAuthenticator {
     )
   }
   
-  private func loadImageData(from urlString: String) async throws -> Data? {
-    if urlString.hasPrefix("http://") || urlString.hasPrefix("https://") {
-      guard let url = URL(string: urlString) else { return nil }
-      do {
-        let (data, _) = try await URLSession.shared.data(from: url)
-        return data
-      } catch {
-        throw AuthenticationError.profilePictureLoadError
-      }
-    } else if urlString.hasPrefix("file://") {
-      guard let url = URL(string: urlString) else { return nil }
-      return try await withCheckedThrowingContinuation { continuation in
-        DispatchQueue.global(qos: .userInitiated).async {
-          do {
-            let data = try Data(contentsOf: url)
-            continuation.resume(returning: data)
-          } catch {
-            continuation.resume(throwing: AuthenticationError.profilePictureLoadError)
-          }
-        }
-      }
-    } else {
-      let url = URL(fileURLWithPath: urlString)
-      return try await withCheckedThrowingContinuation { continuation in
-        DispatchQueue.global(qos: .userInitiated).async {
-          do {
-            let data = try Data(contentsOf: url)
-            continuation.resume(returning: data)
-          } catch {
-            continuation.resume(throwing: AuthenticationError.profilePictureLoadError)
-          }
-        }
-      }
-    }
-  }
 }
 
 /// A refused connection, carried to the `@objc` surface with the code JS matches on.

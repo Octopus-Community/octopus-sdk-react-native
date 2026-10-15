@@ -1,4 +1,5 @@
 import { OctopusReactNativeSdk } from './internals/nativeModule';
+import type { OctopusConsentTexts } from './types/consentTexts';
 
 /**
  * Snapshot of the community config the backend currently serves (GetConfig),
@@ -8,6 +9,10 @@ import { OctopusReactNativeSdk } from './internals/nativeModule';
 export type OctopusDebugCommunityConfig = {
   /** Unified Profile activation flag (`CommunityConfig.exposeClientUserId`). */
   exposeClientUserId: boolean;
+  /** Whether the native nickname choice field starts empty before the first contribution. */
+  forceNicknameChoice: boolean;
+  /** Effective community consent wordings, or `null` when none are configured. */
+  consentTexts: OctopusConsentTexts | null;
   forceLoginOnStrongActions: boolean;
   displayAccountAge: boolean;
   /** Native enum name, lowercased here so both platforms read e.g. `implicit`. */
@@ -29,6 +34,8 @@ export async function debugGetCommunityConfig(): Promise<OctopusDebugCommunityCo
   if (config === null) return null;
   return {
     ...config,
+    forceNicknameChoice: config.forceNicknameChoice ?? false,
+    consentTexts: config.consentTexts ?? null,
     // Kotlin enum names are SCREAMING_CASE, Swift cases are lowerCamel — one
     // spelling must leave this layer.
     termsAcceptanceMode: config.termsAcceptanceMode.toLowerCase(),

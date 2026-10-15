@@ -24,7 +24,6 @@ const config: DemoConfig = {
   customApiKey: 'a-pasted-key',
   selectedKeyId: null,
   userId: 'someone',
-  authMode: 'sso',
   theme: 'dark',
   serverEnv: buildServerEnv,
 };
@@ -44,7 +43,6 @@ describe('serializeDemoConfig', () => {
       apiKeySource: 'custom',
       selectedKeyId: null,
       userId: 'someone',
-      authMode: 'sso',
       theme: 'dark',
     });
   });
@@ -76,6 +74,15 @@ describe('deserializeDemoConfig', () => {
     expect(deserializeDemoConfig(without('theme'))).toBeNull();
   });
 
+  it('restores legacy SSO configs and returns removed auth modes to configuration', () => {
+    const base = serializeDemoConfig(config);
+    expect(deserializeDemoConfig({ ...base, authMode: 'sso' })).toEqual({
+      ...config,
+      customApiKey: '',
+    });
+    expect(deserializeDemoConfig({ ...base, authMode: 'octopus' })).toBeNull();
+    expect(serializeDemoConfig(config)).not.toHaveProperty('authMode');
+  });
   it('never restores a key value, even from a blob that carries one', () => {
     const restored = deserializeDemoConfig({
       ...serializeDemoConfig(config),

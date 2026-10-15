@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.14.0**](../README.md)
+[**@octopus-community/react-native v1.15.0**](../README.md)
 
 ---
 
@@ -25,8 +25,16 @@ button when Unified Profile is active.
 
 Checkbox pair. Absent: the native default pair.
 
-**Android caveat (native 1.13.x):** the Android SDK draws the platform checkbox and does
+**Android caveat (native 1.15.x):** the Android SDK draws its own checkbox and does
 not read this pair, so an override only shows on iOS.
+
+---
+
+### clearText?
+
+> `optional` **clearText**: `ImageResolvedAssetSource`
+
+Button that clears a text field, including the nickname choice field. Absent: the native default.
 
 ---
 

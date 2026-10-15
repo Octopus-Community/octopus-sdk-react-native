@@ -1,4 +1,4 @@
-import Octopus
+@_spi(OctopusWrapper) import Octopus
 import OctopusUI
 import SwiftUI
 import CoreGraphics
@@ -15,25 +15,33 @@ class OctopusSDKInitializer {
 
     let connectionMode = try parseConnectionMode(from: connectionModeMap, eventManager: eventManager)
     let configuration = try parseConfiguration(from: options)
+    try declareSdkFamily(options: options)
     return try OctopusSDK(apiKey: apiKey, connectionMode: connectionMode, configuration: configuration)
+  }
+
+  func declareSdkFamily(options: [String: Any]) throws {
+    guard let version = options["sdkVersion"] as? String else {
+      throw InitializationError.missingSDKVersion
+    }
+    OctopusSDK.setSdkFamily(.reactNative, version: version)
   }
 
   // Parity wave — lifecycle
 
-  /// Builds the SDK `Configuration` from the JS `apiServer` option, mirroring the Flutter
-  /// plugin's `parseConfiguration` helper. Returns the default configuration (no custom
-  /// server) when `apiServer` is absent or malformed.
+  /// Builds the SDK `Configuration` from the JS server and audio-session options.
+  /// Uses the default server when `apiServer` is absent or malformed.
   func parseConfiguration(from options: [String: Any]) throws -> OctopusSDK.Configuration {
+    let appManagedAudioSession = options["appManagedAudioSession"] as? Bool ?? false
     guard let apiServerMap = options["apiServer"] as? [String: Any],
           let host = apiServerMap["host"] as? String
     else {
-      return OctopusSDK.Configuration()
+      return OctopusSDK.Configuration(appManagedAudioSession: appManagedAudioSession)
     }
     let port = (apiServerMap["port"] as? NSNumber)?.intValue
       ?? (apiServerMap["port"] as? Int)
       ?? 443
     let apiServer = try OctopusSDK.Configuration.ApiServer(host: host, port: port)
-    return OctopusSDK.Configuration(apiServer: apiServer)
+    return OctopusSDK.Configuration(apiServer: apiServer, appManagedAudioSession: appManagedAudioSession)
   }
   
   func parseTheme(from options: [String: Any]) -> OctopusTheme? {
@@ -201,14 +209,21 @@ class OctopusSDKInitializer {
     return nil
   }
   
-  /// The host's icon overrides: dotted slot path → image URI, as flattened from `theme.icons`
-  /// by the TypeScript layer (`theme.iconOverrides` on the wire). `nil` when there are none.
-  func getIconSources(from options: [String: Any]) -> [String: String]? {
+  /// The host's icon overrides: dotted slot path → image source, as flattened from `theme.icons`
+  /// by the TypeScript layer (`theme.iconOverrides` for the URIs, `theme.iconOverrideScales` for
+  /// the pixel density of the slots that carry one). `nil` when there are none.
+  func getIconSources(from options: [String: Any]) -> [String: OctopusIconSource]? {
     guard let themeMap = options["theme"] as? [String: Any],
           let overrides = themeMap["iconOverrides"] as? [String: Any] else {
       return nil
     }
-    let sources = overrides.compactMapValues { $0 as? String }
+    let scales = themeMap["iconOverrideScales"] as? [String: Any] ?? [:]
+    var sources: [String: OctopusIconSource] = [:]
+    for (path, value) in overrides {
+      guard let uri = value as? String else { continue }
+      let scale = (scales[path] as? NSNumber).map { CGFloat($0.doubleValue) }
+      sources[path] = OctopusIconSource(uri: uri, scale: scale)
+    }
     return sources.isEmpty ? nil : sources
   }
 
@@ -288,12 +303,6 @@ class OctopusSDKInitializer {
     switch connectionModeType {
     case "sso":
       return try createSSOConnectionMode(from: connectionModeMap, eventManager: eventManager)
-    case "octopus":
-      // Parity wave — lifecycle: `deepLink` is a new field added in this PR — the JS
-      // `connectionMode: { type: 'octopus' }` shape had no way to carry one before, so this
-      // reads it now rather than restoring something that used to work.
-      let deepLink = connectionModeMap["deepLink"] as? String
-      return .octopus(deepLink: deepLink)
     default:
       throw InitializationError.invalidConnectionModeType
     }
@@ -318,17 +327,20 @@ class OctopusSDKInitializer {
 
 enum InitializationError: Error, LocalizedError {
   case missingAPIKey
+  case missingSDKVersion
   case missingConnectionMode
   case invalidConnectionModeType
 
   var errorDescription: String? {
     switch self {
+    case .missingSDKVersion:
+      return "Missing React Native SDK version"
     case .missingAPIKey:
       return "API key is required"
     case .missingConnectionMode:
       return "Connection mode is required"
     case .invalidConnectionModeType:
-      return "Invalid connection mode type"
+      return "Octopus-owned authentication was removed. SSO is required (connectionMode.type must be 'sso')."
     }
   }
 }

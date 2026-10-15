@@ -1,3 +1,4 @@
+import { sampleRadius, sampleTypography } from '../theme/tokens';
 import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import * as Octopus from '@octopus-community/react-native';
@@ -5,6 +6,8 @@ import type { OctopusDebugCommunityConfig } from '@octopus-community/react-nativ
 
 import { chromeColors } from '../theme/branding';
 import { PillButton } from './PillButton';
+import { SampleInfoRow } from './SampleInfoRow';
+import { maskApiKey, redactApiKeys } from '../config/apiKeyMask';
 
 export interface ServerStateCardProps {
   isDark: boolean;
@@ -26,8 +29,7 @@ export interface ServerStateCardProps {
  * screenshot that proves "we are on THIS community and the server said THIS" — the config
  * summary above it only proves what the app *asked for*.
  *
- * The whole key is shown on purpose: a truncated key cannot prove which community a QA
- * session ran against, and community API keys identify, they do not authenticate.
+ * The resolved key uses the same display mask as the Android sample.
  */
 export function ServerStateCard({
   isDark,
@@ -51,7 +53,7 @@ export function ServerStateCard({
     } catch (e) {
       setConfig(null);
       setFetchedAt(null);
-      setError(e instanceof Error ? e.message : String(e));
+      setError(redactApiKeys(e instanceof Error ? e.message : String(e)));
     }
   }, []);
 
@@ -70,7 +72,7 @@ export function ServerStateCard({
   }, [isInitialized, sessionStartedAt, refresh]);
 
   const rows: { label: string; value: string }[] = [
-    { label: 'API key', value: apiKey === '' ? 'None' : apiKey },
+    { label: 'API key', value: maskApiKey(apiKey) },
   ];
   if (config !== null) {
     rows.push(
@@ -111,21 +113,13 @@ export function ServerStateCard({
       </Text>
       <View style={styles.rows}>
         {rows.map((row) => (
-          <View key={row.label} style={styles.row}>
-            <Text
-              style={[styles.rowLabel, { color: chrome.textSecondary }]}
-              numberOfLines={1}
-            >
-              {row.label}
-            </Text>
-            <Text
-              testID={`server-state-${row.label}`}
-              style={[styles.rowValue, { color: chrome.text }]}
-              selectable
-            >
-              {row.value}
-            </Text>
-          </View>
+          <SampleInfoRow
+            key={row.label}
+            {...row}
+            isDark={isDark}
+            valueTestID={`server-state-${row.label}`}
+            selectable
+          />
         ))}
       </View>
       <Text style={[styles.status, { color: chrome.textSecondary }]}>
@@ -152,35 +146,20 @@ function formatTime(date: Date | null): string {
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 14,
+    borderRadius: sampleRadius.md,
     borderWidth: 1,
     padding: 16,
   },
   title: {
-    fontSize: 15,
-    fontWeight: '700',
+    ...sampleTypography.body,
+
     marginBottom: 12,
   },
   rows: {
     gap: 8,
   },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  rowLabel: {
-    fontSize: 12.5,
-    width: 132,
-  },
-  rowValue: {
-    flex: 1,
-    fontSize: 12.5,
-    fontWeight: '600',
-    textAlign: 'right',
-  },
   status: {
-    fontSize: 11.5,
+    ...sampleTypography.caption,
     marginTop: 10,
   },
   refresh: {

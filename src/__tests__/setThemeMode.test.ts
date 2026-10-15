@@ -16,8 +16,8 @@ jest.mock('../internals/nativeModule', () => ({
 
 const INIT_OPTIONS = {
   apiKey: 'k',
-  connectionMode: { type: 'octopus' },
-} as const;
+  connectionMode: { type: 'sso' as const, appManagedFields: [] },
+};
 
 /** The `colorScheme` the last `initialize()` handed to the native side. */
 function initialisedWithColorScheme(): unknown {
@@ -114,19 +114,18 @@ describe('setThemeMode', () => {
     // The bridge call is fired, never awaited: an unhandled rejection here reaches
     // the host on a path it has no way to catch — including the example's launch
     // restore, which is what turned one refused theme into a crash-loop.
-    const unhandled = jest.fn();
-    process.on('unhandledRejection', unhandled);
     const rejection = Promise.reject(new Error('INVALID_ARGS'));
     mockUpdateColorScheme.mockReturnValue(rejection);
 
     expect(() => setThemeMode('dark')).not.toThrow();
 
+    // Let setThemeMode run alone in its tick: Node reports an unhandled rejection
+    // after the microtask queue drains, i.e. before the next setImmediate callback.
+    // Nothing else may attach a handler to `rejection` until then, or the test
+    // would pass without the fix. Jest's own unhandled-rejection handler fails
+    // this test if setThemeMode leaves the rejection unhandled.
+    await new Promise((resolve) => setImmediate(resolve));
     await expect(rejection).rejects.toThrow('INVALID_ARGS');
-    // Two macrotask turns: enough for Node to have reported an unhandled rejection
-    // if nothing had attached a handler.
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    process.off('unhandledRejection', unhandled);
-    expect(unhandled).not.toHaveBeenCalled();
   });
 
   it('keeps observing after a native rejection', () => {

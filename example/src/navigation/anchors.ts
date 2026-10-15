@@ -22,7 +22,8 @@ export type SettingsPage =
   | 'appearance'
   | 'language'
   | 'developer'
-  | 'about';
+  | 'about'
+  | 'integration';
 
 /** Sections of the Scenarios list — the ids of `SCENARIO_SECTIONS` in `ScenariosScreen`. */
 export type ScenarioSectionId =
@@ -34,7 +35,7 @@ export type ScenarioSectionId =
   | 'host';
 
 /** Which of the two debug destinations of Developer tools is open. */
-export type DebugView = 'events' | 'info';
+export type DebugView = 'events' | 'info' | 'console';
 
 /**
  * A request to show `target`, stamped so that asking for the same target twice is still two

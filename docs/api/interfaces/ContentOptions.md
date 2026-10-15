@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.14.0**](../README.md)
+[**@octopus-community/react-native v1.15.0**](../README.md)
 
 ---
 
@@ -42,6 +42,14 @@ Whether a post may include a picture. Defaults to `true`.
 > `optional` **enablePolls**: `boolean`
 
 Whether a post may be a poll. Defaults to `true`.
+
+#### textRequired?
+
+> `optional` **textRequired**: `boolean`
+
+Whether a post requires text. Defaults to `true`. When `false`, a post with an image
+(with or without a poll) may omit text. A poll alone still requires text; native length
+validation still applies whenever text is present.
 
 ---
 

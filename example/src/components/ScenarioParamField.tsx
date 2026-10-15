@@ -1,3 +1,8 @@
+import {
+  sampleRadius,
+  sampleTypography,
+  sampleMonoFont,
+} from '../theme/tokens';
 import React from 'react';
 import {
   View,
@@ -5,10 +10,10 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Platform,
 } from 'react-native';
 
 import { chromeColors } from '../theme/branding';
+import { ParametersPanel, TypePill } from './SampleRecipes';
 
 /**
  * Spec 09 zone 2: "Parameters, préremplis et typés". Every scenario field carries an
@@ -36,32 +41,16 @@ function FieldShell({
 }) {
   const chrome = chromeColors(isDark);
   return (
-    <View
-      testID={testID}
-      style={[
-        styles.field,
-        { backgroundColor: chrome.surfaceRaised, borderColor: chrome.border },
-      ]}
-    >
-      <View style={styles.fieldHeader}>
-        <Text style={[styles.fieldLabel, { color: chrome.textSecondary }]}>
-          {label}
-        </Text>
-        {/* `tintBorder` is a border token — as ink on a light surface it is the fill-only
-            accent blue at 3.50:1, so the text draws in `chrome.accent`. */}
-        <View
-          style={[
-            styles.typeChip,
-            { backgroundColor: chrome.tint },
-            chrome.badge,
-          ]}
-        >
-          <Text style={[styles.typeChipText, { color: chrome.accent }]}>
-            {type}
+    <View testID={testID} style={styles.field}>
+      <ParametersPanel isDark={isDark}>
+        <View style={styles.fieldHeader}>
+          <Text style={[styles.fieldLabel, { color: chrome.text }]}>
+            {label}
           </Text>
+          <TypePill value={type} isDark={isDark} />
         </View>
-      </View>
-      {children}
+        {children}
+      </ParametersPanel>
     </View>
   );
 }
@@ -77,6 +66,7 @@ export interface TextParamFieldProps {
   isDark: boolean;
   editable?: boolean;
   multiline?: boolean;
+  secureTextEntry?: boolean;
 }
 
 /** A single editable text value — `String` or, with a placeholder such as "null — …", a
@@ -91,6 +81,7 @@ export function TextParamField({
   isDark,
   editable = true,
   multiline = false,
+  secureTextEntry = false,
 }: TextParamFieldProps) {
   const chrome = chromeColors(isDark);
   return (
@@ -104,6 +95,10 @@ export function TextParamField({
         placeholderTextColor={chrome.textPlaceholder}
         editable={editable}
         multiline={multiline}
+        secureTextEntry={secureTextEntry}
+        importantForAutofill={secureTextEntry ? 'no' : undefined}
+        autoComplete={secureTextEntry ? 'off' : undefined}
+        textContentType={secureTextEntry ? 'none' : undefined}
         autoCapitalize="none"
         autoCorrect={false}
       />
@@ -164,14 +159,14 @@ export function SetParamField({
               style={[
                 styles.optionChip,
                 { borderColor: chrome.tintBorder },
-                active && { backgroundColor: chrome.tint },
+                active && { backgroundColor: chrome.accentContainer },
                 option.disabled && styles.optionChipDisabled,
               ]}
             >
               <Text
                 style={[
                   styles.optionChipText,
-                  { color: active ? chrome.accent : chrome.textSecondary },
+                  { color: active ? chrome.onAccentContainer : chrome.text },
                 ]}
               >
                 {option.label}
@@ -223,14 +218,14 @@ export function EnumParamField({
               style={[
                 styles.optionChip,
                 { borderColor: chrome.tintBorder },
-                active && { backgroundColor: chrome.tint },
+                active && { backgroundColor: chrome.accentContainer },
                 option.disabled && styles.optionChipDisabled,
               ]}
             >
               <Text
                 style={[
                   styles.optionChipText,
-                  { color: active ? chrome.accent : chrome.textSecondary },
+                  { color: active ? chrome.onAccentContainer : chrome.text },
                 ]}
               >
                 {option.label}
@@ -244,12 +239,7 @@ export function EnumParamField({
 }
 
 const styles = StyleSheet.create({
-  field: {
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 10,
-    marginBottom: 8,
-  },
+  field: { marginBottom: 8 },
   fieldHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -257,10 +247,8 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   fieldLabel: {
-    fontSize: 9.5,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
+    ...sampleTypography.mono,
+    fontWeight: '600',
   },
   typeChip: {
     borderRadius: 5,
@@ -268,12 +256,12 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   typeChipText: {
-    fontSize: 9,
-    fontWeight: '700',
-    fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }),
+    ...sampleTypography.caption,
+
+    fontFamily: sampleMonoFont,
   },
   fieldValue: {
-    fontSize: 12.5,
+    ...sampleTypography.caption,
     padding: 0,
   },
   chipRow: {
@@ -283,15 +271,16 @@ const styles = StyleSheet.create({
   },
   optionChip: {
     borderWidth: 1,
-    borderRadius: 14,
+    borderRadius: sampleRadius.md,
     paddingHorizontal: 10,
     paddingVertical: 5,
+    minHeight: 48,
+    justifyContent: 'center',
   },
   optionChipDisabled: {
     opacity: 0.4,
   },
   optionChipText: {
-    fontSize: 11.5,
-    fontWeight: '600',
+    ...sampleTypography.caption,
   },
 });

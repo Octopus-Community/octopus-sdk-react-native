@@ -11,6 +11,8 @@ import type {
  * @param memberId - Exactly one of `profileId` or `clientUserId` must be set.
  * @returns The member's community data, or `null` when the member is unknown.
  * @throws A plain `Error` synchronously when `memberId` carries both or neither id.
+ * The promise rejects with code `SERVER_ERROR` when the native lookup fails (for example,
+ * a network, authentication, permission or server error), on both platforms.
  *
  * @see {@link startObservingCommunityData} – the reactive counterpart.
  *

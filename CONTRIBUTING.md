@@ -116,14 +116,14 @@ Our pre-commit hooks verify that your commit message matches this format when co
 
 We use [TypeScript](https://www.typescriptlang.org/) for type checking, [ESLint](https://eslint.org/) with [Prettier](https://prettier.io/) for linting and formatting the code, and [Jest](https://jestjs.io/) for testing.
 
-Our pre-commit hooks verify that the linter and tests pass when committing.
+Our pre-commit hooks run ESLint on staged JavaScript/TypeScript files and a project-wide TypeScript check when those files are staged. Run `yarn test:unit` separately for Jest; CI also runs it.
 
 ### Publishing to npm
 
 Versioning is driven by [changesets](https://github.com/changesets/changesets); the npm publish is triggered by a GitHub Release:
 
 1. In your pull request, add a changeset in `.changeset/` recording the bump level (patch, minor or major) and the changelog entry for your change. See [.changeset/README.md](.changeset/README.md) for the format.
-2. Once merged into `main`, the release workflow (`.github/workflows/release.yml`) keeps a `chore(release): version packages` pull request up to date, consuming the pending changesets. A maintainer opens that pull request once per release cycle; it is then left open so the workflow has something to update.
+2. Once merged into `main`, the release workflow (`.github/workflows/release.yml`) automatically creates or updates a `chore(release): version packages` pull request, consuming the pending changesets. With no pending changesets, it creates no pull request. Manual creation is a fallback only after a verified workflow or permissions error.
 3. That pull request already carries the version bump in `package.json` and the new `CHANGELOG.md` entries; merging it lands them on `main`.
 4. Publish a new release on GitHub for the bumped version, tagged with the version number (e.g. `1.2.3`), that describes notable changes and documents breaking changes. This triggers the publish workflow (`.github/workflows/release-publish.yml`), which publishes to npm and picks the dist-tag: `next` for `rc`, `alpha` and `beta` tags, `latest` otherwise.
 

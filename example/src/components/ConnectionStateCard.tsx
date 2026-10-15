@@ -1,3 +1,4 @@
+import { sampleRadius, sampleTypography } from '../theme/tokens';
 import { StyleSheet, Text, View } from 'react-native';
 import { MaterialIcons } from '@react-native-vector-icons/material-icons/static';
 import type { OctopusConnectionState } from '@octopus-community/react-native';
@@ -107,7 +108,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    borderRadius: 14,
+    borderRadius: sampleRadius.md,
     padding: 16,
   },
   texts: {
@@ -115,12 +116,11 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   badge: {
-    fontSize: 11,
-    fontWeight: '700',
+    ...sampleTypography.caption,
+
     letterSpacing: 0.8,
   },
   subtitle: {
-    fontSize: 13.5,
-    fontWeight: '600',
+    ...sampleTypography.callout,
   },
 });

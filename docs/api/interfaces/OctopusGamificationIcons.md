@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.14.0**](../README.md)
+[**@octopus-community/react-native v1.15.0**](../README.md)
 
 ---
 
@@ -32,6 +32,6 @@ Opens the gamification rules.
 
 Illustration at the top of the gamification rules.
 
-**iOS caveat (native 1.13.x):** the iOS SDK ignores this slot and uses the `badge` image
+**iOS caveat (native 1.15.x):** the iOS SDK ignores this slot and uses the `badge` image
 (or its own default) for the rules header, so an override here only shows on Android,
 and a `badge` override also changes the rules header on iOS.

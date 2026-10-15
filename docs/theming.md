@@ -29,7 +29,7 @@ import { Image } from 'react-native';
 
 await initialize({
   apiKey: 'YOUR_OCTOPUS_API_KEY',
-  connectionMode: { type: 'octopus' },
+  connectionMode: { type: 'sso', appManagedFields: [] },
   theme: {
     colors: {
       primary: '#FF6B35', // Main brand color
@@ -75,7 +75,7 @@ or system-driven.
 // No additional configuration needed
 await initialize({
   apiKey: 'YOUR_OCTOPUS_API_KEY',
-  connectionMode: { type: 'octopus' },
+  connectionMode: { type: 'sso', appManagedFields: [] },
   theme: { /* your theme */ }
 });
 ```
@@ -89,7 +89,7 @@ Appearance.setColorScheme('light');
 
 await initialize({
   apiKey: 'YOUR_OCTOPUS_API_KEY',
-  connectionMode: { type: 'octopus' },
+  connectionMode: { type: 'sso', appManagedFields: [] },
   theme: { /* your theme */ }
 });
 ```
@@ -103,7 +103,7 @@ Appearance.setColorScheme('dark');
 
 await initialize({
   apiKey: 'YOUR_OCTOPUS_API_KEY',
-  connectionMode: { type: 'octopus' },
+  connectionMode: { type: 'sso', appManagedFields: [] },
   theme: { /* your theme */ }
 });
 ```
@@ -115,7 +115,7 @@ For enhanced theming, you can provide separate color sets for light and dark mod
 ```ts
 await initialize({
   apiKey: 'YOUR_OCTOPUS_API_KEY',
-  connectionMode: { type: 'octopus' },
+  connectionMode: { type: 'sso', appManagedFields: [] },
   theme: {
     colors: {
       light: {
@@ -142,7 +142,7 @@ Customize typography with text styles and font sizes:
 ```ts
 await initialize({
   apiKey: 'YOUR_OCTOPUS_API_KEY',
-  connectionMode: { type: 'octopus' },
+  connectionMode: { type: 'sso', appManagedFields: [] },
   theme: {
     fonts: {
       // Theme-wide: applied to every text style below.
@@ -190,7 +190,7 @@ import { Image } from 'react-native';
 
 await initialize({
   apiKey: 'YOUR_OCTOPUS_API_KEY',
-  connectionMode: { type: 'octopus' },
+  connectionMode: { type: 'sso', appManagedFields: [] },
   theme: {
     icons: {
       content: {
@@ -228,15 +228,22 @@ await initialize({
   (transparent borders of 4.75). Ship `@2x`/`@3x` variants as for any bundled image.
 - **Remote images** (`http(s)` URIs) are downloaded when the Octopus UI is built; the native
   default shows until the download completes, and stays if it fails.
+- **Icons-only theme**: a theme that sets only `icons`, without `colors` or `fonts`, renders
+  the SDK's default colors and fonts.
 - A slot whose value is not an image source, a key the SDK does not know, or a
   `radio`/`checkbox`/`toggle` pair missing one side is dropped at `initialize` with a warning;
   the rest of `icons` still applies.
 - **iOS caveat**: the native iOS SDK draws the gamification rules header from the `badge` image,
   so `gamification.rulesHeader` only shows on Android, and a `badge` override also changes that
   header on iOS.
+- **Settings icons**: since native 1.15, Octopus-owned authentication and its account screens
+  are gone, so `settings.account`, `settings.logout` and `settings.deleteAccountWarning` are
+  deprecated and have no visible effect on either platform. `settings.help` is not deprecated,
+  but no native 1.15 screen draws it.
 - **Android caveat**: the native Android SDK does not read
   `content.post.creation.addPollOption` / `deletePollOption` or `common.checkbox` (it draws the
-  platform checkbox), so those overrides only show on iOS.
+  SDK's own checkbox), and declares `profile.notConnected` without any screen drawing it, so
+  those overrides only show on iOS.
 - **Not drawn yet**: `content.post.commentCount`, `viewCount` and `moreReactions` are declared by
   both native SDKs but no screen reads them at the current native versions, so an override is
   accepted and has no visible effect.
@@ -244,7 +251,7 @@ await initialize({
   and comment lists, `emptyNotifications` for an empty notification list, `networkError` for
   an offline first load, and `error` for other first-load failures. Supply full-color
   illustrations with transparent backgrounds; absent slots keep their native defaults.
-  On native 1.14, both platforms render these slots instead of
+  Since native 1.14, both platforms render these slots instead of
   `content.post.emptyFeedInGroups`, `emptyFeedInCurrentUserProfile`,
   `emptyFeedInOtherUserProfile`, `content.comment.emptyFeed` and `profile.emptyNotifications`.
   Those per-feature slots remain accepted for compatibility.
@@ -465,7 +472,7 @@ import { initialize } from '@octopus-community/react-native';
 
 await initialize({
   apiKey: 'your-api-key',
-  connectionMode: { type: 'octopus' },
+  connectionMode: { type: 'sso', appManagedFields: [] },
   topAppBar: {
     title: { type: 'text', text: 'My Community' }, // or { type: 'logo' }
     alignment: 'center',                            // 'leading' (default) | 'center'

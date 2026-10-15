@@ -1,5 +1,6 @@
 // Parity wave — lifecycle
 import { OctopusReactNativeSdk } from './internals/nativeModule';
+import { sdkVersion } from './internals/sdkVersion';
 import { setIsInitialised } from './internals/initialisationState';
 import { publishIsInitialised } from './internals/stateChannels';
 import type { InitializeParams } from './initialize';
@@ -8,9 +9,7 @@ import type { ApiServer } from './types/apiServer';
 /**
  * Configuration params for {@link switchCommunity}.
  *
- * Reuses the same discriminated `connectionMode` union as {@link InitializeParams} — SSO
- * or Octopus-managed — for consistency with {@link initialize}, rather than exposing two
- * separate functions.
+ * Reuses the same required SSO `connectionMode` object as {@link InitializeParams}.
  */
 export interface SwitchCommunityParams {
   /** The API key that identifies the community to switch to. */
@@ -18,7 +17,6 @@ export interface SwitchCommunityParams {
   /**
    * The connection mode to use on the new community.
    * - `sso`: Use Single Sign-On with your existing user system
-   * - `octopus`: Let Octopus handle user authentication
    */
   connectionMode: InitializeParams['connectionMode'];
   /**
@@ -64,7 +62,7 @@ export interface SwitchCommunityParams {
  * ```typescript
  * await switchCommunity({
  *   apiKey: 'new-community-api-key',
- *   connectionMode: { type: 'octopus' },
+ *   connectionMode: { type: 'sso', appManagedFields: [] },
  * });
  * // Then remount the embedded UI, e.g.:
  * // <OctopusUIView key="new-community-api-key" ... />
@@ -72,13 +70,15 @@ export interface SwitchCommunityParams {
  * ```
  */
 export function switchCommunity(params: SwitchCommunityParams): Promise<void> {
-  return OctopusReactNativeSdk.switchCommunity(params).then(() => {
-    setIsInitialised(true);
-    // Parity wave — state streams: mirror `initialize()`, which already publishes here for
-    // the same reason — the native sides do not agree on whether (or when) they emit
-    // `isInitialisedChanged` around a lifecycle call. Publishing on resolve makes the
-    // `addIsInitialisedListener` channel deterministic on both platforms; a native event
-    // carrying the same value is collapsed by the channel's `equals`.
-    publishIsInitialised(true);
-  });
+  return OctopusReactNativeSdk.switchCommunity({ ...params, sdkVersion }).then(
+    () => {
+      setIsInitialised(true);
+      // Parity wave — state streams: mirror `initialize()`, which already publishes here for
+      // the same reason — the native sides do not agree on whether (or when) they emit
+      // `isInitialisedChanged` around a lifecycle call. Publishing on resolve makes the
+      // `addIsInitialisedListener` channel deterministic on both platforms; a native event
+      // carrying the same value is collapsed by the channel's `equals`.
+      publishIsInitialised(true);
+    }
+  );
 }

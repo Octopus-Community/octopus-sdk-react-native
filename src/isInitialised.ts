@@ -21,7 +21,7 @@ import { getIsInitialised } from './internals/initialisationState';
  * @example
  * ```typescript
  * if (!isInitialised()) {
- *   await initialize({ apiKey: 'your-api-key', connectionMode: { type: 'octopus' } });
+ *   await initialize({ apiKey: 'your-api-key', connectionMode: { type: 'sso', appManagedFields: [] } });
  * }
  * ```
  */

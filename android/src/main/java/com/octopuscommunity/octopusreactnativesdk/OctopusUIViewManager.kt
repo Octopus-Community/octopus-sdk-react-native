@@ -1,6 +1,8 @@
 package com.octopuscommunity.octopusreactnativesdk
 
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
@@ -30,7 +32,16 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.view.ViewCompat
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.findViewTreeViewModelStoreOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.savedstate.SavedStateRegistryOwner
+import androidx.savedstate.findViewTreeSavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableMap
@@ -50,7 +61,21 @@ import com.octopuscommunity.sdk.ui.components.NavigationIconType
 // SurfaceMountingManager.updateLayout). Wrap ComposeView in a plain FrameLayout whose
 // onMeasure we can override to guard the pre-attachment case.
 class OctopusViewWrapper(context: Context) : FrameLayout(context) {
-    val composeView = ComposeView(context)
+    private val compositionLifecycleOwner = OctopusViewLifecycleOwner()
+    val composeView = ComposeView(context).apply {
+        // RN detach retains navigation state, but the view-owned lifecycle stops back
+        // handlers while hidden. It is destroyed on RN drop or Activity destruction.
+        setViewTreeLifecycleOwner(compositionLifecycleOwner)
+        setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+    }
+
+    // Fabric can drop a view while it is still attached when stopping a surface.
+    // This manager does not recycle views: later measurement must not recreate its composition.
+    internal var isDropped = false
+
+    internal fun setVisible(visible: Boolean) {
+        compositionLifecycleOwner.setVisible(visible)
+    }
 
     // Per-view snapshot state: @ReactProp setters can fire after the first composition
     // (and the manager is a singleton shared by every instance), so these must be
@@ -108,7 +133,7 @@ class OctopusViewWrapper(context: Context) : FrameLayout(context) {
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        if (!isAttachedToWindow) {
+        if (!isAttachedToWindow || isDropped) {
             setMeasuredDimension(
                 View.MeasureSpec.getSize(widthMeasureSpec),
                 View.MeasureSpec.getSize(heightMeasureSpec)
@@ -120,12 +145,34 @@ class OctopusViewWrapper(context: Context) : FrameLayout(context) {
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        if (!isDropped) {
+            val host = hostActivity()
+            // RN Modal uses a separate ComponentDialog tree without a ViewModelStoreOwner.
+            // Install owners before dispatch attaches ComposeView and starts its NavHost.
+            // Prefer the embedding tree (e.g. a fragment or dialog) when it supplies one;
+            // only missing owners fall back to the Activity. Keep our view-owned lifecycle.
+            composeView.setViewTreeViewModelStoreOwner(
+                findViewTreeViewModelStoreOwner() ?: checkNotNull(host as? ViewModelStoreOwner) {
+                    "OctopusUIView requires a host Activity with a ViewModelStoreOwner"
+                }
+            )
+            composeView.setViewTreeSavedStateRegistryOwner(
+                findViewTreeSavedStateRegistryOwner() ?: checkNotNull(host as? SavedStateRegistryOwner) {
+                    "OctopusUIView requires a host Activity with a SavedStateRegistryOwner"
+                }
+            )
+            compositionLifecycleOwner.attach(checkNotNull(host as? LifecycleOwner) {
+                "OctopusUIView requires a host Activity with a LifecycleOwner"
+            }.lifecycle)
+        }
         // ViewGroup.dispatchAttachedToWindow calls THIS view's onAttachedToWindow before
         // propagating to children, so the inner ComposeView is not yet attached at this
         // point. Defer the measure/layout until after the dispatch loop completes;
         // otherwise AbstractComposeView.onMeasure -> windowRecomposer lookup throws
         // "View ... is not attached to a window".
         post {
+            // RN may detach or drop the view again before this callback runs.
+            if (!isAttachedToWindow || isDropped) return@post
             composeView.measure(
                 MeasureSpec.makeMeasureSpec(measuredWidth, MeasureSpec.EXACTLY),
                 MeasureSpec.makeMeasureSpec(measuredHeight, MeasureSpec.EXACTLY)
@@ -133,6 +180,33 @@ class OctopusViewWrapper(context: Context) : FrameLayout(context) {
             composeView.layout(0, 0, measuredWidth, measuredHeight)
             mountPointBottomInsetPx.intValue = OctopusBottomInsetResolver.resolveOverlapPx(this)
             mountPointImeExcessPx.intValue = OctopusBottomInsetResolver.resolveImeExcessPx(this)
+        }
+    }
+
+    override fun onDetachedFromWindow() {
+        // isAttachedToWindow is still true inside this callback; update explicitly.
+        compositionLifecycleOwner.detach()
+        super.onDetachedFromWindow()
+    }
+
+    internal fun dropComposition() {
+        isDropped = true
+        compositionLifecycleOwner.destroy()
+        composeView.setViewCompositionStrategy(ViewCompositionStrategy.Default)
+        composeView.disposeComposition()
+    }
+
+    private fun hostActivity(): Activity {
+        var hostContext: Context = context
+        while (hostContext is ContextWrapper) {
+            if (hostContext is Activity) return hostContext
+            val base = hostContext.baseContext
+            if (base === hostContext) break
+            hostContext = base
+        }
+        // A ThemedReactContext can wrap the application context while retaining the host.
+        return checkNotNull((context as? ThemedReactContext)?.currentActivity) {
+            "OctopusUIView requires a host Activity"
         }
     }
 }
@@ -263,6 +337,18 @@ class OctopusUIViewManager(private val reactContext: ReactApplicationContext) :
             }
         }
         return wrapper
+    }
+
+    override fun onDropViewInstance(view: OctopusViewWrapper) {
+        view.dropComposition()
+        super.onDropViewInstance(view)
+    }
+
+    // A retained tab can be attached and transparent. Its host owns visibility;
+    // CREATED stops NavHost and SDK BackHandlers without clearing navigation state.
+    @ReactProp(name = "isVisible", defaultBoolean = true)
+    fun setIsVisible(view: OctopusViewWrapper, isVisible: Boolean) {
+        view.setVisible(isVisible)
     }
 
     @ReactProp(name = "interceptUrls")

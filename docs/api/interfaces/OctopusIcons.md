@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.14.0**](../README.md)
+[**@octopus-community/react-native v1.15.0**](../README.md)
 
 ---
 
@@ -28,7 +28,7 @@ available.
 ```tsx
 await initialize({
   apiKey: 'your-api-key',
-  connectionMode: { type: 'octopus' },
+  connectionMode: { type: 'sso', appManagedFields: [] },
   theme: {
     icons: {
       content: {

@@ -1,109 +1,177 @@
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+} from 'react-native';
 import type { ViewStyle } from 'react-native';
-
+import { MaterialIcons } from '@react-native-vector-icons/material-icons/static';
 import { chromeColors } from '../theme/branding';
-
+import { sampleRadius, sampleTypography } from '../theme/tokens';
 export interface SegmentOption<T extends string> {
   label: string;
   value: T;
 }
-
 interface SegmentControlProps<T extends string> {
-  /** Optional catalog `test_id`, applied verbatim on the control's container. */
   testID?: string;
-  options: SegmentOption<T>[];
+  options: readonly SegmentOption<T>[];
   value: T;
   onChange: (value: T) => void;
   isDark: boolean;
-  primaryColor: string;
-  onPrimaryColor: string;
   style?: ViewStyle;
-  /**
-   * Renders the segments non-interactive. Used by the Config screen's Server
-   * control, which displays a build-time value nobody can pick at runtime.
-   */
   disabled?: boolean;
 }
-
-/**
- * Horizontal segment control for choosing one of several options.
- * Used for URL opening mode, bottom inset, theme set, etc.
- */
+/** Android's threshold for replacing a joined segment with a scrolling choice ribbon. */
+export function segmentedNeedsChipRow(labels: string[]) {
+  const longest = Math.max(0, ...labels.map((label) => label.length));
+  return (
+    labels.length > 4 || longest > 12 || (labels.length > 3 && longest > 8)
+  );
+}
 export function SegmentControl<T extends string>({
   testID,
   options,
   value,
   onChange,
   isDark,
-  primaryColor,
-  onPrimaryColor,
   style,
   disabled = false,
 }: SegmentControlProps<T>) {
-  const chrome = chromeColors(isDark);
+  const c = chromeColors(isDark);
+  const scrolling = segmentedNeedsChipRow(options.map((o) => o.label));
+  const scrollRef = useRef<ScrollView>(null);
+  const optionLayouts = useRef(new Map<string, { x: number; width: number }>());
+  const contentWidth = useRef(0);
+  const [viewportWidth, setViewportWidth] = useState(0);
+  const centerSelection = useCallback(() => {
+    const selected = optionLayouts.current.get(value);
+    if (!scrolling || viewportWidth === 0 || !selected) return;
+    const desired = selected.x + selected.width / 2 - viewportWidth / 2;
+    const maximum = Math.max(0, contentWidth.current - viewportWidth);
+    scrollRef.current?.scrollTo({
+      x: Math.min(maximum, Math.max(0, desired)),
+      animated: false,
+    });
+  }, [scrolling, value, viewportWidth]);
+  useEffect(centerSelection, [centerSelection]);
+  const choices = options.map((o, index) => {
+    const active = o.value === value;
+    return (
+      <TouchableOpacity
+        key={o.value}
+        onLayout={
+          scrolling
+            ? (event) => {
+                const { x, width } = event.nativeEvent.layout;
+                optionLayouts.current.set(o.value, { x, width });
+                centerSelection();
+              }
+            : undefined
+        }
+        testID={testID ? `${testID}-${o.value}` : undefined}
+        accessibilityRole="radio"
+        accessibilityState={{ checked: active, disabled }}
+        disabled={disabled}
+        onPress={() => onChange(o.value)}
+        style={[
+          scrolling ? styles.chipTarget : styles.option,
+          !scrolling && index > 0 && styles.divided,
+          !scrolling && {
+            backgroundColor: active ? c.accentContainer : undefined,
+            borderColor: c.outline,
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.content,
+            scrolling && [
+              styles.chip,
+              {
+                borderColor: c.outline,
+                backgroundColor: active ? c.accentContainer : 'transparent',
+              },
+            ],
+          ]}
+        >
+          {active && (
+            <MaterialIcons name="check" size={16} color={c.onAccentContainer} />
+          )}
+          <Text
+            numberOfLines={1}
+            style={[
+              sampleTypography.label,
+              styles.label,
+              { color: active ? c.onAccentContainer : c.text },
+            ]}
+          >
+            {o.label}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  });
   return (
     <View
       testID={testID}
-      style={[
-        styles.wrapper,
-        { backgroundColor: chrome.segmentTrack },
-        isDark && [styles.darkFrame, { borderColor: chrome.border }],
-        disabled && styles.wrapperDisabled,
-        style,
-      ]}
+      accessibilityRole="radiogroup"
+      style={[style, disabled && styles.disabled]}
     >
-      {options.map((option) => {
-        const isActive = value === option.value;
-        return (
-          <TouchableOpacity
-            key={option.value}
-            style={[
-              styles.option,
-              isActive && { backgroundColor: primaryColor },
-            ]}
-            onPress={() => onChange(option.value)}
-            disabled={disabled}
-            activeOpacity={0.8}
-          >
-            <Text
-              style={[
-                styles.optionText,
-                { color: chrome.textSecondary },
-                isActive && { color: onPrimaryColor },
-              ]}
-              numberOfLines={1}
-            >
-              {option.label}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
+      {scrolling ? (
+        <ScrollView
+          ref={scrollRef}
+          onLayout={(event) => setViewportWidth(event.nativeEvent.layout.width)}
+          onContentSizeChange={(width) => {
+            contentWidth.current = width;
+            centerSelection();
+          }}
+          horizontal
+          showsHorizontalScrollIndicator
+          contentContainerStyle={styles.ribbon}
+        >
+          {choices}
+        </ScrollView>
+      ) : (
+        <View style={[styles.wrapper, { borderColor: c.outline }]}>
+          {choices}
+        </View>
+      )}
     </View>
   );
 }
-
 const styles = StyleSheet.create({
-  darkFrame: {
-    borderWidth: 1,
-  },
+  divided: { borderLeftWidth: 1 },
+  label: { flexShrink: 1 },
   wrapper: {
     flexDirection: 'row',
-    borderRadius: 8,
-    padding: 2,
-  },
-  wrapperDisabled: {
-    opacity: 0.5,
+    borderRadius: sampleRadius.pill,
+    borderWidth: 1,
+    overflow: 'hidden',
+    minHeight: 48,
   },
   option: {
     flex: 1,
+    minHeight: 48,
+    paddingHorizontal: 12,
     paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-    alignItems: 'center',
     justifyContent: 'center',
   },
-  optionText: {
-    fontSize: 12,
-    fontWeight: '500',
+  content: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
   },
+  ribbon: { gap: 8, paddingHorizontal: 16, paddingVertical: 4 },
+  chipTarget: { minHeight: 48, justifyContent: 'center' },
+  chip: {
+    minHeight: 40,
+    borderWidth: 1,
+    borderRadius: sampleRadius.pill,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  disabled: { opacity: 0.45 },
 });

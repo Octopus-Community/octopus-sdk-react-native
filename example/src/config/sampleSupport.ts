@@ -2,7 +2,12 @@ import type { ComponentType } from 'react';
 
 /** Optional internal bootstrap installs the sheet; a public checkout leaves it absent. */
 export const sampleSupport: {
-  FeedbackSheet?: ComponentType<{ isDark: boolean; onClose: () => void }>;
+  FeedbackSheet?: ComponentType<{
+    visible: boolean;
+    isDark: boolean;
+    onClose: () => void;
+    onDismiss: () => void;
+  }>;
   breadcrumb: string;
 } = { breadcrumb: 'Home' };
 

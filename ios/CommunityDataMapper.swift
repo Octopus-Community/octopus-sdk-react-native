@@ -1,3 +1,4 @@
+import Foundation
 import Octopus
 
 /// Serializes `OctopusCommunityData` to the JS-facing `OctopusCommunityData` shape.

@@ -13,6 +13,7 @@ class OctopusUIManager {
   static let embeddedDefaultBottomInset: CGFloat = 10
 
   private weak var presentedViewController: UIViewController?
+  private var closeUICompletions: [ObjectIdentifier: [() -> Void]] = [:]
 
   /// Hosting controllers created by `addEmbeddedView` and still alive, so a later
   /// `setForcedInterfaceStyle` reaches every mounted `<OctopusUIView>`, not only the
@@ -39,7 +40,7 @@ class OctopusUIManager {
     octopus: OctopusSDK,
     theme: OctopusUI.OctopusTheme?,
     logoSource: [String: Any]?,
-    iconSources: [String: String]? = nil,
+    iconSources: [String: OctopusIconSource]? = nil,
     fontConfiguration: [String: Any]?,
     uiConfiguration: OctopusUIConfiguration?,
     notificationUserInfo: [AnyHashable: Any]? = nil,
@@ -142,84 +143,101 @@ class OctopusUIManager {
     presentingViewController.present(hostingController, animated: true)
   }
   
-  private func hasAssetOverrides(logoSource: [String: Any]?, iconSources: [String: String]?) -> Bool {
+  private func hasAssetOverrides(logoSource: [String: Any]?, iconSources: [String: OctopusIconSource]?) -> Bool {
     logoSource != nil || !(iconSources?.isEmpty ?? true)
   }
 
-  /// Loads the custom logo and every icon override concurrently, then hands back the theme
-  /// assets built from whatever loaded — or `nil` when nothing did, so the theme already on
-  /// screen is kept. An icon that fails to load keeps its SDK default (see `octopusIcons(from:)`).
-  /// The completion may run on any queue.
+  /// Loads the custom logo and every icon override concurrently and reports the theme assets
+  /// built from whatever loaded so far.
+  ///
+  /// Nothing waits for anything else: `onUpdate` is called after the logo and after each icon
+  /// that loads, always with the cumulative assets, so a fast image is on screen while a slow
+  /// one is still downloading. Updates that land close together are coalesced into one, since
+  /// every update rebuilds the themed root view. An image that fails or times out (see
+  /// `imageSession`) keeps its SDK default (see `octopusIcons(from:)`) and costs the others
+  /// nothing. Nothing is reported when nothing loaded, so the theme already on screen is kept.
+  /// All the state below lives on the main queue — each completion hops there before touching
+  /// it — and `onUpdate` is always called on the main queue, in order.
   private func loadAssets(
     logoSource: [String: Any]?,
-    iconSources: [String: String]?,
-    completion: @escaping (OctopusUI.OctopusTheme.Assets?) -> Void
+    iconSources: [String: OctopusIconSource]?,
+    onUpdate: @escaping (OctopusUI.OctopusTheme.Assets?) -> Void
   ) {
-    let group = DispatchGroup()
-    let lock = NSLock()
     var logoImage: UIImage?
     var iconImages: [String: UIImage] = [:]
+    var publishScheduled = false
 
-    if let logoSource = logoSource {
-      group.enter()
-      loadImage(from: logoSource) { image in
-        lock.lock()
-        logoImage = image
-        lock.unlock()
-        group.leave()
+    // Main queue only. A short delay batches the icons that finish together (a warm cache
+    // resolves dozens in the same instant) into a single theme rebuild.
+    func schedulePublish() {
+      guard !publishScheduled else { return }
+      publishScheduled = true
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+        publishScheduled = false
+        onUpdate(OctopusUI.OctopusTheme.Assets(logo: logoImage, icons: octopusIcons(from: iconImages)))
       }
     }
-    for (path, uri) in iconSources ?? [:] {
-      group.enter()
-      loadImage(from: ["uri": uri]) { image in
-        if let image = image {
-          lock.lock()
-          iconImages[path] = image
-          lock.unlock()
+
+    if let logoSource = logoSource, let uri = logoSource["uri"] as? String {
+      let scale = (logoSource["scale"] as? NSNumber).map { CGFloat($0.doubleValue) }
+      loadImage(uri: uri, scale: scale) { image in
+        guard let image = image else { return }
+        DispatchQueue.main.async {
+          logoImage = image
+          schedulePublish()
         }
-        group.leave()
       }
     }
 
-    group.notify(queue: .main) {
-      if logoImage == nil && iconImages.isEmpty {
-        completion(nil)
-      } else {
-        completion(OctopusUI.OctopusTheme.Assets(logo: logoImage, icons: octopusIcons(from: iconImages)))
+    for (path, source) in iconSources ?? [:] {
+      loadImage(uri: source.uri, scale: source.scale) { image in
+        guard let image = image else { return }
+        DispatchQueue.main.async {
+          iconImages[path] = image
+          schedulePublish()
+        }
       }
     }
   }
 
-  private func loadImage(from source: [String: Any], completion: @escaping (UIImage?) -> Void) {
-    // Handle React Native image source with URI (from Image.resolveAssetSource)
-    guard let uri = source["uri"] as? String else {
-      completion(nil)
-      return
-    }
-    
+  /// Session for the remote images of the theme. The default `URLSession.shared` waits up to
+  /// 60 s for a stalled request and 7 days for a slow one, which would leave the affected icon
+  /// (and the batch it belongs to) at its default for that long. Short timeouts turn a hung
+  /// host into a plain load failure.
+  private static let imageSession: URLSession = {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.timeoutIntervalForRequest = 10
+    configuration.timeoutIntervalForResource = 20
+    return URLSession(configuration: configuration)
+  }()
+
+  /// Loads one image, from a remote URL or from the app bundle / file system.
+  ///
+  /// `scale` is the pixel density of the source (`Image.resolveAssetSource().scale`). Bytes
+  /// downloaded from a URL carry no density, and `UIImage(data:)` would assume 1, so a `@3x`
+  /// asset served by Metro would be drawn three times too large; the given scale is applied to
+  /// them. A local file keeps the density its own file name (`@2x`, `@3x`) declares. A missing,
+  /// non-finite or non-positive `scale` means 1, the previous behaviour.
+  private func loadImage(uri: String, scale: CGFloat?, completion: @escaping (UIImage?) -> Void) {
     // Remote URL
     if uri.hasPrefix("http") {
       guard let url = URL(string: uri) else {
         completion(nil)
         return
       }
-      
-      URLSession.shared.dataTask(with: url) { data, response, error in
+
+      let imageScale = scale.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? 1
+      Self.imageSession.dataTask(with: url) { data, response, error in
         guard let data = data, error == nil else {
           completion(nil)
           return
         }
-        
-        let image = UIImage(data: data)
-        completion(image)
+
+        completion(UIImage(data: data, scale: imageScale))
       }.resume()
     } else {
       // Local file path (from Image.resolveAssetSource)
-      if let image = loadImageFromLocalPath(uri) {
-        completion(image)
-      } else {
-        completion(nil)
-      }
+      completion(loadImageFromLocalPath(uri))
     }
   }
 
@@ -252,21 +270,61 @@ class OctopusUIManager {
     return UIImage(named: nameWithoutExtension)
   }
 
-  func closeUI() throws {
+  func closeUI(completion: @escaping () -> Void = {}) throws {
     guard let presentedVC = presentedViewController else {
       throw NSError(domain: "CLOSE_UI_ERROR", code: 0, userInfo: [NSLocalizedDescriptionKey: "No UI is currently presented"])
     }
 
-    presentedVC.dismiss(animated: true) {
-      self.presentedViewController = nil
+    // Concurrent requests share one dismissal and are completed together.
+    let controllerID = ObjectIdentifier(presentedVC)
+    if closeUICompletions[controllerID] != nil {
+      closeUICompletions[controllerID]?.append(completion)
+      return
+    }
+    closeUICompletions[controllerID] = [completion]
+    dismissFullscreenUI(presentedVC)
+  }
+
+  private func dismissFullscreenUI(_ presentedVC: UIViewController) {
+    // cleanup() may already have settled this request while we were waiting.
+    guard closeUICompletions[ObjectIdentifier(presentedVC)] != nil else { return }
+
+    if presentedVC.isBeingDismissed {
+      // The SDK's default back arrow can dismiss without going through closeUI.
+      // Wait until UIKit finishes before attempting another dismissal. Checking
+      // again also handles a cancelled transition and a missing coordinator.
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+        self.dismissFullscreenUI(presentedVC)
+      }
+      return
+    }
+
+    guard let presenter = presentedVC.presentingViewController else {
+      completeCloseUI(presentedVC)
+      return
+    }
+    // Dismiss from the parent so Octopus and any sheet it presented both close.
+    presenter.dismiss(animated: true) {
+      self.completeCloseUI(presentedVC)
     }
   }
 
-  func cleanup() {
-    if let presentedVC = presentedViewController {
-      presentedVC.dismiss(animated: false, completion: nil)
+  private func completeCloseUI(_ presentedVC: UIViewController) {
+    if presentedViewController === presentedVC {
       presentedViewController = nil
     }
+    let completions = closeUICompletions.removeValue(forKey: ObjectIdentifier(presentedVC)) ?? []
+    completions.forEach { $0() }
+  }
+
+  func cleanup() {
+    if let presentedVC = presentedViewController, !presentedVC.isBeingDismissed {
+      presentedVC.presentingViewController?.dismiss(animated: false, completion: nil)
+    }
+    presentedViewController = nil
+    let completions = closeUICompletions.values.flatMap { $0 }
+    closeUICompletions.removeAll()
+    completions.forEach { $0() }
   }
 
   /// Embeds the Octopus UI into the given container view (for use in ViewManager / non-fullscreen).
@@ -280,7 +338,7 @@ class OctopusUIManager {
     octopus: OctopusSDK,
     theme: OctopusUI.OctopusTheme?,
     logoSource: [String: Any]?,
-    iconSources: [String: String]? = nil,
+    iconSources: [String: OctopusIconSource]? = nil,
     fontConfiguration: [String: Any]?,
     uiConfiguration: OctopusUIConfiguration?,
     interceptUrls: Bool,

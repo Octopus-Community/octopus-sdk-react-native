@@ -45,17 +45,26 @@ export const EXAMPLE_FONT_WEIGHT = 700;
 
 /**
  * Bottom safe area inset preset: `unset` (omit `ui.bottomSafeAreaInset` entirely — the
- * default, and the only preset that exercises the Android mount-point resolution added for
- * issue #120), an explicit `0` (opt back out of that resolution), or 20pt.
+ * default, and the only preset that exercises the Android mount-point resolution), an explicit
+ * `0` (opt back out of that resolution), or a total of 20pt or 70pt.
+ *
+ * The two numeric presets bracket the system bottom safe area of a device that has one
+ * (~34pt on a home-indicator iPhone), which is what makes the iOS normalization visible on an
+ * embedded view: `20` lands below it, so the band is the safe area alone, and `70` lands
+ * above it, so the band is exactly 70.
  */
-export type BottomInsetPreset = 'unset' | 'none' | '20';
+export type BottomInsetPreset = 'unset' | 'none' | '20' | '70';
 
 /**
  * Numeric value for each preset that has one. `unset` deliberately has none: App.tsx omits
  * the `ui.bottomSafeAreaInset` key entirely for it rather than passing `0`, since on Android
  * an absent key and an explicit `0` are no longer equivalent (see OctopusContent.kt).
  */
-export const BOTTOM_INSET_VALUES: Partial<Record<BottomInsetPreset, number>> = {
+export const BOTTOM_INSET_VALUES: Record<
+  Exclude<BottomInsetPreset, 'unset'>,
+  number
+> = {
   'none': 0,
   '20': 20,
+  '70': 70,
 };

@@ -1,51 +1,43 @@
+import { sampleRadius, sampleTypography } from '../theme/tokens';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@react-native-vector-icons/material-icons/static';
 
-import { OCTOPUS_BRAND } from '../theme/branding';
+import { chromeColors } from '../theme/branding';
 
-/** The Material Icons glyph names this bar draws — same four the reference samples use. */
+/** The Material Icons glyph names this bar draws — three used by the reference sample. */
 type TabIconName = React.ComponentProps<typeof MaterialIcons>['name'];
 
-/** Tab identifiers for the example app: Home, Scenarios, Community, Settings. */
-export type TabId = 'home' | 'scenarios' | 'community' | 'settings';
+/** Tab identifiers for the example app: Scenarios, Community, Settings. */
+export type TabId = 'scenarios' | 'community' | 'settings';
+export const START_TAB: TabId = 'scenarios';
 
 export interface TabBarProps {
   activeTab: TabId;
   onTabChange: (tab: TabId) => void;
   /** The bar's own background — the unread badge draws a ring in it to detach from the icon. */
   badgeRingColor: string;
-  /** Tint of the selected item's icon and label. */
+  /** Tint of the selected item's icon; its label uses the text role. */
   activeColor: string;
   /** Tint of every unselected item. */
   inactiveColor: string;
   /**
-   * Fill behind the selected item's icon — `activeColor` at 15% alpha, posed explicitly
+   * Fill behind the selected item's icon — theme accent tint, posed explicitly
    * per the shared sample design contract rather than left unset.
    */
   indicatorColor: string;
   notSeenNotificationsCount?: number;
+  updateAvailable?: boolean;
+  isDark: boolean;
 }
 
-/**
- * `testId` is the shared cross-platform handle from the scenario catalog's `shell.tabs` map,
- * applied verbatim so the QA pipeline drives the same id here as on the other samples. The
- * catalog names exactly these four tabs and the example ships exactly these four — every other
- * capability is a scenario card, and the event log is the Debug console (reached from Settings,
- * `debug-open-button`).
- *
- * `icon` is the glyph the shared sample design identity assigns to that tab — Material
- * filled `home` / `science` / `forum` / `settings`, the same four on Android, Flutter and
- * here, so a tester recognises the same bar on every sample. `forum` rather than `people`
- * for Community: the tab opens a discussion surface, not a member list.
- */
-const TABS: {
+/** Stable handles shared with the QA catalogue; the shell owns exactly three tabs. */
+export const TABS: {
   id: TabId;
   label: string;
   testId: string;
   icon: TabIconName;
 }[] = [
-  { id: 'home', label: 'Home', testId: 'home-tab', icon: 'home' },
   {
     id: 'scenarios',
     label: 'Scenarios',
@@ -75,6 +67,7 @@ function TabButton({
   activeColor,
   inactiveColor,
   indicatorColor,
+  chrome,
 }: {
   tab: (typeof TABS)[0];
   isActive: boolean;
@@ -85,6 +78,7 @@ function TabButton({
   activeColor: string;
   inactiveColor: string;
   indicatorColor: string;
+  chrome: ReturnType<typeof chromeColors>;
 }) {
   const tint = isActive ? activeColor : inactiveColor;
   return (
@@ -95,7 +89,7 @@ function TabButton({
       activeOpacity={0.7}
       accessibilityRole="tab"
       accessibilityState={{ selected: isActive }}
-      accessibilityLabel={`${tab.label} tab`}
+      accessibilityLabel={`${tab.label} tab${badgeCount > 0 ? (tab.id === 'settings' ? ', update available' : `, ${badgeCount} unread notifications`) : ''}`}
     >
       <View style={styles.iconSlot}>
         {isActive && (
@@ -105,17 +99,30 @@ function TabButton({
         )}
         <MaterialIcons name={tab.icon} size={24} color={tint} />
         {badgeCount > 0 && (
-          <View style={[styles.badge, { borderColor: badgeRingColor }]}>
-            <Text style={styles.badgeText}>
-              {badgeCount > 99 ? '99+' : badgeCount}
+          <View
+            style={[
+              styles.badge,
+              {
+                borderColor: badgeRingColor,
+                backgroundColor: chrome.badgeFill,
+              },
+            ]}
+          >
+            <Text style={[styles.badgeText, { color: chrome.onBadge }]}>
+              {tab.id === 'settings'
+                ? '!'
+                : badgeCount > 99
+                  ? '99+'
+                  : badgeCount}
             </Text>
           </View>
         )}
       </View>
       <Text
-        style={[styles.tabLabel, { color: tint }]}
-        numberOfLines={1}
-        maxFontSizeMultiplier={1.3}
+        style={[
+          styles.tabLabel,
+          { color: isActive ? chrome.text : inactiveColor },
+        ]}
       >
         {tab.label}
       </Text>
@@ -124,7 +131,7 @@ function TabButton({
 }
 
 /**
- * Bottom tab bar — four items of equal width, icon over label: the standard shape on both
+ * Bottom tab bar — three items of equal width, icon over label: the standard shape on both
  * platforms, and the one the reference samples already have (Material 3 `NavigationBar` on
  * Android, `BottomNavigationBar` on Flutter).
  *
@@ -140,8 +147,11 @@ export function TabBar({
   inactiveColor,
   indicatorColor,
   notSeenNotificationsCount = 0,
+  updateAvailable = false,
+  isDark,
 }: TabBarProps) {
   const insets = useSafeAreaInsets();
+  const chrome = chromeColors(isDark);
   return (
     <View
       style={[styles.container, { paddingBottom: Math.max(insets.bottom, 10) }]}
@@ -151,7 +161,14 @@ export function TabBar({
           key={tab.id}
           tab={tab}
           isActive={activeTab === tab.id}
-          badgeCount={tab.id === 'community' ? notSeenNotificationsCount : 0}
+          badgeCount={
+            tab.id === 'community'
+              ? notSeenNotificationsCount
+              : tab.id === 'settings' && updateAvailable
+                ? 1
+                : 0
+          }
+          chrome={chrome}
           onPress={() => onTabChange(tab.id)}
           badgeRingColor={badgeRingColor}
           activeColor={activeColor}
@@ -166,23 +183,23 @@ export function TabBar({
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'stretch',
     width: '100%',
     paddingTop: 8,
   },
   tab: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     paddingHorizontal: 4,
-    gap: 3,
+    gap: 4,
+    minHeight: 64,
+    paddingVertical: 4,
   },
-  // Anchors the badge to the icon rather than to the label, which is where every platform's
-  // stock bottom bar puts it. Widened to 40 to match `indicator` below — at 32 the 40pt
-  // indicator overflowed its slot by 4pt on each side.
+  // Shared Material navigation indicator slot; the badge stays pinned to the icon.
   iconSlot: {
-    width: 40,
-    height: 24,
+    width: 64,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -191,33 +208,30 @@ const styles = StyleSheet.create({
   // and this decorative fill doesn't need to be a separate touch target.
   indicator: {
     position: 'absolute',
-    width: 40,
-    height: 24,
-    borderRadius: 12,
+    width: 64,
+    height: 32,
+    borderRadius: sampleRadius.pill,
   },
+  // Let scaled labels wrap and determine the bar height.
   tabLabel: {
-    fontSize: 12,
-    fontWeight: '600',
+    ...sampleTypography.caption,
+    alignSelf: 'stretch',
+    textAlign: 'center',
   },
   badge: {
     position: 'absolute',
     top: -4,
-    // Keeps the ring pinned to the icon's top-right corner: `iconSlot` widened to 40
-    // (from 32) to fit `indicator`, so the icon's own inset grew by 4 and this follows.
-    left: 20,
-    backgroundColor: OCTOPUS_BRAND.error,
-    borderRadius: 8,
+    left: 36,
+    borderRadius: sampleRadius.md,
     minWidth: 16,
-    height: 16,
+    minHeight: 20,
     paddingHorizontal: 4,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
   },
   badgeText: {
-    color: '#FFFFFF',
     // 11 rather than the 12 floor: the M3 Badge spec's size for a numeric counter.
-    fontSize: 11,
-    fontWeight: '700',
+    ...sampleTypography.caption,
   },
 });

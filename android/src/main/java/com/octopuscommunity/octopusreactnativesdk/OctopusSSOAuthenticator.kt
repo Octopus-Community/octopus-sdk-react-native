@@ -13,6 +13,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import java.util.UUID
@@ -20,6 +21,11 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import android.content.Context
+import android.util.Log
+import java.io.File
+import java.io.IOException
+import java.net.URI
+import android.net.Uri
 
 
 class OctopusSSOAuthenticator(
@@ -28,6 +34,40 @@ class OctopusSSOAuthenticator(
  ) {
 
   private val coroutineScope = CoroutineScope(Dispatchers.Main)
+  private val profilePictureCache by lazy {
+    ProfilePictureCache(File(context.cacheDir, "octopus-profile-pictures"))
+  }
+  private val profilePictureLookup = object : ProfilePictureLookup {
+    override fun readLocal(uriOrPath: String): ByteArray? {
+      try {
+        if (uriOrPath.startsWith("/")) return File(uriOrPath).takeIf { it.isFile }?.readBytes()
+        val uri = Uri.parse(uriOrPath)
+        if (uri.scheme == "file") {
+          val path = uri.path ?: return null
+          if (path.startsWith("/android_asset/")) {
+            return context.assets.open(path.removePrefix("/android_asset/")).use { it.readBytes() }
+          }
+          return File(URI(uriOrPath)).takeIf { it.isFile }?.readBytes()
+        }
+        return context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+      } catch (error: IOException) {
+        return null
+      }
+    }
+
+    override fun drawableUri(name: String): String? {
+      if (!name.matches(Regex("[A-Za-z0-9_]+"))) return null
+      val id = context.resources.getIdentifier(name, "drawable", context.packageName)
+      return if (id == 0) null else "android.resource://${context.packageName}/$id"
+    }
+
+    override fun readAsset(name: String): ByteArray? = try {
+      context.assets.open(name).use { it.readBytes() }
+    } catch (error: IOException) {
+      null
+    }
+
+  }
   private val pendingTokenRequests =
     ConcurrentHashMap<String, kotlin.coroutines.Continuation<String>>()
 
@@ -48,8 +88,10 @@ class OctopusSSOAuthenticator(
    */
   fun connectUser(params: ReadableMap, promise: Promise) {
     coroutineScope.launch {
+      var cachedPicture: File? = null
+      var connected = false
       try {
-        val clientUser = parseClientUser(params)
+        val clientUser = parseClientUser(params) { cachedPicture = it }
 
         when (
           val result = OctopusSDK.connectUser(
@@ -57,7 +99,10 @@ class OctopusSSOAuthenticator(
             tokenProvider = { requestTokenFromRN() }
           )
         ) {
-          is OctopusResult.Success -> promise.resolve(null)
+          is OctopusResult.Success -> {
+            connected = true
+            promise.resolve(null)
+          }
           is OctopusResult.Failure -> {
             val (code, message) = result.toBridgeError()
             promise.reject(code, message, null)
@@ -96,8 +141,15 @@ class OctopusSSOAuthenticator(
           )
           throw e
         }
+      } catch (e: ProfilePictureLoadException) {
+        Log.w("OctopusSDK", "Failed to load profile picture; rejecting connection.")
+        promise.reject(CODE_CONNECT_USER_ERROR, e.message, e)
       } catch (e: Exception) {
         promise.reject(CODE_CONNECT_USER_ERROR, "Failed to connect user: ${e.message}", e)
+      } finally {
+        withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
+          profilePictureCache.finish(cachedPicture, connected)
+        }
       }
     }
   }
@@ -213,11 +265,11 @@ class OctopusSSOAuthenticator(
     }
   }
 
-  private fun parseClientUser(params: ReadableMap): ClientUser {
+  private suspend fun parseClientUser(params: ReadableMap, onCachedPicture: (File) -> Unit): ClientUser {
     val userId = params.getString("userId")
       ?: throw IllegalArgumentException("Missing user id")
 
-    val profile = parseUserProfile(params.getMap("profile"))
+    val profile = parseUserProfile(params.getMap("profile"), onCachedPicture)
 
     return ClientUser(
       userId = userId,
@@ -225,38 +277,44 @@ class OctopusSSOAuthenticator(
     )
   }
 
-  private fun parseUserProfile(profileParams: ReadableMap?): ClientUser.Profile {
+  private suspend fun parseUserProfile(profileParams: ReadableMap?, onCachedPicture: (File) -> Unit): ClientUser.Profile {
     if (profileParams == null) {
       return ClientUser.Profile()
     }
 
-    val profilePicture = profileParams.getString("profilePicture")?.let { pictureUrl ->
-      if (pictureUrl.startsWith("http://") || pictureUrl.startsWith("https://")) {
-        Resource.Remote(url = pictureUrl)
-      } else if (pictureUrl.startsWith("file") || pictureUrl.startsWith("android.resource")) {
-        Resource.Local(pictureUrl)
-      } else if(pictureUrl.isNotBlank()) {
-        // Asset names like "assets_images_logo" need conversion
-        // Convert to drawable resource URI
-        val resourceId = context.resources.getIdentifier(pictureUrl, "drawable", context.packageName)
-        Resource.Local(
-          if (resourceId != 0) {
-            "android.resource://${context.packageName}/$resourceId"
-          } else {
-            // Fallback: try assets folder
-            "file:///android_asset/$pictureUrl"
-          }
-        )
-      } else {
-        null
-      }
+    val nickname = profileParams.getString("username")
+    val bio = profileParams.getString("biography")
+    val profilePicture = profileParams.getString("profilePicture")?.let { input ->
+      withContext(Dispatchers.IO) { loadProfilePictureResource(input, onCachedPicture) }
     }
 
     return ClientUser.Profile(
-      nickname = profileParams.getString("username"),
-      bio = profileParams.getString("biography"),
+      nickname = nickname,
+      bio = bio,
       picture = profilePicture
     )
+  }
+
+  private suspend fun loadProfilePictureResource(input: String, onCachedPicture: (File) -> Unit): Resource? {
+    try {
+      return when (val parsed = loadProfilePicture(input, profilePictureLookup)) {
+        null -> null
+        is LoadedProfilePicture.Remote -> Resource.Remote(url = parsed.url)
+        is LoadedProfilePicture.Local -> {
+          val uri = if (parsed.uriOrPath.startsWith("/")) File(parsed.uriOrPath).toURI().toString() else parsed.uriOrPath
+          Resource.Local(uri)
+        }
+        is LoadedProfilePicture.Bytes -> {
+          val file = profilePictureCache.store(parsed.data)
+          onCachedPicture(file)
+          Resource.Local(file.toURI().toString())
+        }
+      }
+    } catch (error: CancellationException) {
+      throw error
+    } catch (error: Exception) {
+      throw ProfilePictureLoadException(error)
+    }
   }
 
   /**

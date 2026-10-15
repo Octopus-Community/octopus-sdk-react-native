@@ -12,8 +12,24 @@ class OctopusPushModule: RCTEventEmitter {
   @objc static weak var shared: OctopusPushModule?
 
   private var hasListeners = false
-  private var pendingToken: String?
-  private var bufferedNotification: [String: Any]?
+  private static var pendingToken: String?
+
+  static func tokenReceived(_ token: String) {
+    DispatchQueue.main.async {
+      if let module = shared { module.emitToken(token) }
+      else { pendingToken = token }
+    }
+  }
+  private static var bufferedNotification: [String: Any]?
+
+  static func notificationOpened(_ userInfo: [AnyHashable: Any], id: String) {
+    DispatchQueue.main.async {
+      var payload = userInfo
+      payload["sample_push_id"] = id
+      if let module = shared { module.emitNotificationOpened(payload) }
+      else { bufferedNotification = stringKeyed(payload) }
+    }
+  }
 
   override init() {
     super.init()
@@ -28,9 +44,9 @@ class OctopusPushModule: RCTEventEmitter {
 
   override func startObserving() {
     hasListeners = true
-    if let token = pendingToken {
+    if let token = Self.pendingToken {
       sendEvent(withName: "octopusPushToken", body: token)
-      pendingToken = nil
+      Self.pendingToken = nil
     }
   }
 
@@ -43,7 +59,7 @@ class OctopusPushModule: RCTEventEmitter {
     if hasListeners {
       sendEvent(withName: "octopusPushToken", body: token)
     } else {
-      pendingToken = token
+      Self.pendingToken = token
     }
   }
 
@@ -55,7 +71,7 @@ class OctopusPushModule: RCTEventEmitter {
     if hasListeners {
       sendEvent(withName: "octopusNotificationOpened", body: normalized)
     } else {
-      bufferedNotification = normalized
+      Self.bufferedNotification = normalized
     }
   }
 
@@ -71,9 +87,11 @@ class OctopusPushModule: RCTEventEmitter {
   @objc(getInitialNotification:rejecter:)
   func getInitialNotification(_ resolve: @escaping RCTPromiseResolveBlock,
                               rejecter reject: @escaping RCTPromiseRejectBlock) {
-    let n = bufferedNotification
-    bufferedNotification = nil
-    resolve(n)
+    DispatchQueue.main.async {
+      let n = Self.bufferedNotification
+      Self.bufferedNotification = nil
+      resolve(n)
+    }
   }
 
   private static func stringKeyed(_ dict: [AnyHashable: Any]) -> [String: Any] {

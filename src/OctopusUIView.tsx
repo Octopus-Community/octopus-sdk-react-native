@@ -1,4 +1,5 @@
 import {
+  Platform,
   requireNativeComponent,
   StyleSheet,
   type NativeSyntheticEvent,
@@ -16,6 +17,7 @@ import type { OctopusNavBarLeadingAction } from './types/octopusNavBarLeadingAct
 import type { OctopusNavigationMode } from './types/octopusNavigationMode';
 
 type NativeProps = {
+  isVisible?: boolean;
   interceptUrls?: boolean;
   interceptProfileTaps?: boolean;
   notification?: { linkPath: string; rawPayload: Record<string, string> };
@@ -35,6 +37,20 @@ type NativeProps = {
 };
 
 export interface OctopusUIViewProps {
+  /**
+   * Whether this retained view may handle Android system Back. Set to `false`
+   * when its tab is inactive or a host screen covers it, even if it remains
+   * mounted with `opacity: 0`. Android pauses the view's lifecycle while
+   * preserving its native navigation stack; updates apply without remounting.
+   *
+   * This prop does not hide the view or change touch handling. The host must
+   * manage those separately. It is a no-op on iOS, which has no system Back.
+   * It does not forward Back from a React Native `Modal` to the native view.
+   *
+   * @default true
+   */
+  isVisible?: boolean;
+
   /**
    * When `true`, URLs tapped inside the community UI are not opened by the SDK.
    * Instead, a `navigateToUrl` event is emitted. Subscribe with
@@ -68,7 +84,7 @@ export interface OctopusUIViewProps {
 
   /**
    * The screen the embedded UI mounts on: the main feed (the default), a
-   * specific post or group (bridge mode), one member's posts (`activity`) or
+   * specific post or group (bridge mode), one member's activity (`activity`) or
    * profile (`profile`), or the post editor (`createPost`). Same union — and
    * same per-variant contract — as `openUI({ initialScreen })`: see
    * {@link OctopusInitialScreen}.
@@ -235,6 +251,7 @@ const NativeOctopusUIView =
  * ```
  */
 export function OctopusUIView({
+  isVisible = true,
   interceptUrls = false,
   interceptProfileTaps = false,
   notification,
@@ -261,6 +278,7 @@ export function OctopusUIView({
   );
   return (
     <NativeOctopusUIView
+      {...(Platform.OS === 'android' ? { isVisible } : {})}
       interceptUrls={interceptUrls}
       interceptProfileTaps={interceptProfileTaps}
       notification={nativeNotification}

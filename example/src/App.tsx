@@ -1,3 +1,4 @@
+import { sampleTypography } from './theme/tokens';
 import { sampleSupport } from './config/sampleSupport';
 /* eslint-disable react-native/no-inline-styles */
 import * as Octopus from '@octopus-community/react-native';
@@ -26,16 +27,40 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { AppBar } from './components/AppBar';
-import { DarkHalo } from './components/DarkHalo';
-import { TabBar, type TabId } from './components/TabBar';
+import { TabBar, START_TAB, type TabId } from './components/TabBar';
 import { AppUpdateSnackbar } from './components/AppUpdateSnackbar';
 import { chromeColors, OCTOPUS_SDK_THEME } from './theme/branding';
 import { restoreThemeMode } from './theme/themeMode';
-import { runAppUpdateCheck } from './update/appUpdateStore';
+import { statusBarStyleForSurface } from './theme/statusBar';
+import {
+  getAppUpdateStatus,
+  subscribeToAppUpdate,
+  runAppUpdateCheck,
+} from './update/appUpdateStore';
 import { isAppUpdateSupported } from './update/appUpdate';
 import { setupOctopusPush } from './push';
+import {
+  communityNavigationReducer,
+  loadCommunityMode,
+  persistCommunityMode,
+} from './navigation/communityNavigation';
+import { useModalDismissal } from './navigation/useModalDismissal';
+import { pushInbox } from './navigation/pushInbox';
+import { useCommunityPushRouting } from './navigation/useCommunityPushRouting';
+import {
+  CommunityPresentation,
+  type CommunityPresentationMode,
+} from './components/CommunityPresentation';
 import {
   resolveShellBack,
   resolveWebViewBack,
@@ -55,9 +80,39 @@ import { CommunityScreen } from './screens/CommunityScreen';
 import { ConfigScreen } from './screens/ConfigScreen';
 import type { ConfigScreenMode } from './screens/ConfigScreen';
 import { DebugScreen } from './screens/DebugScreen';
-import { HomeScreen } from './screens/HomeScreen';
-import { ScenariosScreen } from './screens/ScenariosScreen';
+import { HostIntegrationPanel } from './screens/HostIntegrationPanel';
+import { DebugConsoleSheet } from './components/DebugConsoleSheet';
+import {
+  SDK_LANGUAGES,
+  loadSettingsPreferences,
+  saveSettingsPreferences,
+} from './config/settingsPreferences';
+import {
+  canPersistConfigServer,
+  resolveConfigServer,
+  settingsServerLabel,
+} from './config/settingsServer';
+import { handlesSampleUrl } from './config/hostIntegration';
+import { SettingsOverview } from './components/SettingsOverview';
+import { CommunityLaunchActions } from './components/CommunityLaunchActions';
+import { ShellTabs } from './navigation/ShellTabs';
+import {
+  ScenariosScreen,
+  type ScenarioTopBarOwner,
+} from './screens/ScenariosScreen';
 import { ClientProfileScreen } from './screens/ClientProfileScreen';
+import { SignInScreen } from './screens/SignInScreen';
+import { EditProfileScreen } from './screens/EditProfileScreen';
+import { useHostScreens } from './navigation/useHostScreens';
+import {
+  buildHostUserConnection,
+  canSaveHostProfile,
+  DEFAULT_APP_MANAGED_FIELDS,
+  type HostProfile,
+  type HostUser,
+  type HostUserOverrides,
+} from './auth/hostUser';
+import { HostScreenModal } from './components/HostScreenModal';
 import type { ExposeClientUserIdOverride } from './scenarios/unifiedProfile';
 import { ProductionWarningBanner } from './components/ProductionWarningBanner';
 import type {
@@ -71,9 +126,6 @@ import {
   applySwitchedCommunity,
   communityLabel,
   ENTITLEMENT_LABELS,
-  octopusApiServer,
-  octopusHostLabel,
-  octopusServerLabel,
   octopusIsProdServer,
   octopusUserId,
   octopusUserTokens,
@@ -86,6 +138,12 @@ import {
 } from './config/configStorage';
 import { buildDebugInfoCards } from './debug/debugInfo';
 import { debugLog } from './debug/debugLog';
+import {
+  formatRedactedError,
+  maskApiKey,
+  redactApiKeys,
+  rememberApiKey,
+} from './config/apiKeyMask';
 import {
   sampleBuild,
   sampleVersion,
@@ -121,8 +179,8 @@ const resolvedLogo = Image.resolveAssetSource(
 );
 
 /**
- * A minimal `theme.icons` override, sent with the custom logo: two tinted glyphs replacing the
- * post's "comment" action and the "more actions" button, plus the custom logo on empty lists.
+ * A minimal `theme.icons` override, sent with the custom logo: three tinted glyphs replacing the
+ * post's "comment" action, "more actions" and "clear text" buttons, plus the custom logo on empty lists.
  * Every other slot keeps its SDK default.
  */
 const exampleIcons: OctopusIcons = {
@@ -139,6 +197,9 @@ const exampleIcons: OctopusIcons = {
     },
   },
   common: {
+    clearText: Image.resolveAssetSource(
+      require('../assets/images/icon-clear-text.png')
+    ),
     moreActions: Image.resolveAssetSource(
       require('../assets/images/icon-more.png')
     ),
@@ -147,7 +208,6 @@ const exampleIcons: OctopusIcons = {
 
 /** App bar title per tab — the tab's own label, so the bar never contradicts the bar below. */
 const TAB_TITLES: Record<TabId, string> = {
-  home: 'Home',
   scenarios: 'Scenarios',
   community: 'Community',
   settings: 'Settings',
@@ -279,9 +339,18 @@ export default function App() {
         : applySwitchedCommunity(config, switchedCommunity),
     [config, switchedCommunity]
   );
+  const effectiveApiKey = useMemo(
+    () =>
+      switchedCommunity?.key ??
+      (activeConfig === null ? '' : resolveApiKey(activeConfig)),
+    [activeConfig, switchedCommunity]
+  );
   // Which of the Config screen's two accesses is showing. One screen, two consequences:
   // "Start SDK" before the shell exists, "Apply" when Settings sent the user back to it.
   const [configMode, setConfigMode] = useState<ConfigScreenMode>('onboarding');
+  const [isReconfiguring, setIsReconfiguring] = useState(false);
+  const [isApplyingConfig, setIsApplyingConfig] = useState(false);
+  const applyingConfig = useRef(false);
   // True while the launch restore is still in flight. The app holds a splash for that
   // window so a saved session doesn't flash the Config screen on its way in.
   const [isRestoringConfig, setIsRestoringConfig] = useState(true);
@@ -290,12 +359,16 @@ export default function App() {
   // below already re-runs on every theme change, so a nonce in its deps is the whole of Retry
   // — there is no separate retry path to keep in step with the normal one.
   const [initNonce, setInitNonce] = useState(0);
+  const [isSdkInitializing, setIsSdkInitializing] = useState(false);
   const handleRetryInit = useCallback(() => {
+    setIsSdkInitializing(true);
     setInitError(null);
     setInitNonce((n) => n + 1);
     debugLog.apiCall('initialize', 'retry requested from the Community tab');
   }, []);
   const [isDebugVisible, setIsDebugVisible] = useState(false);
+  const [isFeedbackVisible, setIsFeedbackVisible] = useState(false);
+  const FeedbackSheet = sampleSupport.FeedbackSheet;
   // Which of Developer tools' two destinations the modal shows. Kept apart from visibility
   // so the view does not flip to its default while the modal slides out.
   const [debugView, setDebugView] = useState<DebugView>('events');
@@ -305,9 +378,11 @@ export default function App() {
   }, []);
   const [isInitializationTriggered, setIsInitializationTriggered] =
     useState(false);
+  const [isSdkSessionReady, setIsSdkSessionReady] = useState(false);
   const [isConnectingUser, setIsConnectingUser] = useState(false);
   const [themeMode, setThemeMode] = useState<ThemeMode | null>(null);
-  const [selectedThemeSet, setSelectedThemeSet] = useState<ThemeSet>('none');
+  const [selectedThemeSet, setSelectedThemeSet] =
+    useState<ThemeSet>('octopusNavy');
   const [selectedFontType, setSelectedFontType] = useState<FontType>('default');
   const [selectedLogoMode, setSelectedLogoMode] =
     useState<LogoMode>('disabled');
@@ -328,7 +403,24 @@ export default function App() {
   const [localeOverrideError, setLocaleOverrideError] = useState<string | null>(
     null
   );
-  const [activeTab, setActiveTab] = useState<TabId>('home');
+  const [communityPresentation, setCommunityPresentation] = useState<
+    'modal' | 'sheet' | null
+  >(null);
+  const closeCommunityPresentation = useCallback(
+    () => setCommunityPresentation(null),
+    []
+  );
+  const communityPresentationDismissal = useModalDismissal(
+    communityPresentation !== null,
+    closeCommunityPresentation
+  );
+  const [scenarioTopBar, setScenarioTopBar] =
+    useState<ScenarioTopBarOwner>('shell');
+  const [activeTab, setActiveTab] = useState<TabId>(START_TAB);
+  const communityReturnTab = useRef<TabId>(START_TAB);
+  useEffect(() => {
+    if (activeTab !== 'community') communityReturnTab.current = activeTab;
+  }, [activeTab]);
   // Anchors: where a link inside the app asked to land. Each screen applies its request on
   // mount and on every new nonce; the tab bar clears them, so a plain tab visit opens the
   // screen at its top instead of replaying the last link.
@@ -348,7 +440,7 @@ export default function App() {
   }, []);
   useEffect(() => {
     if (activeTab !== 'settings' && activeTab !== 'scenarios') {
-      sampleSupport.breadcrumb = activeTab === 'home' ? 'Home' : 'Community';
+      sampleSupport.breadcrumb = 'Community';
     }
   }, [activeTab]);
 
@@ -357,11 +449,11 @@ export default function App() {
   >(null);
   const [isMockUserConnected, setIsMockUserConnected] = useState(false);
   // What the SDK itself reports, as opposed to what the sample last asked for: `null` until
-  // the first value crosses the bridge, which is a third state Home has to be able to show.
+  // the first value crosses the bridge, which is a third state Settings has to be able to show.
   const [connectionState, setConnectionState] =
     useState<Octopus.OctopusConnectionState | null>(null);
   const [profile, setProfile] = useState<Octopus.OctopusProfile | null>(null);
-  // When `initialize()` last resolved — the session's start, which Home reports.
+  // When `initialize()` last resolved — the session's start, which Settings reports.
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
   // The entitlement variant the pending connectUser is for. A ref, not state: the token
   // provider is called by the SDK during `connectUser`, before any re-render could publish
@@ -372,7 +464,7 @@ export default function App() {
   // wired; `onNavigateToContent`/`onNavigateToProfile` keep their existing mode-string
   // shape since other props (interceptUrls/interceptProfileTaps) already key off it.
   const [urlOpeningMode, setUrlOpeningMode] =
-    useState<UrlOpeningMode>('inAppWebView');
+    useState<UrlOpeningMode>('sampleRule');
   const [profileTapMode, setProfileTapMode] =
     useState<ProfileTapMode>('appScreens');
   // Debug-only: the `exposeClientUserId` community flag (Unified Profile activation)
@@ -381,24 +473,63 @@ export default function App() {
   // Session-only, like on Android — never persisted.
   const [exposeClientUserIdOverride, setExposeClientUserIdOverride] =
     useState<ExposeClientUserIdOverride>(null);
-  // The member a Unified Profile tap handed to the host: non-null shows the host's own
-  // profile screen, the way a real host app would push it.
-  const [hostProfileClientUserId, setHostProfileClientUserId] = useState<
-    string | null
-  >(null);
+  const [hostUser, setHostUser] = useState<HostUser | null>(null);
+  const [appManagedFields, setAppManagedFields] = useState<
+    Octopus.UserProfileField[]
+  >(DEFAULT_APP_MANAGED_FIELDS);
+  const [hostError, setHostError] = useState<string | null>(null);
   const [isAuthRequiredCallbackEnabled, setIsAuthRequiredCallbackEnabled] =
     useState(true);
-  // Read inside the initialize effect's listener without adding the toggle to that
-  // effect's dependency array — flipping it should not restart the SDK.
-  const isAuthRequiredCallbackEnabledRef = useRef(
-    isAuthRequiredCallbackEnabled
-  );
-  isAuthRequiredCallbackEnabledRef.current = isAuthRequiredCallbackEnabled;
   const [isUnreadCountCallbackEnabled, setIsUnreadCountCallbackEnabled] =
     useState(true);
-  // Analytics is opt-in: OFF by default, unlike the other four wired callbacks.
-  const [isEventCallbackEnabled, setIsEventCallbackEnabled] = useState(false);
-  const [displayMode, setDisplayMode] = useState<DisplayMode>('embed');
+  // Record SDK events by default, matching Android’s session Events log.
+  const [isEventCallbackEnabled, setIsEventCallbackEnabled] = useState(true);
+  const [isEditCallbackEnabled, setIsEditCallbackEnabled] = useState(true);
+  const [communityNavigation, dispatchCommunityNavigation] = useReducer(
+    communityNavigationReducer,
+    {
+      mode: 'embed',
+      session: 0,
+      generation: 0,
+      target: null,
+    }
+  );
+  const displayMode: DisplayMode = communityNavigation.mode;
+  const sessionGeneration = useRef(0);
+  const invalidateCommunitySession = useCallback(() => {
+    const session = ++sessionGeneration.current;
+    setCommunitySessionNonce(session);
+    dispatchCommunityNavigation({ type: 'session', session });
+  }, []);
+  const [isRestoringCommunityMode, setIsRestoringCommunityMode] =
+    useState(true);
+  const setDisplayMode = useCallback((mode: DisplayMode) => {
+    dispatchCommunityNavigation({ type: 'mode', mode });
+    persistCommunityMode(mode);
+  }, []);
+  useEffect(() => {
+    let mounted = true;
+    loadCommunityMode().then((mode) => {
+      if (!mounted) return;
+      dispatchCommunityNavigation({ type: 'mode', mode });
+      setIsRestoringCommunityMode(false);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+  useEffect(() => {
+    let mounted = true;
+    let unsubscribe: (() => void) | undefined;
+    setupOctopusPush({ onToken: setPushToken }).then((cleanup) => {
+      if (mounted) unsubscribe = cleanup;
+      else cleanup();
+    });
+    return () => {
+      mounted = false;
+      unsubscribe?.();
+    };
+  }, []);
   const [communityLocaleOverride, setCommunityLocaleOverride] =
     useState<CommunityLocaleOverride>('system');
   const [webViewUrl, setWebViewUrl] = useState<string | null>(null);
@@ -415,8 +546,8 @@ export default function App() {
 
   /**
    * Surfaces a transient message on Settings › Account — the page that carries "Connect
-   * user", which is why the SDK's host callbacks land there, and the only page that renders
-   * the message. The text must say what the SDK asked and what to do next: a bare listener
+   * user", and the only page that renders the message. The text must say what the SDK
+   * asked and what to do next: a bare listener
    * name reads as a bug to a tester who just tapped Activity as a guest and got sent to
    * Settings. Stable, so effects can depend on it.
    */
@@ -438,7 +569,10 @@ export default function App() {
   const insets = useSafeAreaInsets();
   const colorScheme = themeMode ?? systemColorScheme;
   // undefined for the 'unset' preset — see BOTTOM_INSET_VALUES and the `ui` spread below.
-  const bottomSafeAreaInset = BOTTOM_INSET_VALUES[bottomInsetPreset];
+  const bottomSafeAreaInset =
+    bottomInsetPreset === 'unset'
+      ? undefined
+      : BOTTOM_INSET_VALUES[bottomInsetPreset];
 
   /** The selected color set, without the optional link/background pair. */
   const getBaseThemeColors = useCallback(() => {
@@ -522,16 +656,15 @@ export default function App() {
    *
    * Every path that adopts a theme choice goes through it — the Theme control, Start,
    * and the launch restore. A path that only wrote `themeMode` and skipped
-   * `Appearance.setColorScheme` would leave the picker showing one appearance and the
-   * screen rendering the other.
+   * the host Appearance override and SDK setThemeMode would leave the picker, chrome
+   * and embedded community rendering different appearances.
    *
-   * It takes an `unknown` on purpose: one of its callers replays a value read back from
-   * device storage, and the launch restore is the path where a bad or failing appearance
-   * repeats on every cold start instead of once (issue #257). `restoreThemeMode` narrows
-   * and applies it, never throws, and returns the mode actually in effect — which is what
-   * the picker is set from, so the control can never show an appearance that was refused.
+   * Storage readers validate persisted choices before they reach this callback.
+   * `restoreThemeMode` keeps its defensive validation and apply guard, never throws,
+   * and returns the mode actually in effect — which is what the picker is set from,
+   * so the control can never show an appearance that was refused.
    */
-  const handleThemeModeChange = useCallback((mode: unknown) => {
+  const handleThemeModeChange = useCallback((mode: ThemeMode) => {
     const applied = restoreThemeMode(mode);
     setThemeMode(applied === 'system' ? null : applied);
   }, []);
@@ -577,8 +710,8 @@ export default function App() {
     return () => subCount.remove();
   }, [isUnreadCountCallbackEnabled]);
 
-  // onEvent (Config §5) — OFF by default, unlike the other wired callbacks: it is the
-  // only one that surfaces every SDK event rather than one specific concern.
+  // SDK events are recorded by default for the Events log and Debug console,
+  // matching Android’s collection from SDK initialization onward.
   useEffect(() => {
     if (!isEventCallbackEnabled) return;
     const subEvents = Octopus.addSDKEventListener((event) => {
@@ -590,8 +723,10 @@ export default function App() {
 
   // URL interception: listener must live in App so it stays active on any tab (Settings, Community embed/fullscreen).
   useEffect(() => {
-    if (urlOpeningMode !== 'inAppWebView') return;
+    if (urlOpeningMode === 'defaultBrowser') return;
     const subscription = Octopus.addNavigateToUrlListener(async (url) => {
+      if (!handlesSampleUrl(urlOpeningMode, url))
+        return UrlOpeningStrategy.handledByOctopus;
       // Only closeUI in fullscreen (it throws "No UI is currently presented" in embed mode).
       try {
         await Octopus.closeUI();
@@ -604,26 +739,6 @@ export default function App() {
     });
     return () => subscription.remove();
   }, [urlOpeningMode]);
-
-  // Unified Profile: same shape as the URL listener above — it has to live in App so it
-  // stays active whichever tab or presentation mode the SDK is showing in.
-  useEffect(() => {
-    if (profileTapMode !== 'appScreens') return;
-    const subscription = Octopus.addNavigateToProfileListener(
-      ({ clientUserId }) => {
-        // What a real host does: close the presented community, push its own profile
-        // screen for that member — the Android sample's ClientProfileScreen.
-        if (displayMode === 'fullscreen') {
-          Octopus.closeUI().catch(() => {
-            // Embed mode: nothing is presented, nothing to close.
-          });
-        }
-        debugLog.apiCall('navigateToProfile', `clientUserId=${clientUserId}`);
-        setHostProfileClientUserId(clientUserId);
-      }
-    );
-    return () => subscription.remove();
-  }, [profileTapMode, displayMode]);
 
   const closeWebView = useCallback(() => {
     webViewCanGoBackRef.current = false;
@@ -648,7 +763,7 @@ export default function App() {
   useEffect(() => {
     const subConnection = Octopus.addConnectionStateListener((state) => {
       setConnectionState(state);
-      debugLog.event(
+      debugLog.state(
         'connectionState',
         state.connected
           ? state.isGuest
@@ -659,7 +774,7 @@ export default function App() {
     });
     const subProfile = Octopus.addProfileListener((next) => {
       setProfile(next);
-      debugLog.event(
+      debugLog.state(
         'profile',
         next === null
           ? 'no profile'
@@ -677,6 +792,9 @@ export default function App() {
   // screen has produced a config.
   useEffect(() => {
     if (config === null) return;
+    let disposed = false;
+    setIsSdkSessionReady(false);
+    setIsSdkInitializing(true);
     // A runtime switch outranks the config: this effect re-runs on every theme change, and
     // re-resolving from `config` there would silently drag the session back to the community
     // it started on the next time an appearance control moved.
@@ -685,10 +803,11 @@ export default function App() {
       // Defence in depth behind the Config screen's Start gate. `initialize` would
       // resolve here: the Android bridge only rejects a `null` key and neither native
       // SDK validates the value, so a keyless start would report "Initialized" while
-      // every call failed. Refuse instead, and say so where Home can render it.
+      // every call failed. Refuse instead, and say so where Settings can render it.
       const message =
         'No API key resolved. Set OCTOPUS_COMMUNITY_API_KEY in example/.env, or paste a key on the Config screen.';
       setInitError(message);
+      setIsSdkInitializing(false);
       setIsInitializationTriggered(true);
       debugLog.apiCall('initialize', `✕ not called — ${message}`);
       return;
@@ -711,11 +830,8 @@ export default function App() {
         : undefined;
 
     Octopus.initialize({
-      apiKey,
-      connectionMode:
-        config.authMode === 'octopus'
-          ? { type: 'octopus' }
-          : { type: 'sso', appManagedFields: ['profilePicture'] },
+      apiKey: rememberApiKey(apiKey),
+      connectionMode: { type: 'sso', appManagedFields },
       // `unset` must drop the key rather than send `0`: on Android, an absent
       // `bottomSafeAreaInset` now resolves the inset from where <OctopusUIView> is mounted
       // (issue #120), while an explicit `0` opts back out of that resolution.
@@ -725,52 +841,35 @@ export default function App() {
       // to production, and this is what reroutes them (issue #188). Always sent —
       // a build that declares no OCTOPUS_API_HOST resolves to the demo backend, so
       // there is no case left where the SDK falls back to its production default.
-      apiServer: octopusApiServer,
+      apiServer: resolveConfigServer(config),
     })
       .then(() => {
+        if (disposed) return;
+        invalidateCommunitySession();
+        setIsSdkSessionReady(true);
         setInitError(null);
         setIsInitializationTriggered(true);
         setSessionStartedAt(Date.now());
         debugLog.apiCall('initialize', 'SDK initialized');
-        setupOctopusPush({ onToken: setPushToken }).catch((err) =>
-          console.error('Octopus push setup error', err)
-        );
       })
       .catch((err) => {
-        const message = err instanceof Error ? err.message : String(err);
-        console.error('Octopus init error', err);
+        if (disposed) return;
+        const message = redactApiKeys(
+          err instanceof Error ? err.message : String(err)
+        );
+        console.error('Octopus init error', formatRedactedError(err));
         setInitError(message);
-        // The shell opens anyway: Home is what reports the failure, and Settings' "Back
+        // The shell opens anyway: Settings is what reports the failure, and Settings' "Back
         // to Config" is the way out — more useful than a dead-end Config screen.
         setIsInitializationTriggered(true);
         debugLog.apiCall('initialize', `failed — ${message}`);
+      })
+      .finally(() => {
+        if (!disposed) setIsSdkInitializing(false);
       });
 
-    // `closeUI` rejects when there is no fullscreen UI to close — a race the host
-    // cannot prevent, and not worth surfacing: the callback message below is the point.
-    const subEdit = Octopus.addEditUserListener(() => {
-      if (displayMode === 'fullscreen') {
-        Octopus.closeUI().catch(() => {});
-      }
-      showUserCallbackMessage(
-        'Profile edit requested — the SDK handed profile editing to the app (editUser listener).'
-      );
-    });
-    // onAuthenticationRequired (Config §5) — disabled means the sample keeps the
-    // subscription (the SDK always emits it) but never acts on it, which is the
-    // observable equivalent of the callback not being wired to a host implementation.
-    const subLogin = Octopus.addLoginRequiredListener(() => {
-      if (!isAuthRequiredCallbackEnabledRef.current) return;
-      if (displayMode === 'fullscreen') {
-        Octopus.closeUI().catch(() => {});
-      }
-      showUserCallbackMessage(
-        'Login required — the SDK asked the app to sign the user in (loginRequired listener). Connect a user below to continue.'
-      );
-    });
     return () => {
-      subEdit.remove();
-      subLogin.remove();
+      disposed = true;
       if (userCallbackMessageTimeoutRef.current) {
         clearTimeout(userCallbackMessageTimeoutRef.current);
       }
@@ -786,9 +885,10 @@ export default function App() {
     getCurrentThemeColors,
     getCurrentThemeFonts,
     bottomSafeAreaInset,
-    displayMode,
     showUserCallbackMessage,
     initNonce,
+    appManagedFields,
+    invalidateCommunitySession,
   ]);
 
   useUserTokenProvider(async () => {
@@ -843,7 +943,7 @@ export default function App() {
   const connectUserCore = useCallback(
     async (
       variant: EntitlementVariant,
-      overrides?: { userId?: string; nickname?: string }
+      overrides?: HostUserOverrides
     ): Promise<string | null> => {
       // Set before the call: the token provider reads it while `connectUser` runs.
       connectVariantRef.current = variant;
@@ -852,13 +952,14 @@ export default function App() {
       setIsMockUserConnected(true);
       setIsConnectingUser(true);
       try {
-        await Octopus.connectUser({
-          userId: overrides?.userId ?? config?.userId ?? octopusUserId,
-          profile: {
-            username: overrides?.nickname ?? 'John Doe',
-            profilePicture: 'https://i.pravatar.cc/150',
-          },
-        });
+        const { payload, connectedUser } = buildHostUserConnection(
+          config?.userId ?? octopusUserId,
+          hostUser,
+          overrides,
+          appManagedFields
+        );
+        await Octopus.connectUser(payload);
+        setHostUser(connectedUser);
         debugLog.apiCall(
           'connectUser',
           `✓ connected (${ENTITLEMENT_LABELS[variant]})`
@@ -868,22 +969,23 @@ export default function App() {
         // A refused connection leaves the user anonymous in the community, so undo the
         // optimistic flag instead of showing them as connected.
         setIsMockUserConnected(false);
-        console.error('Octopus connectUser failed', error);
-        const message = Octopus.isConnectUserError(error)
-          ? `connectUser failed — ${error.code}: ${error.message}`
-          : `connectUser failed — ${String(error)}`;
+        setHostUser(null);
+        console.error('Octopus connectUser failed', formatRedactedError(error));
+        const message = redactApiKeys(
+          Octopus.isConnectUserError(error)
+            ? `connectUser failed — ${error.code}: ${error.message}`
+            : `connectUser failed — ${String(error)}`
+        );
         debugLog.apiCall('connectUser', `✕ ${message}`);
         return message;
       } finally {
         setIsConnectingUser(false);
       }
     },
-    [config?.userId]
+    [config?.userId, hostUser, appManagedFields]
   );
 
-  // Used by the Settings tab. Unchanged behavior: a failure goes through the same transient
-  // callback-message channel as the SDK's own listeners (editUser/loginRequired), which also
-  // jumps the app to the Settings tab so the message is seen.
+  // Settings failures retain the transient banner on the Account page.
   const handleConnectUser = useCallback(async () => {
     const errorMessage = await connectUserCore('none');
     if (errorMessage) {
@@ -911,12 +1013,15 @@ export default function App() {
   // the failure directly, mirroring `handleConnectUserForScenarios` above.
   const handleDisconnectUserForScenarios = useCallback(async () => {
     setIsMockUserConnected(false);
+    setHostUser(null);
     setConnectionError(null);
     try {
       await Octopus.disconnectUser();
       debugLog.apiCall('disconnectUser', 'disconnected');
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = redactApiKeys(
+        err instanceof Error ? err.message : String(err)
+      );
       setConnectionError(message);
       debugLog.apiCall('disconnectUser', `failed — ${message}`);
       throw err;
@@ -930,13 +1035,39 @@ export default function App() {
     await handleDisconnectUserForScenarios().catch(() => {});
   }, [handleDisconnectUserForScenarios]);
 
+  const handleRestartHostIntegration = useCallback(
+    async (fields: Octopus.UserProfileField[]) => {
+      const fieldsChanged =
+        fields.length !== appManagedFields.length ||
+        fields.some((field) => !appManagedFields.includes(field));
+      if (fieldsChanged) {
+        setIsSdkInitializing(true);
+        try {
+          await handleDisconnectUserForScenarios();
+        } catch (error) {
+          setIsSdkInitializing(false);
+          showUserCallbackMessage(redactApiKeys(String(error)));
+          return;
+        }
+        setAppManagedFields(fields);
+      }
+      handleRetryInit();
+    },
+    [
+      appManagedFields,
+      handleDisconnectUserForScenarios,
+      handleRetryInit,
+      showUserCallbackMessage,
+    ]
+  );
+
   /** Start on the Config screen: hold the config, let the init effect above run. */
   const handleStart = useCallback(
-    (next: DemoConfig) => {
+    (next: DemoConfig, preset?: ThemeSet) => {
       setInitError(null);
       setConfigRequest(null);
-      setActiveTab('home');
       handleThemeModeChange(next.theme);
+      if (preset) setSelectedThemeSet(preset);
       setRestoredConfig(null);
       // A config coming out of the Config screen names the community itself, so any earlier
       // runtime switch is over — kept, it would outrank the answer just given.
@@ -944,10 +1075,12 @@ export default function App() {
       setConfig(next);
       // Not awaited: the run must not wait on device storage, and the write is
       // best-effort by design — it logs its own failure and swallows it.
+      // A runtime server override is session-only; restore must use the same build endpoint.
       // Not written at all on a production build: the launch restore erases it
       // unread, so persisting there only leaves a config blob on a device that
       // reaches client communities.
-      if (!octopusIsProdServer) persistDemoConfig(next);
+      if (canPersistConfigServer(next)) persistDemoConfig(next);
+      else clearPersistedDemoConfig();
     },
     [handleThemeModeChange]
   );
@@ -972,7 +1105,27 @@ export default function App() {
         );
         return;
       }
-      const restored = await loadPersistedDemoConfig();
+      const preferences = await loadSettingsPreferences();
+      if (cancelled) return;
+      if (preferences) {
+        handleThemeModeChange(preferences.appearance);
+        setSelectedThemeSet(preferences.themeSet);
+        try {
+          await overrideDefaultLocale(
+            preferences.language === 'system'
+              ? null
+              : { languageCode: preferences.language }
+          );
+          if (!cancelled) setCommunityLocaleOverride(preferences.language);
+        } catch {
+          debugLog.apiCall('restoreSettings', 'language override unavailable');
+        }
+      }
+      const saved = await loadPersistedDemoConfig();
+      const restored =
+        saved && preferences
+          ? { ...saved, theme: preferences.appearance }
+          : saved;
       if (cancelled) return;
       if (restored === null) {
         setIsRestoringConfig(false);
@@ -1011,7 +1164,7 @@ export default function App() {
       setIsRestoringConfig(false);
       debugLog.apiCall(
         'restoreConfig',
-        `failed — starting blank (${e instanceof Error ? e.message : String(e)})`
+        `failed — starting blank (${redactApiKeys(e instanceof Error ? e.message : String(e))})`
       );
     });
     return () => {
@@ -1019,58 +1172,57 @@ export default function App() {
     };
   }, [handleStart, handleThemeModeChange]);
 
-  /**
-   * Back to the Config screen from Settings.
-   *
-   * Without this the gate is one-way: a wrong key, or the wrong auth mode, could only be
-   * corrected by killing the process. Re-initializing in place is what the theme controls
-   * already do on every change, and the native SDK stops and rebuilds itself when
-   * `initialize` is called again.
-   *
-   * Forgets the persisted config too, so a kill from here starts blank rather than
-   * auto-restoring the configuration the user just walked out of — while the screen
-   * itself is still seeded with it, so only what changes has to be re-answered.
-   */
-  const handleReconfigure = useCallback(async () => {
-    // Awaited: a disconnect still in flight while the next `initialize` runs would
-    // race the SDK teardown it is part of. A failed disconnect is not fatal to
-    // reconfiguring — `handleDisconnectUser` already recorded the failure in
-    // `connectionError` (cleared below) and is fire-and-forget, so it never rejects.
-    if (isMockUserConnected) {
-      await handleDisconnectUser();
-    }
-    setIsInitializationTriggered(false);
-    setInitError(null);
-    setConnectionError(null);
-    // Streamed values belong to the SDK instance being torn down: kept, they would be
-    // read on Home as if they described the next one.
-    setHasAccessToCommunity(null);
-    setNotSeenNotificationsCount(0);
-    setPushToken(null);
-    // Outcomes of calls made on the instance being torn down.
-    setLocaleOverrideError(null);
-    // `communityLocaleOverride` is deliberately NOT cleared: the native override is
-    // persisted (Android stores it in DataStore, so it outlives both a re-`initialize`
-    // and the process), and showing "none" while it is still in force would be the lie.
-    setActiveTab('home');
+  /** Opening the draft does not change the running SDK or the saved configuration. */
+  const handleReconfigure = useCallback(() => {
     setConfigMode('revisit');
-    // Seeded with the community the session was actually on, switch included, so the screen
-    // asks about the one being left rather than the one it was started on.
-    setRestoredConfig(activeConfig);
-    // Cleared before the screen is dropped: `setConfig(null)` renders the Config
-    // screen, from which Start writes a fresh blob — a clear still in flight would
-    // land after that write and erase the config the user just started.
-    await clearPersistedDemoConfig();
-    setConfig(null);
-    // After `setConfig(null)`, never before: dropping the switch while `config` still
-    // holds the pre-switch object would have Home and Settings name the community the
-    // session started on for as long as the storage clear above takes.
-    setSwitchedCommunity(null);
-    debugLog.apiCall('reconfigure', 'back to the Config screen');
-  }, [activeConfig, isMockUserConnected, handleDisconnectUser]);
-  // A link that names one Config section: the request is set first, so the screen that
-  // `handleReconfigure` brings up mounts with it. No need to clear it on the plain path —
-  // `handleStart`, the only way out of Config, already did.
+    setRestoredConfig(
+      activeConfig ? { ...activeConfig, theme: themeMode ?? 'system' } : null
+    );
+    setActiveTab('settings');
+    setIsReconfiguring(true);
+  }, [activeConfig, themeMode]);
+
+  const handleHostUrlModeChange = useCallback(
+    (next: UrlOpeningMode) => {
+      if (next === urlOpeningMode) return;
+      setUrlOpeningMode(next);
+      dispatchCommunityNavigation({ type: 'refreshPresentation' });
+    },
+    [urlOpeningMode]
+  );
+  const handleHostProfileModeChange = useCallback(
+    (next: ProfileTapMode) => {
+      if (next === profileTapMode) return;
+      setProfileTapMode(next);
+      dispatchCommunityNavigation({ type: 'refreshPresentation' });
+    },
+    [profileTapMode]
+  );
+
+  const handleApplyConfiguration = async (
+    next: DemoConfig,
+    preset: ThemeSet
+  ) => {
+    if (applyingConfig.current) return;
+    applyingConfig.current = true;
+    setIsApplyingConfig(true);
+    try {
+      if (isMockUserConnected) await handleDisconnectUser();
+      setIsInitializationTriggered(false);
+      setIsSdkSessionReady(false);
+      setConnectionError(null);
+      setHasAccessToCommunity(null);
+      setNotSeenNotificationsCount(0);
+      setConnectionState(null);
+      setProfile(null);
+      handleStart(next, preset);
+      setIsReconfiguring(false);
+    } finally {
+      applyingConfig.current = false;
+      setIsApplyingConfig(false);
+    }
+  };
+
   const openConfigSection = useCallback(
     (section: ConfigSection) => {
       setConfigRequest((previous) => nextNavRequest(previous, section));
@@ -1079,20 +1231,12 @@ export default function App() {
     [handleReconfigure]
   );
 
-  /**
-   * Cancels a Settings → Change Configuration revisit, leaving the running session alone.
-   *
-   * Only reachable in `revisit` mode: `handleReconfigure` always seeds `restoredConfig`
-   * with the config that was running before it tore the SDK down, so re-`handleStart`ing
-   * that same object re-initializes the identical session rather than resuming the old
-   * one in place — the closest this app bar back can get to "nothing happened", short of
-   * never having called `initialize()` again at all.
-   */
   const handleCancelReconfigure = useCallback(() => {
-    if (restoredConfig === null) return;
-    handleStart(restoredConfig);
-    debugLog.apiCall('reconfigure', 'cancelled — resumed the previous session');
-  }, [restoredConfig, handleStart]);
+    setIsReconfiguring(false);
+    setRestoredConfig(null);
+    setConfigRequest(null);
+    debugLog.apiCall('reconfigure', 'cancelled — kept the running session');
+  }, []);
 
   /**
    * `refreshEntitlements()` — the session-preserving half of the pair Account offers.
@@ -1107,7 +1251,9 @@ export default function App() {
       debugLog.apiCall('refreshEntitlements', 'requested');
       showUserCallbackMessage('Entitlements refreshed');
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = redactApiKeys(
+        err instanceof Error ? err.message : String(err)
+      );
       debugLog.apiCall('refreshEntitlements', `failed — ${message}`);
       showUserCallbackMessage(`Refresh failed — ${message}`);
     }
@@ -1122,13 +1268,16 @@ export default function App() {
    * that path is "change one answer", this one is "as if freshly installed".
    */
   const handleResetData = useCallback(async () => {
+    setHostUser(null);
     try {
       await Octopus.reset();
       debugLog.apiCall('reset', 'sample data reset from Settings');
     } catch (err) {
       // Best-effort: the SDK may not be initialized at all, and the sample's own state
       // still has to be cleared either way.
-      const message = err instanceof Error ? err.message : String(err);
+      const message = redactApiKeys(
+        err instanceof Error ? err.message : String(err)
+      );
       debugLog.apiCall('reset', `failed — ${message}`);
     }
     setIsMockUserConnected(false);
@@ -1137,23 +1286,27 @@ export default function App() {
     setConnectionError(null);
     setHasAccessToCommunity(null);
     setNotSeenNotificationsCount(0);
-    setPushToken(null);
     setLocaleOverrideError(null);
     setConnectionState(null);
     setProfile(null);
     setSessionStartedAt(null);
-    setSelectedThemeSet('none');
+    setSelectedThemeSet('octopusNavy');
+    setCommunityLocaleOverride('system');
+    await overrideDefaultLocale(null).catch(() => {});
+    await saveSettingsPreferences(null);
     handleThemeModeChange('system');
-    setUrlOpeningMode('defaultBrowser');
+    setUrlOpeningMode('sampleRule');
     setProfileTapMode('sdkScreens');
     setDisplayMode('embed');
-    setActiveTab('home');
+    setActiveTab('scenarios');
+    setIsReconfiguring(false);
     setConfigMode('onboarding');
     setRestoredConfig(null);
     setSwitchedCommunity(null);
     await clearPersistedDemoConfig();
     setConfig(null);
-  }, [handleThemeModeChange]);
+    setAppManagedFields(DEFAULT_APP_MANAGED_FIELDS);
+  }, [handleThemeModeChange, setDisplayMode]);
 
   /**
    * Scenarios → Lifecycle: re-target the running SDK at another community.
@@ -1177,28 +1330,28 @@ export default function App() {
       // deduped value — the screen would stay blank for the rest of the session.
       setHasAccessToCommunity(null);
       setNotSeenNotificationsCount(0);
+      setHostUser(null);
+      setIsSdkSessionReady(false);
       await Octopus.switchCommunity({
-        apiKey: target.key,
-        connectionMode:
-          config.authMode === 'octopus'
-            ? { type: 'octopus' }
-            : { type: 'sso', appManagedFields: ['profilePicture'] },
-        apiServer: octopusApiServer,
+        apiKey: rememberApiKey(target.key),
+        connectionMode: { type: 'sso', appManagedFields },
+        apiServer: resolveConfigServer(config),
       });
       setSwitchedCommunity(target);
       // Remounts every embedded view: they are bound to the community that was just left.
-      setCommunitySessionNonce((n) => n + 1);
+      invalidateCommunitySession();
+      setIsSdkSessionReady(true);
       setIsMockUserConnected(false);
       setConnectionError(null);
       setInitError(null);
-      // A new SDK instance is a new session, and Home reports when it started.
+      // A new SDK instance is a new session, and Settings reports when it started.
       setSessionStartedAt(Date.now());
       // Same refusal as `handleStart`: nothing is written on a production build. A pasted key
       // is never persisted either — `configStorage` drops it — so a switch onto the free-text
       // fallback restores as "key needed", exactly like a pasted key from the Config screen.
-      if (!octopusIsProdServer) {
+      if (canPersistConfigServer(config)) {
         persistDemoConfig(applySwitchedCommunity(config, target));
-      }
+      } else clearPersistedDemoConfig();
       // `switchCommunity` is a reset + initialize natively, so the push token registration
       // `setupOctopusPush` did against the previous community is gone with it — re-send the
       // token the sample already holds, directly, rather than calling `setupOctopusPush`
@@ -1206,7 +1359,10 @@ export default function App() {
       // second time (pre-existing stacking issue, out of scope here).
       if (pushToken) {
         registerPushNotificationToken(pushToken).catch((err) =>
-          console.error('Octopus push token re-registration error', err)
+          console.error(
+            'Octopus push token re-registration error',
+            formatRedactedError(err)
+          )
         );
       } else {
         debugLog.apiCall(
@@ -1216,7 +1372,7 @@ export default function App() {
       }
       debugLog.apiCall('switchCommunity', `switched to ${target.label}`);
     },
-    [config, pushToken]
+    [config, pushToken, invalidateCommunitySession, appManagedFields]
   );
 
   const handleUpdateNotifications = useCallback(async () => {
@@ -1228,34 +1384,49 @@ export default function App() {
         '✓ not-seen count refreshed'
       );
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      console.error('Update notification count failed', e);
+      const message = redactApiKeys(e instanceof Error ? e.message : String(e));
+      console.error('Update notification count failed', formatRedactedError(e));
       debugLog.apiCall('updateNotSeenNotificationsCount', `✕ ${message}`);
       throw e;
     }
   }, [isInitializationTriggered]);
 
+  const languageWrite = useRef(Promise.resolve());
+  const languageRequest = useRef(0);
   const handleCommunityLocaleOverrideChange = useCallback(
-    async (mode: CommunityLocaleOverride) => {
-      setCommunityLocaleOverride(mode);
-      setLocaleOverrideError(null);
-      try {
-        if (mode === 'system') {
-          await overrideDefaultLocale(null);
-        } else {
-          await overrideDefaultLocale({ languageCode: mode });
+    (mode: CommunityLocaleOverride) => {
+      const request = ++languageRequest.current;
+      const apply = languageWrite.current.then(async () => {
+        try {
+          await overrideDefaultLocale(
+            mode === 'system' ? null : { languageCode: mode }
+          );
+          setCommunityLocaleOverride(mode);
+          if (request === languageRequest.current) setLocaleOverrideError(null);
+          debugLog.apiCall('overrideDefaultLocale', `✓ ${mode}`);
+        } catch (error) {
+          const message = redactApiKeys(
+            error instanceof Error ? error.message : String(error)
+          );
+          if (request === languageRequest.current)
+            setLocaleOverrideError(message);
+          debugLog.apiCall('overrideDefaultLocale', `✕ ${message}`);
+          throw error;
         }
-        debugLog.apiCall('overrideDefaultLocale', `✓ ${mode}`);
-      } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        console.error('Override default locale failed', e);
-        setLocaleOverrideError(message);
-        debugLog.apiCall('overrideDefaultLocale', `✕ ${message}`);
-        throw e;
-      }
+      });
+      languageWrite.current = apply.catch(() => {});
+      return apply;
     },
     []
   );
+  useEffect(() => {
+    if (isRestoringConfig) return;
+    saveSettingsPreferences({
+      appearance: themeMode ?? 'system',
+      themeSet: selectedThemeSet,
+      language: communityLocaleOverride,
+    });
+  }, [isRestoringConfig, themeMode, selectedThemeSet, communityLocaleOverride]);
 
   const isDark = colorScheme === 'dark';
   // The host's own brand, never the color set handed to `initialize`: the Theme scenario
@@ -1273,14 +1444,12 @@ export default function App() {
   const primaryColor = chrome.control;
   const onPrimaryColor = chrome.onControl;
   const backgroundColor = chrome.background;
-  // Every example-owned screen paints this at its root: transparent in dark, so the shell's
-  // page colour and top-right halo show through (see `DarkHalo`).
+  // Every sample-owned screen paints the flat page colour at its root.
   const screenColor = chrome.screen;
   const tabBarBg = chrome.navSurface;
 
   // A connectable demo user needs an injected token; the user id always has a fallback.
   const hasSsoUser = octopusUserTokens.none !== '';
-  const isSsoAuth = config === null || config.authMode === 'sso';
   const debugInfoCards = useMemo(
     () =>
       activeConfig === null
@@ -1289,21 +1458,53 @@ export default function App() {
             sampleVersionLabel,
             sdkVersion: sampleVersion,
             build: sampleBuild,
-            serverLabel: octopusServerLabel,
-            host: octopusHostLabel,
+            serverLabel: settingsServerLabel(
+              resolveConfigServer(activeConfig).host
+            ),
+            host: resolveConfigServer(activeConfig).host,
             community: communityLabel(activeConfig),
-            apiKeySource: apiKeySourceLabel(activeConfig),
-            authMode: activeConfig.authMode,
+            apiKeySource: apiKeySourceLabel(activeConfig, effectiveApiKey),
             userId: activeConfig.userId,
             displayMode,
             urlOpeningMode,
             profileTapMode,
+            entitlements: profile?.entitlements ?? [],
+            theme: `${THEME_SET_LABELS[selectedThemeSet]} · ${APPEARANCE_LABELS[themeMode ?? 'system']}`,
+            language:
+              SDK_LANGUAGES.find(
+                (language) => language.value === communityLocaleOverride
+              )?.label ?? communityLocaleOverride,
+            maskedApiKey: maskApiKey(effectiveApiKey),
+            editEnabled: isEditCallbackEnabled,
+            loginEnabled: isAuthRequiredCallbackEnabled,
           }),
-    [activeConfig, displayMode, urlOpeningMode, profileTapMode]
+    [
+      activeConfig,
+      displayMode,
+      urlOpeningMode,
+      profileTapMode,
+      profile,
+      selectedThemeSet,
+      themeMode,
+      communityLocaleOverride,
+      effectiveApiKey,
+      isEditCallbackEnabled,
+      isAuthRequiredCallbackEnabled,
+    ]
   );
   // What the SDK actually is, not merely what was attempted: a refused `initialize` — or
   // one the sample refused to make — leaves nothing initialized.
-  const isSdkInitialized = isInitializationTriggered && initError === null;
+  const isSdkInitialized =
+    isInitializationTriggered && isSdkSessionReady && initError === null;
+  useEffect(() => {
+    if (!isSdkInitialized || !pushToken) return;
+    registerPushNotificationToken(pushToken).catch((error) =>
+      console.error(
+        'Push token registration failed',
+        formatRedactedError(error)
+      )
+    );
+  }, [isSdkInitialized, pushToken, communitySessionNonce]);
 
   // Applies (or clears) the debug override as soon as the SDK is up and whenever the
   // toggle flips. `sessionStartedAt` is a dependency on purpose: a community switch or a
@@ -1313,34 +1514,43 @@ export default function App() {
   useEffect(() => {
     if (!isSdkInitialized) return;
     Octopus.debugOverrideExposeClientUserId(exposeClientUserIdOverride).catch(
-      (err) => console.error('debugOverrideExposeClientUserId error', err)
+      (err) =>
+        console.error(
+          'debugOverrideExposeClientUserId error',
+          formatRedactedError(err)
+        )
     );
   }, [isSdkInitialized, exposeClientUserIdOverride, sessionStartedAt]);
 
-  // The Scenarios choice: records it (the effect above re-applies it to every new SDK
-  // instance) and applies it right away, so the section's read-out can re-read the
-  // effective flag once the native side has it.
+  // Record the Scenarios choice only after the native override succeeds. The effect
+  // above re-applies the last confirmed choice to every new SDK instance.
   const handleExposeClientUserIdOverrideChange = useCallback(
     async (next: ExposeClientUserIdOverride) => {
-      setExposeClientUserIdOverride(next);
-      if (!isSdkInitialized) return;
       try {
+        if (!isSdkInitialized)
+          throw new Error('Initialize the SDK before changing the override.');
         await Octopus.debugOverrideExposeClientUserId(next);
+        setExposeClientUserIdOverride(next);
         debugLog.apiCall(
           'debugOverrideExposeClientUserId',
           `✓ ${next === null ? 'backend value' : String(next)}`
         );
       } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
+        const message = redactApiKeys(
+          e instanceof Error ? e.message : String(e)
+        );
         debugLog.apiCall('debugOverrideExposeClientUserId', `✕ ${message}`);
+        throw e;
       }
     },
     [isSdkInitialized]
   );
-  const showTabBar = config !== null && isInitializationTriggered;
+  const showTabBar =
+    config !== null && isInitializationTriggered && !isReconfiguring;
   // One app bar for the whole shell, so its title is the only thing that varies: the tab's
   // own name once the SDK is up, and "Configuration" for the one screen mounted at both
   // its pre-shell and Settings-revisit accesses — same title either way, per spec.
+  const [settingsAtRoot, setSettingsAtRoot] = useState(true);
   const appBarTitle = showTabBar ? TAB_TITLES[activeTab] : 'Configuration';
   // Readable current values, not identifiers: these are what the configuration summary and
   // the Settings rows show, and both read them the same way.
@@ -1351,7 +1561,9 @@ export default function App() {
   // `config.theme` here left this summary stale the instant a tester changed appearance
   // without re-running Config.
   const themeSummary = `${APPEARANCE_LABELS[themeMode ?? 'system']} · ${THEME_SET_LABELS[selectedThemeSet]}`;
-  const languageSummary = COMMUNITY_LOCALE_LABELS[communityLocaleOverride];
+  const languageSummary =
+    SDK_LANGUAGES.find((language) => language.value === communityLocaleOverride)
+      ?.label ?? COMMUNITY_LOCALE_LABELS[communityLocaleOverride];
 
   /**
    * Presents the community fullscreen.
@@ -1363,19 +1575,55 @@ export default function App() {
   const openCommunityFullscreen = useCallback(async () => {
     try {
       await Octopus.openUI({
-        interceptUrls: urlOpeningMode === 'inAppWebView',
+        interceptUrls: urlOpeningMode !== 'defaultBrowser',
         interceptProfileTaps: profileTapMode === 'appScreens',
       });
       debugLog.apiCall('openUI', '✓ presented fullscreen');
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
+      const message = redactApiKeys(e instanceof Error ? e.message : String(e));
       debugLog.apiCall('openUI', `✕ ${message}`);
       showUserCallbackMessage(`openUI failed — ${message}`);
     }
   }, [urlOpeningMode, profileTapMode, showUserCallbackMessage]);
 
+  const {
+    screen: hostScreen,
+    presentationId: hostPresentationId,
+    onShow: onHostScreenShow,
+    close: closeHostScreen,
+    onDismiss: onHostScreenDismiss,
+    dismissForPush: dismissHostForPush,
+  } = useHostScreens({
+    enabled: config !== null && isInitializationTriggered,
+    fullscreen: displayMode === 'fullscreen',
+    isScenariosPreview: activeTab === 'scenarios',
+    authEnabled: isAuthRequiredCallbackEnabled,
+    editEnabled: isEditCallbackEnabled,
+    interceptProfiles: profileTapMode === 'appScreens',
+    resumeFullscreen: openCommunityFullscreen,
+    retainedCommunity:
+      activeTab === 'community' || communityPresentation !== null,
+  });
+  const dismissHostScreen = () => {
+    if (isConnectingUser) return;
+    setHostError(null);
+    closeHostScreen();
+  };
+  const submitHostUser = async (profileUpdate?: HostProfile) => {
+    if (isConnectingUser) return;
+    setHostError(null);
+    const error = await connectUserCore(
+      profileUpdate === undefined ? 'none' : connectVariantRef.current,
+      profileUpdate === undefined
+        ? undefined
+        : { userId: hostUser?.userId, profile: profileUpdate }
+    );
+    setHostError(error);
+    if (error === null) closeHostScreen();
+  };
+
   /**
-   * Shows the community embedded in the app, from Home's dock.
+   * Shows the community embedded in the app, from Scenarios.
    *
    * Forces the display mode as well as switching tabs: the Community tab honours whichever
    * mode is selected, so from a fullscreen-mode build this button would otherwise present
@@ -1384,23 +1632,74 @@ export default function App() {
   const openCommunityEmbedded = useCallback(() => {
     setDisplayMode('embed');
     setActiveTab('community');
-  }, []);
+  }, [setDisplayMode]);
+
+  const openScenarioPresentation = useCallback(
+    (mode: CommunityPresentationMode) => {
+      if (mode === 'modal' || mode === 'sheet') {
+        setCommunityPresentation(mode);
+        return;
+      }
+      communityReturnTab.current = 'scenarios';
+      setDisplayMode(mode === 'tab' ? 'embed' : 'fullscreen');
+      setActiveTab('community');
+    },
+    [setDisplayMode]
+  );
 
   const handleTabChange = useCallback(
     (tab: TabId) => {
-      if (tab === 'community' && displayMode === 'fullscreen') {
-        openCommunityFullscreen();
-        return;
+      if (tab === 'community' && activeTab === 'community') {
+        dispatchCommunityNavigation({ type: 'retap' });
       }
       // A tab-bar visit is not a link: drop what the last link asked for.
       setSettingsRequest(null);
       setScenariosRequest(null);
       setActiveTab(tab);
     },
-    [displayMode, openCommunityFullscreen]
+    [activeTab]
   );
 
-  const communityOwnsTopBar = showTabBar && activeTab === 'community';
+  const hideDebug = useCallback(() => setIsDebugVisible(false), []);
+  const debugDismissal = useModalDismissal(isDebugVisible, hideDebug);
+  const webDismissal = useModalDismissal(webViewUrl !== null, closeWebView);
+  const hideFeedback = useCallback(() => setIsFeedbackVisible(false), []);
+  const feedbackDismissal = useModalDismissal(isFeedbackVisible, hideFeedback);
+  useCommunityPushRouting({
+    ready: isSdkInitialized && config !== null && !isRestoringCommunityMode,
+    dismissPresentations: async () => {
+      // Nested overlays leave first, then the host callback, then any SDK-owned demo.
+      await Promise.all([
+        debugDismissal.dismiss(),
+        webDismissal.dismiss(),
+        feedbackDismissal.dismiss(),
+      ]);
+      await dismissHostForPush();
+      await communityPresentationDismissal.dismiss();
+      await Octopus.closeUI().catch(() => {});
+    },
+    openTarget: (notification) => {
+      dispatchCommunityNavigation({ type: 'push', notification });
+      setActiveTab('community');
+    },
+  });
+  const isCommunityFullscreen =
+    showTabBar && activeTab === 'community' && displayMode === 'fullscreen';
+
+  const updateStatus = useSyncExternalStore(
+    subscribeToAppUpdate,
+    getAppUpdateStatus
+  );
+  const communityOwnsTopBar =
+    showTabBar &&
+    (activeTab === 'community' ||
+      (activeTab === 'scenarios' && scenarioTopBar === 'community'));
+  const shellOwnsTopBar =
+    !communityOwnsTopBar &&
+    !(showTabBar && activeTab === 'settings' && !settingsAtRoot) &&
+    !(showTabBar && activeTab === 'scenarios' && scenarioTopBar === 'sample');
+  const communityOwnsStatusBar =
+    communityOwnsTopBar || communityPresentation === 'modal';
   const communityColors = getCurrentThemeColors()?.[isDark ? 'dark' : 'light'];
   const communityBackground =
     communityColors && 'background' in communityColors
@@ -1408,11 +1707,6 @@ export default function App() {
       : isDark
         ? '#000000'
         : '#FFFFFF';
-  // The dark halo belongs to the example's own screens; the embedded native community
-  // view draws its own surfaces, so the glow stops at its tab.
-  const showHalo = isDark && !communityOwnsTopBar;
-  // Dark: the page colour, under the halo, so the transparent header and the status-bar
-  // strip glow as one surface. Light: the navy bar colour.
   const topBackground = communityOwnsTopBar
     ? communityBackground
     : isDark
@@ -1421,15 +1715,20 @@ export default function App() {
 
   // Android hardware / gesture Back. One listener for the whole sample; the screens register
   // their own sub-navigation with it (Settings pages, Scenario routes) and are asked first.
-  // What is left is the shell: Config revisit → Cancel, a root tab → Home, and on Home the
+  // What is left is the shell: Config revisit → Cancel, a root tab → Scenarios, and on Scenarios the
   // press goes to the platform, which backgrounds the app (`MainActivity`).
   const canCancelConfig =
-    config === null && configMode === 'revisit' && restoredConfig !== null;
+    isReconfiguring && configMode === 'revisit' && restoredConfig !== null;
   useHardwareBackListener();
   useHardwareBack('shell', () => {
+    if (isCommunityFullscreen) {
+      setActiveTab(communityReturnTab.current);
+      return true;
+    }
     switch (
       resolveShellBack({
-        isOnConfig: !isRestoringConfig && activeConfig === null,
+        isOnConfig:
+          !isRestoringConfig && (activeConfig === null || isReconfiguring),
         canCancelConfig,
         isShellVisible: showTabBar,
         activeTab,
@@ -1438,40 +1737,202 @@ export default function App() {
       case 'cancelReconfigure':
         handleCancelReconfigure();
         return true;
-      case 'goHome':
-        setActiveTab('home');
+      case 'goScenarios':
+        setActiveTab('scenarios');
         return true;
       case 'none':
         return false;
     }
   });
 
+  const hostOverlays = (
+    <>
+      {FeedbackSheet && (
+        <FeedbackSheet
+          visible={isFeedbackVisible}
+          isDark={isDark}
+          onClose={hideFeedback}
+          onDismiss={feedbackDismissal.onDismiss}
+        />
+      )}
+      <DebugConsoleSheet
+        visible={isDebugVisible && debugView === 'console'}
+        onDismiss={debugDismissal.onDismiss}
+        isDark={isDark}
+        onClose={() => setIsDebugVisible(false)}
+      />
+      {/* Debug console: a modal, not a tab — the shared catalog names exactly three tabs and
+          opens the console from `debug-open-button`. */}
+      <Modal
+        visible={isDebugVisible && debugView !== 'console'}
+        onDismiss={debugDismissal.onDismiss}
+        animationType="slide"
+        onRequestClose={() => setIsDebugVisible(false)}
+        statusBarTranslucent
+        // Keep status-bar ownership with the sample root controller on iOS.
+        presentationStyle="overFullScreen"
+      >
+        {/* Same header shape as the WebView modal below: a `SafeAreaView` inside a Modal
+            does not receive the top inset on iOS, so the bar slid under the status bar and
+            its back button became untappable. Paint the inset by hand from `insets.top`. */}
+        <View style={[styles.modalRoot, { backgroundColor }]}>
+          <View
+            style={{
+              backgroundColor: chrome.header,
+              paddingTop: insets.top,
+              paddingLeft: Platform.OS === 'ios' ? insets.left : 0,
+              paddingRight: Platform.OS === 'ios' ? insets.right : 0,
+            }}
+          >
+            <AppBar
+              title={debugView === 'info' ? 'Debug info' : 'Events log'}
+              isDark={isDark}
+              onBack={() => setIsDebugVisible(false)}
+              backTestID="debug-close-button"
+            />
+          </View>
+          {/* Repeated here: a modal renders in its own window, above the banner the
+              screens below carry, so without this the console is the one place that
+              does not say which server the build talks to. */}
+          <View
+            style={{
+              paddingLeft: Platform.OS === 'ios' ? insets.left : 0,
+              paddingRight: Platform.OS === 'ios' ? insets.right : 0,
+            }}
+          >
+            <ProductionWarningBanner
+              isDark={isDark}
+              host={resolveConfigServer(activeConfig).host}
+            />
+          </View>
+          {/* The safe area is painted in the bar's background color, so the screen itself
+              carries the page background — and the bottom inset as padding, which keeps the
+              last log row clear of the home indicator without tinting that strip. */}
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: screenColor,
+              paddingBottom: insets.bottom,
+              paddingLeft: Platform.OS === 'ios' ? insets.left : 0,
+              paddingRight: Platform.OS === 'ios' ? insets.right : 0,
+            }}
+          >
+            <DebugScreen
+              isDark={isDark}
+              primaryColor={primaryColor}
+              onPrimaryColor={onPrimaryColor}
+              isInitialized={isSdkInitialized}
+              connectionState={connectionState}
+              hasAccessToCommunity={hasAccessToCommunity}
+              notSeenNotificationsCount={notSeenNotificationsCount}
+              pushToken={pushToken}
+              view={debugView}
+              infoCards={debugInfoCards}
+              onOpenHostCallbacks={() => {
+                setIsDebugVisible(false);
+                setActiveTab('settings');
+                setSettingsRequest((previous) =>
+                  nextNavRequest(previous, 'integration')
+                );
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* WebView overlay when URL is intercepted (works from any tab: Settings or Community embed/fullscreen) */}
+      <Modal
+        visible={webViewUrl !== null}
+        onDismiss={webDismissal.onDismiss}
+        animationType="slide"
+        onRequestClose={onWebViewHardwareBack}
+        statusBarTranslucent
+        // Keep status-bar ownership with the sample root controller on iOS.
+        presentationStyle="overFullScreen"
+      >
+        <View style={[styles.modalRoot, { backgroundColor }]}>
+          <View
+            style={{
+              backgroundColor: chrome.appBar,
+              paddingTop: insets.top,
+              paddingLeft: Platform.OS === 'ios' ? insets.left : 0,
+              paddingRight: Platform.OS === 'ios' ? insets.right : 0,
+            }}
+          >
+            <AppBar
+              title="Web page"
+              isDark={isDark}
+              onBack={closeWebView}
+              backTestID="webview-close-button"
+            />
+          </View>
+          <View
+            style={{
+              paddingLeft: Platform.OS === 'ios' ? insets.left : 0,
+              paddingRight: Platform.OS === 'ios' ? insets.right : 0,
+            }}
+          >
+            <ProductionWarningBanner
+              isDark={isDark}
+              host={resolveConfigServer(activeConfig).host}
+            />
+          </View>
+          {webViewUrl !== null && (
+            <WebView
+              // A new URL is a new tab: remount so no history leaks from the previous one.
+              key={webViewUrl}
+              ref={webViewRef}
+              source={{ uri: webViewUrl }}
+              onNavigationStateChange={(navState) => {
+                webViewCanGoBackRef.current = navState.canGoBack;
+              }}
+              style={{
+                flex: 1,
+                marginBottom: Platform.OS === 'ios' ? insets.bottom : 0,
+                marginLeft: Platform.OS === 'ios' ? insets.left : 0,
+                marginRight: Platform.OS === 'ios' ? insets.right : 0,
+              }}
+              onError={closeWebView}
+            />
+          )}
+        </View>
+      </Modal>
+    </>
+  );
+
   return (
     <SafeAreaView
       style={{ flex: 1, backgroundColor: topBackground }}
       edges={['top']}
     >
-      {/* First child, so everything below paints over it: fixed to the window (it lives
-          outside every ScrollView) and centred on its top-right corner. */}
-      <DarkHalo visible={showHalo} />
       <SampleSystemBars
         statusBar={
-          communityOwnsTopBar &&
+          communityOwnsStatusBar &&
           !isDebugVisible &&
           webViewUrl === null &&
-          !isDark
-            ? 'dark'
-            : 'light'
+          hostScreen === null
+            ? statusBarStyleForSurface(communityBackground, isDark)
+            : isDark
+              ? 'light'
+              : 'dark'
         }
         isDark={isDark}
       />
-      {!communityOwnsTopBar && (
+      {shellOwnsTopBar && (
         <SafeAreaView
           edges={['left', 'right']}
           style={{ backgroundColor: chrome.header }}
         >
           <AppBar
             title={appBarTitle}
+            onOpenDebug={() => openDebug('console')}
+            size={
+              showTabBar
+                ? activeTab === 'settings'
+                  ? 'large'
+                  : 'medium'
+                : 'small'
+            }
             isDark={isDark}
             // Only the revisit access can go "back" — the pre-shell one has no running
             // session to return to, and `restoredConfig` is what Cancel resumes.
@@ -1483,7 +1944,10 @@ export default function App() {
       {/* Under the app bar but above every screen, Config included: the server a build talks
           to is a property of the build, so the warning is true before the SDK is started. */}
       <SafeAreaView edges={['left', 'right']}>
-        <ProductionWarningBanner />
+        <ProductionWarningBanner
+          isDark={isDark}
+          host={resolveConfigServer(activeConfig).host}
+        />
       </SafeAreaView>
       <View
         style={{
@@ -1494,27 +1958,34 @@ export default function App() {
           paddingRight: insets.right,
         }}
       >
-        {isRestoringConfig ? (
+        {isRestoringConfig || isRestoringCommunityMode ? (
           // Held rather than falling through to the Config screen: a resumable session
           // would otherwise flash the form for the length of one storage read.
           <View style={styles.centeredMessage}>
             <ActivityIndicator size="large" color={primaryColor} />
           </View>
-        ) : activeConfig === null ? (
+        ) : activeConfig === null || isReconfiguring ? (
           <ConfigScreen
             isDark={isDark}
             primaryColor={primaryColor}
             onPrimaryColor={onPrimaryColor}
             mode={configMode}
             initialConfig={restoredConfig}
-            onStart={handleStart}
+            onStart={
+              configMode === 'revisit' ? handleApplyConfiguration : handleStart
+            }
+            applying={isApplyingConfig}
+            unifiedProfileEnabled={exposeClientUserIdOverride === true}
+            onOpenUnifiedProfile={() => {
+              handleCancelReconfigure();
+              openScenariosSection('sso');
+            }}
             sectionRequest={configRequest}
             themeSet={selectedThemeSet}
-            onThemeSetChange={setSelectedThemeSet}
             urlOpeningMode={urlOpeningMode}
-            onUrlOpeningModeChange={setUrlOpeningMode}
+            onUrlOpeningModeChange={handleHostUrlModeChange}
             profileTapMode={profileTapMode}
-            onProfileTapModeChange={setProfileTapMode}
+            onProfileTapModeChange={handleHostProfileModeChange}
             displayMode={displayMode}
             onDisplayModeChange={setDisplayMode}
             isAuthRequiredCallbackEnabled={isAuthRequiredCallbackEnabled}
@@ -1534,36 +2005,57 @@ export default function App() {
             </Text>
           </View>
         ) : (
-          <>
-            {activeTab === 'home' && (
-              <HomeScreen
-                config={activeConfig}
-                isDark={isDark}
-                isInitialized={isSdkInitialized}
-                initError={initError}
-                connectionState={connectionState}
-                clientUserId={profile?.clientUserId ?? null}
-                entitlements={profile?.entitlements ?? []}
-                hasFailedConnection={connectionError !== null}
-                themeSummary={themeSummary}
-                languageSummary={languageSummary ?? communityLocaleOverride}
-                sessionStartedAt={sessionStartedAt}
-                effectiveApiKey={
-                  switchedCommunity?.key ?? resolveApiKey(activeConfig)
-                }
-                onEditConfig={handleReconfigure}
-                onOpenCommunity={openCommunityFullscreen}
-                onOpenEmbeddedCommunity={openCommunityEmbedded}
-              />
-            )}
-            {activeTab === 'settings' && (
+          <ShellTabs
+            activeTab={activeTab}
+            settings={
               <SettingsScreen
+                onTopBarChange={setSettingsAtRoot}
+                serverLabel={`${settingsServerLabel(resolveConfigServer(activeConfig).host)} — ${resolveConfigServer(activeConfig).host}`}
+                onAppearanceChange={handleThemeModeChange}
+                onThemeSetChange={setSelectedThemeSet}
+                onLanguageChange={handleCommunityLocaleOverrideChange}
+                languageError={localeOverrideError}
+                integration={
+                  <HostIntegrationPanel
+                    isDark={isDark}
+                    displayMode={displayMode}
+                    onDisplayModeChange={setDisplayMode}
+                    profileTapMode={profileTapMode}
+                    onProfileTapModeChange={handleHostProfileModeChange}
+                    editEnabled={isEditCallbackEnabled}
+                    onEditEnabledChange={setIsEditCallbackEnabled}
+                    loginEnabled={isAuthRequiredCallbackEnabled}
+                    onLoginEnabledChange={setIsAuthRequiredCallbackEnabled}
+                    urlOpeningMode={urlOpeningMode}
+                    onUrlOpeningModeChange={handleHostUrlModeChange}
+                    appManagedFields={appManagedFields}
+                    busy={isConnectingUser || isSdkInitializing}
+                    onRestart={handleRestartHostIntegration}
+                  />
+                }
+                overview={
+                  <SettingsOverview
+                    config={activeConfig}
+                    isDark={isDark}
+                    isInitialized={isSdkInitialized}
+                    initError={initError}
+                    connectionState={connectionState}
+                    clientUserId={profile?.clientUserId ?? null}
+                    entitlements={profile?.entitlements ?? []}
+                    hasFailedConnection={connectionError !== null}
+                    themeSummary={themeSummary}
+                    languageSummary={languageSummary ?? communityLocaleOverride}
+                    sessionStartedAt={sessionStartedAt}
+                    effectiveApiKey={effectiveApiKey}
+                    onEditConfig={handleReconfigure}
+                  />
+                }
                 hasSsoUser={hasSsoUser}
-                isSsoAuth={isSsoAuth}
                 onReconfigure={handleReconfigure}
                 onOpenConfigSection={openConfigSection}
                 onOpenScenariosSection={openScenariosSection}
                 onOpenDebug={openDebug}
+                onOpenFeedback={() => setIsFeedbackVisible(true)}
                 pageRequest={settingsRequest}
                 isConnectingUser={isConnectingUser}
                 isMockUserConnected={isMockUserConnected}
@@ -1582,30 +2074,66 @@ export default function App() {
                 onRefreshEntitlements={handleRefreshEntitlements}
                 appearance={themeMode ?? 'system'}
                 themeSet={selectedThemeSet}
-                communitySummary={`${communityLabel(activeConfig)} · ${octopusServerLabel}`}
+                communitySummary={communityLabel(activeConfig)}
                 onResetData={handleResetData}
                 isDark={isDark}
                 primaryColor={primaryColor}
                 userCallbackMessage={userCallbackMessage}
               />
-            )}
-            {activeTab === 'scenarios' && (
+            }
+            scenarios={
               <ScenariosScreen
+                onTopBarChange={setScenarioTopBar}
+                onOpenDebug={() => openDebug('console')}
+                launchActions={
+                  <CommunityLaunchActions
+                    isDark={isDark}
+                    onEmbedded={openCommunityEmbedded}
+                    onFullscreen={() => openScenarioPresentation('fullscreen')}
+                    onModal={() => openScenarioPresentation('modal')}
+                    onSheet={() => openScenarioPresentation('sheet')}
+                  />
+                }
+                onOpenPresentation={openScenarioPresentation}
+                isInitialized={isSdkInitialized}
+                effectiveApiKey={effectiveApiKey}
+                onRestartSdk={handleRetryInit}
+                isSdkInitializing={isSdkInitializing}
+                onStopSdk={async () => {
+                  await Octopus.stop();
+                  setIsSdkSessionReady(false);
+                  setIsMockUserConnected(false);
+                  setConnectionState(null);
+                  setProfile(null);
+                }}
+                onResetSdk={async () => {
+                  setHostUser(null);
+                  await Octopus.reset();
+                  setIsMockUserConnected(false);
+                  setConnectionState(null);
+                  setProfile(null);
+                }}
+                onUnifiedProfileChange={async (enabled) => {
+                  await handleExposeClientUserIdOverrideChange(
+                    enabled ? true : null
+                  );
+                  setProfileTapMode(enabled ? 'appScreens' : 'sdkScreens');
+                }}
                 isDark={isDark}
                 primaryColor={primaryColor}
                 onPrimaryColor={onPrimaryColor}
-                interceptUrls={urlOpeningMode === 'inAppWebView'}
+                interceptUrls={urlOpeningMode !== 'defaultBrowser'}
                 interceptProfileTaps={profileTapMode === 'appScreens'}
                 exposeClientUserIdOverride={exposeClientUserIdOverride}
                 onExposeClientUserIdOverrideChange={
                   handleExposeClientUserIdOverrideChange
                 }
                 clientUserId={activeConfig.userId}
-                isSsoAuth={isSsoAuth}
                 onVerifyInCommunity={() => handleTabChange('community')}
-                onOpenConfigSection={openConfigSection}
                 sectionRequest={scenariosRequest}
                 isMockUserConnected={isMockUserConnected}
+                connectionState={connectionState}
+                profileClientUserId={profile?.clientUserId ?? null}
                 isConnectingUser={isConnectingUser}
                 onConnectUser={handleConnectUserForScenarios}
                 onDisconnectUser={handleDisconnectUserForScenarios}
@@ -1647,12 +2175,18 @@ export default function App() {
                     ? activeConfig.customApiKey
                     : null
                 }
+                onOpenCommunityNotification={async (notification) => {
+                  await pushInbox.enqueue({
+                    id: `sample-${Date.now()}-${Math.random()}`,
+                    notification,
+                  });
+                }}
                 communitySessionNonce={communitySessionNonce}
               />
-            )}
-            {activeTab === 'community' && (
+            }
+            community={
               <CommunityScreen
-                interceptUrls={urlOpeningMode === 'inAppWebView'}
+                interceptUrls={urlOpeningMode !== 'defaultBrowser'}
                 interceptProfileTaps={profileTapMode === 'appScreens'}
                 isDark={isDark}
                 initError={initError}
@@ -1664,12 +2198,14 @@ export default function App() {
                   connectionState?.connected === true &&
                   !connectionState.isGuest
                 }
-                isSsoAuth={isSsoAuth}
                 onConnectUser={() => openSettingsPage('account')}
-                communitySessionNonce={communitySessionNonce}
+                communitySessionNonce={communityNavigation.generation}
+                notification={communityNavigation.target}
+                mode={displayMode}
+                onBackRequested={() => setActiveTab(communityReturnTab.current)}
               />
-            )}
-          </>
+            }
+          />
         )}
         {/* Last child of the content area, so it floats over every screen but always above
             the tab bar, which is a sibling below this view. Without the tab bar (Config,
@@ -1682,7 +2218,7 @@ export default function App() {
         />
       </View>
 
-      {showTabBar && (
+      {showTabBar && !isCommunityFullscreen && (
         <View
           style={{
             width: '100%',
@@ -1694,6 +2230,8 @@ export default function App() {
           }}
         >
           <TabBar
+            updateAvailable={updateStatus.kind === 'available'}
+            isDark={isDark}
             activeTab={activeTab}
             onTabChange={handleTabChange}
             badgeRingColor={chrome.navSurface}
@@ -1705,176 +2243,106 @@ export default function App() {
         </View>
       )}
 
-      {/* Debug console: a modal, not a tab — the shared catalog names exactly four tabs and
-          opens the console from `debug-open-button`. */}
-      <Modal
-        visible={isDebugVisible}
-        animationType="slide"
-        onRequestClose={() => setIsDebugVisible(false)}
-        statusBarTranslucent
-        // Keep status-bar ownership with the sample root controller on iOS.
-        presentationStyle="overFullScreen"
-      >
-        {/* Same header shape as the WebView modal below: a `SafeAreaView` inside a Modal
-            does not receive the top inset on iOS, so the bar slid under the status bar and
-            its back button became untappable. Paint the inset by hand from `insets.top`. */}
-        <View style={[styles.modalRoot, { backgroundColor }]}>
-          {/* Dark: the same halo as the shell — the console is an example-owned screen too. */}
-          <DarkHalo visible={isDark} />
-          <View
-            style={{
-              backgroundColor: chrome.header,
-              paddingTop: insets.top,
-              paddingLeft: Platform.OS === 'ios' ? insets.left : 0,
-              paddingRight: Platform.OS === 'ios' ? insets.right : 0,
-            }}
+      <CommunityPresentation
+        mode={communityPresentation}
+        isDark={isDark}
+        communityBackground={communityBackground}
+        session={communitySessionNonce}
+        interceptUrls={urlOpeningMode !== 'defaultBrowser'}
+        interceptProfileTaps={profileTapMode === 'appScreens'}
+        onClose={closeCommunityPresentation}
+        onDismiss={communityPresentationDismissal.onDismiss}
+        overlays={
+          <HostScreenModal
+            key={hostPresentationId}
+            onShow={onHostScreenShow}
+            visible={hostScreen !== null}
+            onRequestClose={dismissHostScreen}
+            onDismiss={onHostScreenDismiss}
+            overlays={hostOverlays}
           >
-            <AppBar
-              title={debugView === 'info' ? 'Debug info' : 'Events log'}
-              isDark={isDark}
-              onBack={() => setIsDebugVisible(false)}
-              backTestID="debug-close-button"
-            />
-          </View>
-          {/* Repeated here: a modal renders in its own window, above the banner the
-              screens below carry, so without this the console is the one place that
-              does not say which server the build talks to. */}
-          <View
-            style={{
-              paddingLeft: Platform.OS === 'ios' ? insets.left : 0,
-              paddingRight: Platform.OS === 'ios' ? insets.right : 0,
-            }}
-          >
-            <ProductionWarningBanner />
-          </View>
-          {/* The safe area is painted in the bar's background color, so the screen itself
-              carries the page background — and the bottom inset as padding, which keeps the
-              last log row clear of the home indicator without tinting that strip. */}
-          <View
-            style={{
-              flex: 1,
-              backgroundColor: screenColor,
-              paddingBottom: insets.bottom,
-              paddingLeft: Platform.OS === 'ios' ? insets.left : 0,
-              paddingRight: Platform.OS === 'ios' ? insets.right : 0,
-            }}
-          >
-            <DebugScreen
-              isDark={isDark}
-              primaryColor={primaryColor}
-              onPrimaryColor={onPrimaryColor}
-              isInitialized={isSdkInitialized}
-              isUserConnected={isMockUserConnected}
-              hasAccessToCommunity={hasAccessToCommunity}
-              notSeenNotificationsCount={notSeenNotificationsCount}
-              pushToken={pushToken}
-              view={debugView}
-              infoCards={debugInfoCards}
-              onOpenHostCallbacks={() => {
-                setIsDebugVisible(false);
-                openConfigSection('integration');
-              }}
-            />
-          </View>
-        </View>
-      </Modal>
-
-      {/* The host's own profile screen, pushed by a Unified Profile tap from any surface
-          (Community tab, embedded preview, fullscreen). */}
-      <Modal
-        visible={hostProfileClientUserId !== null}
-        animationType="slide"
-        onRequestClose={() => setHostProfileClientUserId(null)}
-        statusBarTranslucent
-        presentationStyle="overFullScreen"
-      >
-        <View style={[styles.modalRoot, { backgroundColor }]}>
-          <View
-            style={{
-              backgroundColor: chrome.appBar,
-              paddingTop: insets.top,
-              paddingLeft: Platform.OS === 'ios' ? insets.left : 0,
-              paddingRight: Platform.OS === 'ios' ? insets.right : 0,
-            }}
-          >
-            <AppBar
-              title="Client profile (host app)"
-              isDark={isDark}
-              onBack={() => setHostProfileClientUserId(null)}
-              backTestID="clientProfile-back"
-            />
-          </View>
-          {hostProfileClientUserId !== null && (
-            <View
-              style={{
-                flex: 1,
-                paddingBottom: insets.bottom,
-                paddingLeft: Platform.OS === 'ios' ? insets.left : 0,
-                paddingRight: Platform.OS === 'ios' ? insets.right : 0,
-              }}
-            >
-              <ClientProfileScreen
-                isDark={isDark}
-                clientUserId={hostProfileClientUserId}
-              />
-            </View>
-          )}
-        </View>
-      </Modal>
-
-      {/* WebView overlay when URL is intercepted (works from any tab: Settings or Community embed/fullscreen) */}
-      <Modal
-        visible={webViewUrl !== null}
-        animationType="slide"
-        onRequestClose={onWebViewHardwareBack}
-        statusBarTranslucent
-        // Keep status-bar ownership with the sample root controller on iOS.
-        presentationStyle="overFullScreen"
-      >
-        <View style={[styles.modalRoot, { backgroundColor }]}>
-          <View
-            style={{
-              backgroundColor: chrome.appBar,
-              paddingTop: insets.top,
-              paddingLeft: Platform.OS === 'ios' ? insets.left : 0,
-              paddingRight: Platform.OS === 'ios' ? insets.right : 0,
-            }}
-          >
-            <AppBar
-              title="Web page"
-              isDark={isDark}
-              onBack={closeWebView}
-              backTestID="webview-close-button"
-            />
-          </View>
-          <View
-            style={{
-              paddingLeft: Platform.OS === 'ios' ? insets.left : 0,
-              paddingRight: Platform.OS === 'ios' ? insets.right : 0,
-            }}
-          >
-            <ProductionWarningBanner />
-          </View>
-          {webViewUrl !== null && (
-            <WebView
-              // A new URL is a new tab: remount so no history leaks from the previous one.
-              key={webViewUrl}
-              ref={webViewRef}
-              source={{ uri: webViewUrl }}
-              onNavigationStateChange={(navState) => {
-                webViewCanGoBackRef.current = navState.canGoBack;
-              }}
-              style={{
-                flex: 1,
-                marginBottom: Platform.OS === 'ios' ? insets.bottom : 0,
-                marginLeft: Platform.OS === 'ios' ? insets.left : 0,
-                marginRight: Platform.OS === 'ios' ? insets.right : 0,
-              }}
-              onError={closeWebView}
-            />
-          )}
-        </View>
-      </Modal>
+            {hostScreen !== null && (
+              <View
+                style={[
+                  styles.modalRoot,
+                  {
+                    backgroundColor,
+                    paddingBottom: insets.bottom,
+                    paddingLeft: insets.left,
+                    paddingRight: insets.right,
+                  },
+                ]}
+                accessibilityViewIsModal
+              >
+                <View
+                  style={{
+                    backgroundColor: chrome.appBar,
+                    paddingTop: insets.top,
+                  }}
+                >
+                  <AppBar
+                    title={
+                      hostScreen.kind === 'signIn'
+                        ? 'Sign in'
+                        : hostScreen.kind === 'editProfile'
+                          ? 'Edit profile'
+                          : 'Client profile (host app)'
+                    }
+                    isDark={isDark}
+                    onBack={dismissHostScreen}
+                    backTestID={
+                      hostScreen.kind === 'profile'
+                        ? 'clientProfile-back'
+                        : hostScreen.kind === 'signIn'
+                          ? 'host-sign-in-back'
+                          : 'host-edit-profile-back'
+                    }
+                  />
+                </View>
+                {hostScreen.kind === 'signIn' && (
+                  <SignInScreen
+                    isDark={isDark}
+                    userId={activeConfig?.userId ?? octopusUserId}
+                    hasSsoUser={hasSsoUser}
+                    busy={isConnectingUser}
+                    error={hostError}
+                    onConnect={() => submitHostUser()}
+                  />
+                )}
+                {hostScreen.kind === 'editProfile' && (
+                  <EditProfileScreen
+                    isDark={isDark}
+                    user={hostUser}
+                    appManagedFields={appManagedFields}
+                    fieldToEdit={hostScreen.fieldToEdit}
+                    key={hostUser?.userId ?? 'disconnected'}
+                    canSave={canSaveHostProfile({
+                      isConnected: isMockUserConnected,
+                      user: hostUser,
+                      hasToken:
+                        octopusUserTokens[connectVariantRef.current] !== '',
+                    })}
+                    busy={isConnectingUser}
+                    error={hostError}
+                    onSave={submitHostUser}
+                  />
+                )}
+                {hostScreen.kind === 'profile' && (
+                  <ClientProfileScreen
+                    isDark={isDark}
+                    clientUserId={hostScreen.clientUserId}
+                    hostUser={
+                      hostUser?.userId === hostScreen.clientUserId
+                        ? hostUser
+                        : null
+                    }
+                  />
+                )}
+              </View>
+            )}
+          </HostScreenModal>
+        }
+      />
     </SafeAreaView>
   );
 }
@@ -1888,7 +2356,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   loadingText: {
-    fontSize: 14,
+    ...sampleTypography.callout,
   },
   modalRoot: {
     flex: 1,

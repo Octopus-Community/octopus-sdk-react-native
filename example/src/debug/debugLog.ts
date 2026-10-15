@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
+import { redactApiKeys } from '../config/apiKeyMask';
 
 /** Whether an entry came from the SDK's event stream or from a call the sample made. */
-export type DebugEntryKind = 'event' | 'api';
+export type DebugEntryKind = 'event' | 'state' | 'api';
 
 /** One line of the in-app debug console. */
 export interface DebugEntry {
@@ -43,6 +44,10 @@ class DebugLog {
     this.push('event', label, detail);
   }
 
+  state(label: string, detail: string) {
+    this.push('state', label, detail);
+  }
+
   /** Records a call the sample made, and its outcome. */
   apiCall(label: string, detail: string) {
     this.push('api', label, detail);
@@ -63,9 +68,10 @@ class DebugLog {
    * screen are local time, which is a different job) and the internal `id` is dropped —
    * it is a React key, not information about the session.
    */
-  exportJson(): string {
+  exportJson(kinds?: readonly DebugEntryKind[]): string {
     return JSON.stringify(
       this.entries
+        .filter((entry) => !kinds || kinds.includes(entry.kind))
         .slice()
         .reverse()
         .map((e) => ({
@@ -88,7 +94,13 @@ class DebugLog {
 
   private push(kind: DebugEntryKind, label: string, detail: string) {
     this.entries = [
-      { id: this.nextId++, kind, label, detail, at: Date.now() },
+      {
+        id: this.nextId++,
+        kind,
+        label: redactApiKeys(label),
+        detail: redactApiKeys(detail),
+        at: Date.now(),
+      },
       ...this.entries,
     ].slice(0, this.maxEntries);
     this.notify();

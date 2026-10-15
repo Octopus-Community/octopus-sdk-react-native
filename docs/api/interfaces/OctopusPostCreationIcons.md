@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.14.0**](../README.md)
+[**@octopus-community/react-native v1.15.0**](../README.md)
 
 ---
 
@@ -32,7 +32,7 @@ Adds a poll to the post.
 
 Adds an option to the poll.
 
-**Android caveat (native 1.13.x):** the Android SDK does not read this slot, so an override
+**Android caveat (native 1.15.x):** the Android SDK does not read this slot, so an override
 only shows on iOS.
 
 ---
@@ -59,7 +59,7 @@ Removes the poll.
 
 Removes a poll option.
 
-**Android caveat (native 1.13.x):** the Android SDK does not read this slot, so an override
+**Android caveat (native 1.15.x):** the Android SDK does not read this slot, so an override
 only shows on iOS.
 
 ---

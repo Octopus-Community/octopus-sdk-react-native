@@ -1,3 +1,4 @@
+import { sampleRadius, sampleTypography, sampleSpacing } from '../theme/tokens';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -6,17 +7,30 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { MaterialIcons } from '@react-native-vector-icons/material-icons/static';
 import { useHardwareBack } from '../navigation/useHardwareBack';
 
 import {
-  sampleDesignReferenceUrl,
   sampleSupport,
+  sampleDesignReferenceUrl,
 } from '../config/sampleSupport';
-
+import { AppSection } from '../components/AppSection';
+import { AppBar } from '../components/AppBar';
+import { SettingsRadio } from '../components/SettingsRadio';
+import { SegmentControl } from '../components/SegmentControl';
+import {
+  SummaryRow as SampleSummaryRow,
+  GroupHeader,
+  ListDivider,
+} from '../components/SampleRecipes';
+import {
+  SDK_LANGUAGES,
+  APPEARANCE_OPTIONS,
+  THEME_PRESETS,
+} from '../config/settingsPreferences';
+import { SampleInfoRow } from '../components/SampleInfoRow';
 import { PillButton } from '../components/PillButton';
 import { useDebugLog } from '../debug/debugLog';
 import { chromeColors } from '../theme/branding';
@@ -35,7 +49,7 @@ import type {
   SettingsPage,
 } from '../navigation/anchors';
 
-export type UrlOpeningMode = 'defaultBrowser' | 'inAppWebView';
+export type UrlOpeningMode = 'defaultBrowser' | 'inAppWebView' | 'sampleRule';
 
 /**
  * Who handles a profile tap inside the community UI: the SDK's own profile
@@ -50,11 +64,9 @@ export type CommunityLocaleOverride = string;
 /** Which page of the Settings tab is showing. `root` is the summary. */
 type SettingsRoute = SettingsPage;
 
-const LOCALE_SUMMARIES: Record<CommunityLocaleOverride, string> = {
-  system: 'Follow system',
-  fr: 'French (fr)',
-  en: 'English (en)',
-};
+const LOCALE_SUMMARIES = Object.fromEntries(
+  SDK_LANGUAGES.map((language) => [language.value, language.label])
+);
 
 const APPEARANCE_SUMMARIES: Record<ThemeMode, string> = {
   system: 'Follow system',
@@ -63,13 +75,16 @@ const APPEARANCE_SUMMARIES: Record<ThemeMode, string> = {
 };
 
 export interface SettingsScreenProps {
+  onTopBarChange?: (isRoot: boolean) => void;
+  overview?: React.ReactNode;
+  integration?: React.ReactNode;
+  serverLabel?: string;
+  onAppearanceChange?: (mode: ThemeMode) => void;
+  onThemeSetChange?: (theme: ThemeSet) => void;
+  onLanguageChange?: (language: string) => Promise<void>;
+  languageError?: string | null;
   /** Whether a token was injected for the plain demo user — no token, no Connect. */
   hasSsoUser: boolean;
-  /**
-   * Whether the SDK was initialized in `sso` mode. In `octopus` mode the SDK owns
-   * login, so the host has no user to connect.
-   */
-  isSsoAuth: boolean;
   /** Back to the Config screen (`settings-reconfigure-button`), at the top. */
   onReconfigure: () => void;
   /** Back to the Config screen, scrolled to one section — for the links that name one setting. */
@@ -81,6 +96,8 @@ export interface SettingsScreenProps {
    * Events log (`debug-open-button`) or the read-only Debug info snapshot.
    */
   onOpenDebug: (view: DebugView) => void;
+  /** Opens the optional internal feedback sheet owned by the shell. */
+  onOpenFeedback?: () => void;
   /**
    * A page a link asked for (`settings/<page>`) — Community's "Connect" and the SDK's host
    * callbacks land on Account through it. Applied on mount and again on every new request.
@@ -95,17 +112,13 @@ export interface SettingsScreenProps {
   clientUserId: string;
   /** Entitlements the SDK currently reports for the connected profile. */
   entitlements: string[];
-  /** Community UI language override — read-only here; set in Scenarios › Theme & language. */
+  /** Community UI language shared with the Locale scenario. */
   communityLocaleOverride: CommunityLocaleOverride;
   onConnectUser: () => void;
   onDisconnectUser: () => void;
   /** `refreshEntitlements()` — the lighter, session-preserving refresh. */
   onRefreshEntitlements: () => void;
-  /**
-   * Appearance of the SAMPLE's own chrome, and of the SDK through `setThemeMode` — read-only
-   * here; set in Config › Theme or live by the Theme scenario (spec 05: Settings
-   * reads/displays, never sets).
-   */
+  /** Appearance shared by Settings, Configuration and the Theme scenario. */
   appearance: ThemeMode;
   themeSet: ThemeSet;
   /** Which community the SDK is pointed at, for the Change Configuration subtitle. */
@@ -132,32 +145,37 @@ function SummaryRow({
   chrome: ReturnType<typeof chromeColors>;
   testID?: string;
 }) {
+  const isDark = chrome === chromeColors(true);
+  const icons: Record<
+    string,
+    React.ComponentProps<typeof MaterialIcons>['name']
+  > = {
+    'Account': 'person-outline',
+    'Appearance': 'palette',
+    'Language': 'language',
+    'Configuration': 'tune',
+    'Developer tools': 'code',
+    'Send feedback': 'feedback',
+    'About': 'info-outline',
+    'Host app integration': 'settings-input-component',
+    'Events log': 'event-note',
+    'Debug info': 'info-outline',
+    'Debug console': 'bug-report',
+  };
   return (
-    <TouchableOpacity
-      testID={testID}
-      style={[
-        styles.row,
-        { backgroundColor: chrome.surface, borderColor: chrome.border },
-      ]}
-      onPress={onPress}
-      activeOpacity={0.7}
-      accessibilityRole="button"
-    >
-      <View style={styles.rowText}>
-        <Text style={[styles.rowTitle, { color: chrome.text }]}>{title}</Text>
-        <Text style={[styles.rowSubtitle, { color: chrome.textSecondary }]}>
-          {subtitle}
-        </Text>
-      </View>
-      <MaterialIcons
-        name="chevron-right"
-        size={22}
-        color={chrome.textSecondary}
+    <>
+      <SampleSummaryRow
+        title={title}
+        subtitle={subtitle}
+        onPress={onPress}
+        testID={testID}
+        isDark={isDark}
+        icon={icons[title] ?? 'settings'}
       />
-    </TouchableOpacity>
+      <ListDivider isDark={isDark} settings />
+    </>
   );
 }
-
 function GroupTitle({
   label,
   chrome,
@@ -165,11 +183,7 @@ function GroupTitle({
   label: string;
   chrome: ReturnType<typeof chromeColors>;
 }) {
-  return (
-    <Text style={[styles.groupTitle, { color: chrome.textSecondary }]}>
-      {label}
-    </Text>
-  );
+  return <GroupHeader title={label} isDark={chrome === chromeColors(true)} />;
 }
 
 /**
@@ -183,33 +197,29 @@ function SubPage({
   title,
   chrome,
   onBack,
+  onOpenDebug,
   children,
 }: {
   title: string;
   chrome: ReturnType<typeof chromeColors>;
   onBack: () => void;
+  onOpenDebug: () => void;
   children: React.ReactNode;
 }) {
   return (
     <View style={[styles.container, { backgroundColor: chrome.screen }]}>
+      <AppBar
+        title={title}
+        isDark={chrome === chromeColors(true)}
+        onBack={onBack}
+        backTestID="settings-back-button"
+        onOpenDebug={onOpenDebug}
+      />
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={styles.pageContent}
         showsVerticalScrollIndicator
       >
-        <TouchableOpacity
-          testID="settings-back-button"
-          style={styles.backRow}
-          onPress={onBack}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-        >
-          <MaterialIcons name="arrow-back" size={20} color={chrome.accent} />
-          <Text style={[styles.backLabel, { color: chrome.accent }]}>
-            Settings
-          </Text>
-        </TouchableOpacity>
-        <Text style={[styles.pageTitle, { color: chrome.text }]}>{title}</Text>
         {children}
         <View style={styles.bottomSpacer} />
       </ScrollView>
@@ -218,7 +228,7 @@ function SubPage({
 }
 
 /**
- * Settings tab — a pure summary, and five pages behind it.
+ * Settings summary and its editable destinations.
  *
  * The rule the shared design gives this screen: **the root holds no control**. One line is one
  * navigation, and its subtitle is the CURRENT VALUE rather than a description, so the whole
@@ -227,12 +237,20 @@ function SubPage({
  * "how is this host wired" answers live.
  */
 export function SettingsScreen({
+  onTopBarChange,
+  overview,
+  integration,
+  serverLabel = `${octopusServerLabel} — ${octopusHostLabel}`,
+  onAppearanceChange,
+  onThemeSetChange,
+  onLanguageChange,
+  languageError,
   hasSsoUser,
-  isSsoAuth,
   onReconfigure,
   onOpenConfigSection,
   onOpenScenariosSection,
   onOpenDebug,
+  onOpenFeedback,
   pageRequest,
   isConnectingUser,
   isMockUserConnected,
@@ -246,13 +264,11 @@ export function SettingsScreen({
   onRefreshEntitlements,
   appearance,
   themeSet,
-  communitySummary,
   onResetData,
   isDark,
   primaryColor,
   userCallbackMessage,
 }: SettingsScreenProps) {
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const FeedbackSheet = sampleSupport.FeedbackSheet;
   const [route, setRoute] = useState<SettingsRoute>(
     pageRequest?.target ?? 'root'
@@ -264,6 +280,9 @@ export function SettingsScreen({
   useEffect(() => {
     if (requestedPage !== undefined) setRoute(requestedPage);
   }, [requestedPage, requestNonce]);
+  useEffect(() => {
+    onTopBarChange?.(route === 'root');
+  }, [route, onTopBarChange]);
   // Hardware Back on a page does what the page's own Back does: one level up, to the summary.
   useHardwareBack('screen', () => {
     if (route === 'root') return false;
@@ -279,15 +298,11 @@ export function SettingsScreen({
   const cardBg = chrome.surface;
   const borderColor = chrome.border;
 
-  const accountSummary = !isSsoAuth
-    ? 'Octopus auth · the SDK owns login'
-    : isUserConnected
-      ? `Connected as ${clientUserId} · ${entitlements.length} entitlement${
-          entitlements.length === 1 ? '' : 's'
-        }`
-      : isGuest
-        ? 'Browsing as guest · read-only'
-        : 'Not connected';
+  const accountSummary = isUserConnected
+    ? `Connected as ${clientUserId} · ${entitlements.length ? entitlements.join(', ') : 'None'}`
+    : isGuest
+      ? 'Browsing as guest · read-only'
+      : 'Not connected';
 
   const themePresetSummary =
     themeSet === 'octopusNavy'
@@ -302,11 +317,23 @@ export function SettingsScreen({
 
   if (route === 'account') {
     return (
-      <SubPage title="Account" chrome={chrome} onBack={() => setRoute('root')}>
+      <SubPage
+        onOpenDebug={() => onOpenDebug('console')}
+        title="Account"
+        chrome={chrome}
+        onBack={() => setRoute('root')}
+      >
         <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
           <View style={styles.profileRow}>
-            <View style={[styles.avatar, { backgroundColor: chrome.tint }]}>
-              <Text style={[styles.avatarText, { color: chrome.accent }]}>
+            <View
+              style={[
+                styles.avatar,
+                { backgroundColor: chrome.accentContainer },
+              ]}
+            >
+              <Text
+                style={[styles.avatarText, { color: chrome.onAccentContainer }]}
+              >
                 {initialsOf(clientUserId)}
               </Text>
             </View>
@@ -372,12 +399,12 @@ export function SettingsScreen({
                   style={[
                     styles.chip,
                     {
-                      backgroundColor: chrome.tint,
+                      backgroundColor: chrome.accentContainer,
                       borderColor: chrome.tintBorder,
                     },
                   ]}
                 >
-                  <Text style={[styles.chipText, { color: chrome.accent }]}>
+                  <Text style={[styles.chipText, { color: chrome.accentText }]}>
                     {entitlement}
                   </Text>
                 </View>
@@ -387,23 +414,7 @@ export function SettingsScreen({
         </View>
 
         <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
-          {!isSsoAuth ? (
-            <>
-              <Text style={[styles.hint, { color: secondaryColor }]}>
-                Octopus auth mode: the SDK owns login, so there is no host user
-                to connect. Pick SSO in Config › Authentication to exercise
-                connectUser. Applying restarts the SDK.
-              </Text>
-              <PillButton
-                testID="settings-account-open-config-auth"
-                label="Config › Authentication"
-                icon="arrow-forward"
-                variant="secondary"
-                isDark={isDark}
-                onPress={() => onOpenConfigSection('auth')}
-              />
-            </>
-          ) : !hasSsoUser ? (
+          {!hasSsoUser ? (
             <>
               <Text style={[styles.hint, { color: secondaryColor }]}>
                 No SSO token injected, so there is nothing to connect: set
@@ -467,79 +478,98 @@ export function SettingsScreen({
   if (route === 'appearance') {
     return (
       <SubPage
+        onOpenDebug={() => onOpenDebug('console')}
         title="Appearance"
         chrome={chrome}
         onBack={() => setRoute('root')}
       >
         <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
           <Text style={[styles.cardTitle, { color: textColor }]}>
-            App and SDK appearance
+            Appearance
           </Text>
-          <AboutLine
-            label="Appearance"
-            value={APPEARANCE_SUMMARIES[appearance]}
-            chrome={chrome}
+          <Text style={[styles.hint, { color: secondaryColor }]}>
+            Applies to the sample and to the SDK surface it hosts.
+          </Text>
+          <SegmentControl
+            testID="settings-appearance-select"
+            options={APPEARANCE_OPTIONS}
+            value={appearance}
+            onChange={(mode) => onAppearanceChange?.(mode)}
+            isDark={isDark}
           />
-          <AboutLine
-            label="SDK colour preset"
-            value={themePresetSummary}
-            chrome={chrome}
+          <Text style={[styles.cardTitle, { color: textColor }]}>
+            Theme preset
+          </Text>
+          <Text style={[styles.hint, { color: secondaryColor }]}>
+            {
+              '"SDK default" hands the SDK no theme — what a fresh integration looks like.'
+            }
+          </Text>
+          <SegmentControl
+            testID="settings-theme-select"
+            options={THEME_PRESETS}
+            value={themeSet}
+            onChange={(theme) => onThemeSetChange?.(theme)}
+            isDark={isDark}
           />
           <Text style={[styles.hint, { color: secondaryColor }]}>
-            Read-only here — Settings only displays the current value. Set in
-            Config › Theme (applying restarts the SDK), or live by the Theme
-            scenario.
+            Changing the preset rebuilds the SDK with the selected theme.
           </Text>
-          <PillButton
-            testID="settings-appearance-open-config-theme"
-            label="Config › Theme"
-            icon="arrow-forward"
-            variant="secondary"
-            isDark={isDark}
-            onPress={() => onOpenConfigSection('theme')}
-          />
-          <PillButton
-            testID="settings-appearance-open-scenarios"
-            label="Scenarios › Theme & language"
-            icon="arrow-forward"
-            variant="secondary"
-            isDark={isDark}
-            onPress={() => onOpenScenariosSection('appearance')}
-          />
         </View>
       </SubPage>
     );
   }
-
   if (route === 'language') {
     return (
-      <SubPage title="Language" chrome={chrome} onBack={() => setRoute('root')}>
+      <SubPage
+        onOpenDebug={() => onOpenDebug('console')}
+        title="Language"
+        chrome={chrome}
+        onBack={() => setRoute('root')}
+      >
         <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
           <Text style={[styles.cardTitle, { color: textColor }]}>
-            Community language
+            SDK language
           </Text>
-          <AboutLine
-            label="Language"
-            value={
-              LOCALE_SUMMARIES[communityLocaleOverride] ??
-              communityLocaleOverride
-            }
-            chrome={chrome}
-          />
           <Text style={[styles.hint, { color: secondaryColor }]}>
-            Read-only here — Settings only displays the current value. The
-            language is set by the Locale scenario, in Scenarios › Theme &
-            language; the Config screen has no language setting.
+            Applies to the Octopus screens only — the sample itself stays in
+            English.
           </Text>
-          <PillButton
-            testID="settings-language-open-scenarios"
-            label="Scenarios › Theme & language"
-            icon="arrow-forward"
-            variant="secondary"
+          <SettingsRadio
+            testID="settings-language-select"
+            options={SDK_LANGUAGES}
+            value={communityLocaleOverride}
+            onChange={(language) => {
+              onLanguageChange?.(language).catch(() => {});
+            }}
             isDark={isDark}
-            onPress={() => onOpenScenariosSection('appearance')}
           />
+          {languageError && (
+            <Text
+              accessibilityRole="alert"
+              style={[styles.hint, { color: chrome.danger }]}
+            >
+              {languageError}
+            </Text>
+          )}
+          <Text style={[styles.hint, { color: secondaryColor }]}>
+            {
+              'The override survives a restart. "Follow system" hands the choice back to the device locale.'
+            }
+          </Text>
         </View>
+      </SubPage>
+    );
+  }
+  if (route === 'integration') {
+    return (
+      <SubPage
+        onOpenDebug={() => onOpenDebug('console')}
+        title="Host app integration"
+        chrome={chrome}
+        onBack={() => setRoute('developer')}
+      >
+        {integration}
       </SubPage>
     );
   }
@@ -547,6 +577,7 @@ export function SettingsScreen({
   if (route === 'developer') {
     return (
       <SubPage
+        onOpenDebug={() => onOpenDebug('console')}
         title="Developer tools"
         chrome={chrome}
         onBack={() => setRoute('root')}
@@ -558,10 +589,19 @@ export function SettingsScreen({
             snapshot of the build, the configuration in force and the streamed state. */}
         <SummaryRow
           chrome={chrome}
+          testID="settings-host-integration-row"
+          title="Host app integration"
+          subtitle="Profile, sign-in, links: what the app handles"
+          onPress={() => setRoute('integration')}
+        />
+        <SummaryRow
+          chrome={chrome}
           testID="debug-open-button"
           title="Events log"
-          subtitle={`${entries.length} event${
-            entries.length === 1 ? '' : 's'
+          subtitle={`${entries.filter((entry) => entry.kind === 'event').length} event${
+            entries.filter((entry) => entry.kind === 'event').length === 1
+              ? ''
+              : 's'
           } · live`}
           onPress={() => onOpenDebug('events')}
         />
@@ -574,38 +614,47 @@ export function SettingsScreen({
           }`}
           onPress={() => onOpenDebug('info')}
         />
+        <SummaryRow
+          chrome={chrome}
+          testID="settings-debug-console-row"
+          title="Debug console"
+          subtitle="Logs every feature toggle → SDK config rebuilt"
+          onPress={() => onOpenDebug('console')}
+        />
+        <Text style={[styles.hint, { color: secondaryColor }]}>
+          Host app integration sets what the app handles; the other three read
+          what the SDK did.
+        </Text>
       </SubPage>
     );
   }
 
   if (route === 'about') {
     return (
-      <SubPage title="About" chrome={chrome} onBack={() => setRoute('root')}>
+      <SubPage
+        onOpenDebug={() => onOpenDebug('console')}
+        title="About"
+        chrome={chrome}
+        onBack={() => setRoute('root')}
+      >
+        <AppSection isDark={isDark} />
         <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
-          <AboutLine
-            label="Sample version"
+          <Text style={[styles.cardTitle, { color: textColor }]}>Versions</Text>
+          <SampleInfoRow
+            label="App version"
             value={sampleVersionLabel}
-            chrome={chrome}
+            isDark={isDark}
           />
-          <AboutLine
+          <SampleInfoRow
             label="SDK version"
             value={sampleVersion}
-            chrome={chrome}
+            isDark={isDark}
           />
-          <AboutLine
-            label="Server"
-            value={`${octopusServerLabel} — ${octopusHostLabel}`}
-            chrome={chrome}
-          />
-          <Text style={[styles.hint, { color: secondaryColor }]}>
-            Both versions read the same wrapper manifest: this sample ships with
-            the package it demonstrates, and its store version is stamped from
-            it.
-          </Text>
         </View>
         {sampleDesignReferenceUrl !== '' && (
           <SummaryRow
             chrome={chrome}
+            testID="settings-design-reference-row"
             title="Design reference"
             subtitle="Shared target for the five platforms"
             onPress={() => {
@@ -621,31 +670,41 @@ export function SettingsScreen({
         <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
           <Text style={[styles.cardTitle, { color: textColor }]}>Licences</Text>
           <Text style={[styles.hint, { color: secondaryColor }]}>
-            Open-source notices for this sample's dependencies ship with the
-            store build.{' '}
-            {/* Plain, non-stylized wording only: Meta's trademark
-            policy allows the name in descriptive text but no logo or stylized
-            mark. */}
-            Built with React Native.
+            Open-source notices for what this sample links against.
           </Text>
-          <Text style={[styles.builtWith, { color: textColor }]}>
-            Built with the Octopus SDK for React Native
-          </Text>
+          {[
+            ['Octopus SDK', 'Proprietary'],
+            ['React / React Native', 'MIT'],
+            ['Async Storage / Safe Area Context / WebView', 'MIT'],
+            ['React Native Firebase', 'Apache-2.0'],
+            ['Notifee', 'Apache-2.0'],
+            ['Material Icons', 'Apache-2.0'],
+            ['React Native Vector Icons', 'MIT'],
+            ['React Native Edge to Edge', 'MIT'],
+          ].map(([label, value]) => (
+            <SampleInfoRow
+              key={label}
+              label={label!}
+              value={value!}
+              isDark={isDark}
+            />
+          ))}
         </View>
+        <Text style={[styles.builtWith, { color: textColor }]}>
+          Built with the Octopus SDK for React Native
+        </Text>
       </SubPage>
     );
   }
 
   return (
     <View style={[styles.container, { backgroundColor: chrome.screen }]}>
-      {feedbackOpen && FeedbackSheet && (
-        <FeedbackSheet isDark={isDark} onClose={() => setFeedbackOpen(false)} />
-      )}
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator
       >
+        <View style={styles.overview}>{overview}</View>
         {/* Account leads, with no group header of its own: it is the one line whose value
             changes minute to minute, and the one a tester checks first. */}
         <SummaryRow
@@ -676,8 +735,8 @@ export function SettingsScreen({
         <SummaryRow
           chrome={chrome}
           testID="settings-reconfigure-button"
-          title="Change Configuration"
-          subtitle={communitySummary}
+          title="Configuration"
+          subtitle="Community, server, SSO user, theme"
           onPress={onReconfigure}
         />
 
@@ -686,15 +745,16 @@ export function SettingsScreen({
           chrome={chrome}
           testID="settings-developer-row"
           title="Developer tools"
-          subtitle="Events log · Debug info"
+          subtitle="Host app integration · Events log · Debug info · Debug console"
           onPress={() => setRoute('developer')}
         />
-        {FeedbackSheet && (
+        {FeedbackSheet && onOpenFeedback && (
           <SummaryRow
             chrome={chrome}
+            testID="settings-feedback-row"
             title="Send feedback"
             subtitle="Pre-filled GitHub issue · internal builds only"
-            onPress={() => setFeedbackOpen(true)}
+            onPress={onOpenFeedback}
           />
         )}
         <SummaryRow
@@ -704,19 +764,16 @@ export function SettingsScreen({
           subtitle={footer}
           onPress={() => setRoute('about')}
         />
+        <GroupTitle chrome={chrome} label="Reset" />
         {/* The one red row of the sample — last in Support, at Settings level, not
             buried in About (spec 05 §"Décisions actées" / card 00 décision ⑥). */}
-        <TouchableOpacity
+        <SampleSummaryRow
           testID="settings-reset-button"
-          style={[
-            styles.row,
-            {
-              backgroundColor: chrome.dangerSurface,
-              borderColor: chrome.dangerBorder,
-            },
-          ]}
-          activeOpacity={0.7}
-          accessibilityRole="button"
+          title="Reset Configuration"
+          subtitle="Local demo setup only — nothing is deleted on the server"
+          icon="restart-alt"
+          danger
+          isDark={isDark}
           onPress={() =>
             Alert.alert(
               'Reset Configuration?',
@@ -731,16 +788,7 @@ export function SettingsScreen({
               ]
             )
           }
-        >
-          <View style={styles.rowText}>
-            <Text style={[styles.rowTitle, { color: chrome.danger }]}>
-              Reset Configuration
-            </Text>
-            <Text style={[styles.rowSubtitle, { color: chrome.danger }]}>
-              Local demo setup only — nothing is deleted on the server
-            </Text>
-          </View>
-        </TouchableOpacity>
+        />
 
         {/* The build's own identity, readable without opening anything — a tester reporting
             a bug has to be able to say which backend and which version they were on. */}
@@ -748,7 +796,7 @@ export function SettingsScreen({
           testID="settings-server-label"
           style={[styles.footerLine, { color: secondaryColor }]}
         >
-          {`${octopusServerLabel} — ${octopusHostLabel}`}
+          {serverLabel}
         </Text>
         <Text
           testID="settings-version-label"
@@ -771,25 +819,6 @@ function initialsOf(id: string): string {
   return `${(parts[0] as string)[0]}${(parts[1] as string)[0]}`.toUpperCase();
 }
 
-function AboutLine({
-  label,
-  value,
-  chrome,
-}: {
-  label: string;
-  value: string;
-  chrome: ReturnType<typeof chromeColors>;
-}) {
-  return (
-    <View style={styles.aboutLine}>
-      <Text style={[styles.aboutLabel, { color: chrome.textSecondary }]}>
-        {label}
-      </Text>
-      <Text style={[styles.aboutValue, { color: chrome.text }]}>{value}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -798,65 +827,29 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
+    paddingTop: 0,
   },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 8,
-    minHeight: 56,
-  },
+  overview: { paddingHorizontal: 16, paddingTop: 16 },
+  pageContent: { paddingHorizontal: 16, paddingTop: 8 },
   rowText: {
     flex: 1,
   },
   rowTitle: {
-    fontSize: 15,
-    fontWeight: '600',
+    ...sampleTypography.body,
   },
   rowSubtitle: {
-    fontSize: 12.5,
+    ...sampleTypography.caption,
     marginTop: 2,
   },
-  groupTitle: {
-    fontSize: 11.5,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  backRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 8,
-  },
-  backLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  pageTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    marginTop: 4,
-    marginBottom: 16,
-  },
   card: {
-    padding: 16,
-    borderRadius: 12,
+    padding: sampleSpacing.gutter,
+    borderRadius: sampleRadius.md,
     borderWidth: 1,
     marginBottom: 16,
-    gap: 8,
+    gap: 12,
   },
   cardTitle: {
-    fontSize: 15,
-    fontWeight: '600',
+    ...sampleTypography.label,
   },
   profileRow: {
     flexDirection: 'row',
@@ -864,31 +857,28 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
-    fontSize: 15,
-    fontWeight: '700',
+    ...sampleTypography.body,
   },
   connectedPill: {
     alignSelf: 'flex-start',
-    borderRadius: 99,
+    borderRadius: sampleRadius.pill,
     paddingHorizontal: 10,
     paddingVertical: 3,
     marginTop: 4,
   },
   connectedPillText: {
     color: '#FFFFFF',
-    fontSize: 11.5,
-    fontWeight: '700',
+    ...sampleTypography.caption,
   },
   callbackLine: {
-    fontSize: 12,
-    fontWeight: '600',
+    ...sampleTypography.caption,
   },
   chips: {
     flexDirection: 'row',
@@ -896,45 +886,28 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   chip: {
-    borderRadius: 99,
+    borderRadius: sampleRadius.pill,
     borderWidth: 1,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
   chipText: {
-    fontSize: 12,
-    fontWeight: '600',
+    ...sampleTypography.caption,
   },
   helpLine: {
-    fontSize: 12,
-    lineHeight: 17,
+    ...sampleTypography.caption,
+
     marginBottom: 4,
   },
   hint: {
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  aboutLine: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  aboutLabel: {
-    fontSize: 13,
-  },
-  aboutValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    flexShrink: 1,
-    textAlign: 'right',
+    ...sampleTypography.caption,
   },
   builtWith: {
-    fontSize: 13,
-    fontWeight: '600',
+    ...sampleTypography.callout,
   },
   footerLine: {
-    fontSize: 12,
-    lineHeight: 17,
+    ...sampleTypography.caption,
+
     textAlign: 'center',
     marginTop: 8,
   },

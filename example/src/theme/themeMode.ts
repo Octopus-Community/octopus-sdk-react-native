@@ -1,4 +1,4 @@
-// The host app's own light/dark appearance, and the two things that can go wrong
+// The host app and SDK's light/dark appearance, and the two things that can go wrong
 // with it at launch.
 //
 // The Config screen's answer is persisted (`configStorage`), so whatever it holds
@@ -15,9 +15,10 @@
 //   - applying a perfectly valid mode throws (`applyThemeMode`).
 //
 // Both fall back to `'system'`, which is the appearance a fresh install starts on
-// and the only one that needs nothing from the SDK bridge.
+// and releases any SDK-only override back to the device appearance.
 
 import { Appearance } from 'react-native';
+import { setThemeMode as setSdkThemeMode } from '@octopus-community/react-native';
 
 import { debugLog } from '../debug/debugLog';
 import type { ThemeMode } from '../types/theme';
@@ -50,7 +51,7 @@ export function coerceThemeMode(value: unknown): ThemeMode {
 }
 
 /**
- * Applies `mode` to the host app's appearance and returns the mode actually in
+ * Applies `mode` to the host app and SDK, and returns the mode actually in
  * effect — `mode` itself, or `'system'` when applying it threw.
  *
  * `Appearance.setColorScheme` is a native call: it is not contractually
@@ -61,6 +62,9 @@ export function coerceThemeMode(value: unknown): ThemeMode {
 export function applyThemeMode(mode: ThemeMode): ThemeMode {
   try {
     Appearance.setColorScheme(mode === 'system' ? undefined : mode);
+    // The SDK's system listener follows the device, not the host-only RN override.
+    // Its explicit force also survives initialize(), including launch restore.
+    setSdkThemeMode(mode);
     return mode;
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
@@ -76,6 +80,11 @@ export function applyThemeMode(mode: ThemeMode): ThemeMode {
         // exactly what 'system' means. Nothing left to do, and nothing worth a
         // second identical line in the console.
       }
+    }
+    try {
+      setSdkThemeMode(FALLBACK_THEME_MODE);
+    } catch {
+      // Keep the launch guard if the SDK bridge is unavailable too.
     }
     return FALLBACK_THEME_MODE;
   }

@@ -19,7 +19,7 @@
  * How deep a handler sits, from the outermost to the innermost. A deeper level is always
  * asked first.
  *
- * - `shell`: the App itself — Config revisit → Cancel, a root tab other than Home → Home.
+ * - `shell`: the App itself — Config revisit → Cancel, a root tab other than Scenarios → Scenarios.
  * - `screen`: a screen's own sub-navigation — a Settings page, a Scenario detail.
  * - `overlay`: anything drawn over a screen that its own Back dismisses first.
  *
@@ -92,7 +92,7 @@ export function createBackDispatcher(): BackDispatcher {
 export const appBackDispatcher = createBackDispatcher();
 
 /** What the App shell's own Back does, given where the shell is. */
-export type ShellBackAction = 'cancelReconfigure' | 'goHome' | 'none';
+export type ShellBackAction = 'cancelReconfigure' | 'goScenarios' | 'none';
 
 export interface ShellBackState {
   /** The Config screen is showing (either access). */
@@ -106,14 +106,15 @@ export interface ShellBackState {
 
 /**
  * The shell's rule, as a pure function: Config revisit → Cancel (the app bar's own Back);
- * a root tab other than Home → Home; on Home, or on the first-launch Config screen, nothing —
+ * a root tab other than Scenarios → Scenarios; on Scenarios, or on the first-launch Config screen, nothing —
  * the press goes to the platform and the app is backgrounded.
  */
 export function resolveShellBack(state: ShellBackState): ShellBackAction {
   if (state.isOnConfig) {
     return state.canCancelConfig ? 'cancelReconfigure' : 'none';
   }
-  if (state.isShellVisible && state.activeTab !== 'home') return 'goHome';
+  if (state.isShellVisible && state.activeTab !== 'scenarios')
+    return 'goScenarios';
   return 'none';
 }
 

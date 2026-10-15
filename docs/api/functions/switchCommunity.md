@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.14.0**](../README.md)
+[**@octopus-community/react-native v1.15.0**](../README.md)
 
 ---
 
@@ -62,7 +62,7 @@ An error if the call fails.
 ```typescript
 await switchCommunity({
   apiKey: 'new-community-api-key',
-  connectionMode: { type: 'octopus' },
+  connectionMode: { type: 'sso', appManagedFields: [] },
 });
 // Then remount the embedded UI, e.g.:
 // <OctopusUIView key="new-community-api-key" ... />

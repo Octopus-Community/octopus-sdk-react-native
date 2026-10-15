@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.14.0**](../README.md)
+[**@octopus-community/react-native v1.15.0**](../README.md)
 
 ---
 
@@ -28,6 +28,18 @@ Its meaning depends on how the UI is presented, and is the same on both platform
   top of the system safe area (navigation bar on Android, home indicator on iOS).
 
 Values of `0` or less reserve nothing on iOS, and on Android in the fullscreen UI.
+
+**iOS caveat — hardware keyboards, embedded `<OctopusUIView>`, value above `0`.** While a
+keyboard is up, the native SDK stops reserving the band once the keyboard height it is
+told about exceeds the very number it reserves with, and for an embedded view that number
+is `value` minus the safe area (see above). For requested insets below the software
+keyboard's reported height, a full-height software keyboard is above either threshold and
+is unaffected. A **hardware** keyboard (iPad, or Bluetooth on iPhone)
+reports only its accessory bar, so a reported height between `value - safeArea` and `value`
+drops the band where `value` alone would have kept it, and bottom chrome of the host
+can overlap the composer while typing. One native parameter drives both the reserved height
+and that threshold, so the bridge cannot separate them. The fullscreen UI forwards the
+value as is and keeps the native threshold.
 
 **In an embedded `<OctopusUIView>`, leaving this option out entirely is not the same as
 passing `0`, on either platform.** Each bridge applies its own default when the option

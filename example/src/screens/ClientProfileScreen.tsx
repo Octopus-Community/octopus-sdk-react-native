@@ -1,3 +1,4 @@
+import { sampleTypography } from '../theme/tokens';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -9,7 +10,11 @@ import {
 import * as Octopus from '@octopus-community/react-native';
 import type { OctopusCommunityData } from '@octopus-community/react-native';
 
+import type { HostUser } from '../auth/hostUser';
 import { chromeColors } from '../theme/branding';
+import { ProfileHeader } from '../components/SampleRecipes';
+import { SampleInfoRow } from '../components/SampleInfoRow';
+import { redactApiKeys } from '../config/apiKeyMask';
 
 type LoadState =
   | { status: 'loading' }
@@ -21,6 +26,7 @@ export interface ClientProfileScreenProps {
   isDark: boolean;
   /** The member the SDK handed over through the `navigateToProfile` listener. */
   clientUserId: string;
+  hostUser?: HostUser | null;
 }
 
 /**
@@ -32,6 +38,7 @@ export interface ClientProfileScreenProps {
 export function ClientProfileScreen({
   isDark,
   clientUserId,
+  hostUser,
 }: ClientProfileScreenProps) {
   const chrome = chromeColors(isDark);
   const [state, setState] = useState<LoadState>({ status: 'loading' });
@@ -48,7 +55,7 @@ export function ClientProfileScreen({
         if (cancelled) return;
         setState({
           status: 'error',
-          message: e instanceof Error ? e.message : String(e),
+          message: redactApiKeys(e instanceof Error ? e.message : String(e)),
         });
       });
     return () => {
@@ -61,30 +68,64 @@ export function ClientProfileScreen({
       style={{ backgroundColor: chrome.screen }}
       contentContainerStyle={styles.content}
     >
-      <Text style={[styles.userId, { color: chrome.text }]}>
-        {clientUserId}
-      </Text>
+      <ProfileHeader title="Host-owned profile screen" isDark={isDark} />
       <Text style={[styles.caption, { color: chrome.textSecondary }]}>
-        clientUserId — the host app's own id
+        The Octopus SDK handed this profile tap to the app via its
+        onNavigateToProfile callback (Unified Profile).
       </Text>
-      <View
-        style={[
-          styles.card,
-          { backgroundColor: chrome.surface, borderColor: chrome.border },
-        ]}
-      >
+      <View style={[styles.divider, { backgroundColor: chrome.border }]} />
+      <SampleInfoRow
+        label="clientUserId — the host app's own id"
+        value={clientUserId}
+        isDark={isDark}
+      />
+      {hostUser && (
+        <View testID="clientProfile-host-data" style={styles.data}>
+          <SampleInfoRow
+            label="Display name"
+            value={hostUser.profile?.username ?? 'Not supplied'}
+            isDark={isDark}
+          />
+          <SampleInfoRow
+            label="Avatar"
+            value={hostUser.profile?.profilePicture ?? 'Not supplied'}
+            isDark={isDark}
+          />
+          <SampleInfoRow
+            label="Bio"
+            value={hostUser.profile?.biography || 'Not supplied'}
+            isDark={isDark}
+          />
+        </View>
+      )}
+      <View style={[styles.divider, { backgroundColor: chrome.border }]} />
+      <View style={styles.data}>
         <Text style={[styles.cardTitle, { color: chrome.text }]}>
           Octopus community data — fetchCommunityData(clientUserId)
         </Text>
         {state.status === 'loading' && <ActivityIndicator />}
         {state.status === 'data' && (
-          <Text testID="clientProfile-data" style={{ color: chrome.text }}>
-            {`profileId: ${state.data.profileId}\nmessageCount: ${state.data.messageCount ?? '—'}\ngamification: ${
-              state.data.gamification
-                ? `level ${state.data.gamification.level}`
-                : '—'
-            }`}
-          </Text>
+          <View testID="clientProfile-data" style={styles.data}>
+            <SampleInfoRow
+              label="profileId"
+              value={state.data.profileId}
+              isDark={isDark}
+            />
+            <SampleInfoRow
+              label="messageCount"
+              value={String(state.data.messageCount ?? '—')}
+              isDark={isDark}
+            />
+            <SampleInfoRow
+              label="gamification"
+              value={
+                state.data.gamification
+                  ? `level ${state.data.gamification.level}`
+                  : '—'
+              }
+              isDark={isDark}
+            />
+          </View>
         )}
         {state.status === 'unknown' && (
           <Text testID="clientProfile-unknown" style={{ color: chrome.text }}>
@@ -103,27 +144,22 @@ export function ClientProfileScreen({
 
 const styles = StyleSheet.create({
   content: {
-    padding: 16,
-    gap: 8,
+    padding: 24,
+    gap: 20,
   },
   userId: {
-    fontSize: 20,
-    fontWeight: '700',
+    ...sampleTypography.headline,
+
     textAlign: 'center',
   },
   caption: {
-    fontSize: 13,
+    ...sampleTypography.callout,
     textAlign: 'center',
     marginBottom: 8,
   },
-  card: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
-    gap: 8,
-  },
+  divider: { height: 1 },
+  data: { gap: 12 },
   cardTitle: {
-    fontSize: 14,
-    fontWeight: '600',
+    ...sampleTypography.label,
   },
 });

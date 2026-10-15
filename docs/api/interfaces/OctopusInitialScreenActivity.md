@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.14.0**](../README.md)
+[**@octopus-community/react-native v1.15.0**](../README.md)
 
 ---
 
@@ -6,7 +6,8 @@
 
 # Interface: OctopusInitialScreenActivity
 
-The posts-only screen listing one member's Octopus posts (Unified Profile).
+The member activity screen listing one member's Octopus posts and, when the
+community exposes them, their comments (Unified Profile).
 
 Open it from your own profile screen — typically the one you show after
 intercepting a profile tap via `interceptProfileTaps` +

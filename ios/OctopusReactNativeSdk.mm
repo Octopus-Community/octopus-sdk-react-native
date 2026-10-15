@@ -107,6 +107,14 @@ RCT_EXTERN_METHOD(debugOverrideExposeClientUserId:(NSDictionary *)enabled
                   withResolver:(RCTPromiseResolveBlock)resolve
                   withRejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(debugOverrideForceNicknameChoice:(NSDictionary *)enabled
+                  withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(debugOverrideConsentTexts:(NSDictionary *)texts
+                  withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(debugGetCommunityConfig:(RCTPromiseResolveBlock)resolve
                   withRejecter:(RCTPromiseRejectBlock)reject)
 

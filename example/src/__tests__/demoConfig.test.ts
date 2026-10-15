@@ -8,8 +8,10 @@ import {
   parseNamedApiKeys,
   resolveApiServer,
   resolveSwitchTarget,
+  resolveApiKey,
   shouldShowServerWarning,
 } from '../config/demoConfig';
+import { redactApiKeys } from '../config/apiKeyMask';
 
 // Both parsers read values assembled by a shell (a CI secret, a private
 // launcher), so they are the sample's only defence against a malformed build
@@ -179,7 +181,6 @@ describe('applySwitchedCommunity', () => {
     customApiKey: 'pasted-key',
     selectedKeyId: 'slotA',
     userId: 'sample-user',
-    authMode: 'sso',
     theme: 'system',
     serverEnv: 'custom',
   };
@@ -221,7 +222,7 @@ describe('applySwitchedCommunity', () => {
   });
 
   it('leaves everything the switch does not decide alone', () => {
-    // The user id, the auth mode, the appearance and the build's server env are the Config
+    // The user id, the appearance and the build's server env are the Config
     // screen's answers — a community switch is not a way to change any of them.
     const switched = applySwitchedCommunity(config, {
       id: null,
@@ -229,7 +230,6 @@ describe('applySwitchedCommunity', () => {
       key: 'keyC',
     });
     expect(switched.userId).toBe(config.userId);
-    expect(switched.authMode).toBe(config.authMode);
     expect(switched.theme).toBe(config.theme);
     expect(switched.serverEnv).toBe(config.serverEnv);
   });
@@ -244,6 +244,25 @@ describe('applySwitchedCommunity', () => {
 describe('resolveSwitchTarget', () => {
   const slotA: InjectedApiKey = { id: 'slotA', label: 'Label A', key: 'keyA' };
   const slotB: InjectedApiKey = { id: 'slotB', label: 'Label B', key: 'keyB' };
+
+  it('does not register partially typed keys when resolving either form for render', () => {
+    const key = 'unsubmitted3333333333339876';
+    for (let length = 1; length <= key.length; length++) {
+      const pasted = key.slice(0, length);
+      resolveSwitchTarget([], null, undefined, pasted);
+      resolveApiKey({
+        apiKeySource: 'custom',
+        customApiKey: pasted,
+        selectedKeyId: null,
+        userId: 'demo-user',
+        theme: 'system',
+        serverEnv: 'custom',
+      });
+    }
+    expect(redactApiKeys(`ordinary diagnostic: ${key}`)).toBe(
+      `ordinary diagnostic: ${key}`
+    );
+  });
 
   // One build shape per case below: a single injected slot not yet active, that same single
   // slot already active, a build with no injected slots at all running on a pasted key, and

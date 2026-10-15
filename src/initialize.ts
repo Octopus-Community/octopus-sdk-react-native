@@ -1,11 +1,15 @@
 import { OctopusReactNativeSdk } from './internals/nativeModule';
+import { sdkVersion } from './internals/sdkVersion';
 import type { UserProfileField } from './types/userProfileField';
 import type { ImageResolvedAssetSource } from 'react-native';
 import { Appearance } from 'react-native';
 import { colorSchemeManager } from './internals/colorSchemeManager';
 import { parseFontConfig, type ParsedFontConfig } from './internals/fontParser';
 import { normalizeThemeColors } from './internals/colorValidator';
-import { flattenIconOverrides } from './internals/iconOverrides';
+import {
+  flattenIconOverridesWithScales,
+  withValidScale,
+} from './internals/iconOverrides';
 import type { OctopusIcons } from './types/octopusIcons';
 import {
   attachStateChannels,
@@ -310,6 +314,18 @@ export interface OctopusUIOptions {
    *
    * Values of `0` or less reserve nothing on iOS, and on Android in the fullscreen UI.
    *
+   * **iOS caveat — hardware keyboards, embedded `<OctopusUIView>`, value above `0`.** While a
+   * keyboard is up, the native SDK stops reserving the band once the keyboard height it is
+   * told about exceeds the very number it reserves with, and for an embedded view that number
+   * is `value` minus the safe area (see above). For requested insets below the software
+   * keyboard's reported height, a full-height software keyboard is above either threshold and
+   * is unaffected. A **hardware** keyboard (iPad, or Bluetooth on iPhone)
+   * reports only its accessory bar, so a reported height between `value - safeArea` and `value`
+   * drops the band where `value` alone would have kept it, and bottom chrome of the host
+   * can overlap the composer while typing. One native parameter drives both the reserved height
+   * and that threshold, so the bridge cannot separate them. The fullscreen UI forwards the
+   * value as is and keeps the native threshold.
+   *
    * **In an embedded `<OctopusUIView>`, leaving this option out entirely is not the same as
    * passing `0`, on either platform.** Each bridge applies its own default when the option
    * is absent:
@@ -337,39 +353,13 @@ export interface OctopusUIOptions {
 export interface InitializeParams {
   /** Your Octopus API key obtained from the Octopus dashboard */
   apiKey: string;
-  /**
-   * The connection mode determines how user authentication is handled.
-   * - `sso`: Use Single Sign-On with your existing user system
-   * - `octopus`: Let Octopus handle user authentication
-   */
-  connectionMode:
-    | {
-        /** SSO mode configuration */
-        type: 'sso';
-        /** List of user profile fields that your app manages directly */
-        appManagedFields: UserProfileField[];
-      }
-    | {
-        /** Octopus-managed authentication mode */
-        type: 'octopus';
-        /**
-         * Base deep link used by Octopus-managed flows that need to redirect back into
-         * your app (currently: the magic-link confirmation screen sent by email). Register
-         * the resulting URL in your app's manifest / `Info.plist` so the OS routes it back
-         * to your app.
-         *
-         * **The value the backend actually receives differs by platform** — this is not
-         * just a mechanism difference, the URL shape itself changes:
-         * - iOS passes this string to the backend verbatim.
-         * - Android treats it as a *base path* and appends a trailing `/` plus the
-         *   magic-link confirmation sub-path, so the backend receives
-         *   `<deepLink>/<confirmation-path>`, not `<deepLink>` itself.
-         *
-         * Omit it to keep the native default (no app redirect is embedded in the
-         * generated link).
-         */
-        deepLink?: string;
-      };
+  /** SSO configuration. Your app owns sign-in and supplies backend-issued tokens. */
+  connectionMode: {
+    /** Single Sign-On with your existing user system. */
+    type: 'sso';
+    /** List of user profile fields that your app manages directly. */
+    appManagedFields: UserProfileField[];
+  };
   /** Optional theme customization for the Octopus UI */
   theme?: OctopusTheme;
   /** Optional UI customization for layout-related tweaks */
@@ -382,13 +372,22 @@ export interface InitializeParams {
    * invalid value rejects this call with a native error.
    */
   apiServer?: ApiServer;
+  /**
+   * iOS only. When `true`, the SDK does not configure `AVAudioSession`; the host app
+   * owns its configuration and activation during community video playback.
+   * Defaults to `false`. Has no effect on Android.
+   *
+   * Community switches, including after `stop()`, retain the value from the last
+   * successful initialization. Call `initialize()` again to change it.
+   */
+  appManagedAudioSession?: boolean;
 }
 
 /**
  * Initializes the Octopus SDK with the provided configuration.
  *
  * This function must be called before using any other Octopus SDK features. It sets up the SDK
- * with your API key, connection mode (SSO or Octopus-managed authentication), and optional theme
+ * with your API key, SSO configuration, and optional theme
  * and UI options. For SSO, you also need to set up a token provider with `useUserTokenProvider` or
  * `addUserTokenRequestListener` before calling `connectUser`.
  *
@@ -403,7 +402,7 @@ export interface InitializeParams {
  * });
  * await initialize({
  *   apiKey: 'your-api-key',
- *   connectionMode: { type: 'octopus' }
+ *   connectionMode: { type: 'sso', appManagedFields: [] }
  * });
  * ```
  */
@@ -432,25 +431,39 @@ export function initialize(params: InitializeParams): Promise<void> {
   const colorScheme = Appearance.getColorScheme();
 
   // Pre-process font configuration to avoid duplication in native layers, and flatten the
-  // icon overrides into the `slot path -> uri` map both bridges read (`iconOverrides`). The
-  // nested `icons` object itself never crosses the bridge.
+  // icon overrides into the `slot path -> uri` map both bridges read (`iconOverrides`), with
+  // a parallel `slot path -> scale` map (`iconOverrideScales`) iOS uses to draw a downloaded
+  // icon at its real density. The nested `icons` object itself never crosses the bridge.
   const { icons, ...themeWithoutIcons } = themeWithCanonicalColors ?? {};
-  const iconOverrides = flattenIconOverrides(icons);
+  const flatIcons = flattenIconOverridesWithScales(icons);
   const processedTheme = themeWithCanonicalColors
     ? {
         ...themeWithoutIcons,
+        ...(themeWithCanonicalColors.logo?.image != null && {
+          logo: {
+            ...themeWithCanonicalColors.logo,
+            image: withValidScale(themeWithCanonicalColors.logo.image),
+          },
+        }),
         fonts: themeWithCanonicalColors.fonts
           ? {
               ...themeWithCanonicalColors.fonts,
               parsedConfig: parseFontConfig(themeWithCanonicalColors.fonts),
             }
           : undefined,
-        ...(iconOverrides && { iconOverrides }),
+        ...(flatIcons && {
+          iconOverrides: flatIcons.uris,
+          ...(Object.keys(flatIcons.scales).length > 0 && {
+            iconOverrideScales: flatIcons.scales,
+          }),
+        }),
       }
     : undefined;
 
   const paramsWithColorScheme = {
     ...params,
+    sdkVersion,
+    appManagedAudioSession: params.appManagedAudioSession ?? false,
     theme: processedTheme,
     // A force set through setThemeMode() before initialize() is the scheme the native side
     // must start from — the Android theme config is built from this value, and a system value

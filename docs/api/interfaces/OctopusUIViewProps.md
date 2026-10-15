@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.14.0**](../README.md)
+[**@octopus-community/react-native v1.15.0**](../README.md)
 
 ---
 
@@ -13,7 +13,7 @@
 > `optional` **initialScreen**: [`OctopusInitialScreen`](../type-aliases/OctopusInitialScreen.md)
 
 The screen the embedded UI mounts on: the main feed (the default), a
-specific post or group (bridge mode), one member's posts (`activity`) or
+specific post or group (bridge mode), one member's activity (`activity`) or
 profile (`profile`), or the post editor (`createPost`). Same union — and
 same per-variant contract — as `openUI({ initialScreen })`: see
 [OctopusInitialScreen](../type-aliases/OctopusInitialScreen.md).
@@ -84,6 +84,27 @@ Instead, a `navigateToUrl` event is emitted. Subscribe with
 
 ```ts
 false;
+```
+
+---
+
+### isVisible?
+
+> `optional` **isVisible**: `boolean`
+
+Whether this retained view may handle Android system Back. Set to `false`
+when its tab is inactive or a host screen covers it, even if it remains
+mounted with `opacity: 0`. Android pauses the view's lifecycle while
+preserving its native navigation stack; updates apply without remounting.
+
+This prop does not hide the view or change touch handling. The host must
+manage those separately. It is a no-op on iOS, which has no system Back.
+It does not forward Back from a React Native `Modal` to the native view.
+
+#### Default
+
+```ts
+true;
 ```
 
 ---

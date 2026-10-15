@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.14.0**](../README.md)
+[**@octopus-community/react-native v1.15.0**](../README.md)
 
 ---
 
@@ -22,8 +22,7 @@ profile fields will be added here — **additive only; no breaking changes**.
 The connected user's id in **your** app's system, as passed to `connectUser` — the counterpart
 of the Octopus profile id.
 
-Populated in SSO mode for a non-guest user; `null` in Octopus-authentication mode (there is no
-host-side id) and for a guest. It is held locally by the native SDKs, **independent of the
+Populated for a non-guest user connected through SSO; `null` for a guest. It is held locally by the native SDKs, **independent of the
 community's expose-client-user-ids setting** — that setting gates _other_ members' client user
 ids, not the connected user's.
 

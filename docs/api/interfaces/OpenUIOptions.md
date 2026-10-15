@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.14.0**](../README.md)
+[**@octopus-community/react-native v1.15.0**](../README.md)
 
 ---
 
@@ -15,7 +15,7 @@ Options for opening the Octopus UI.
 > `optional` **initialScreen**: [`OctopusInitialScreen`](../type-aliases/OctopusInitialScreen.md)
 
 The screen the UI opens on: the main feed (the default), a specific post
-or group (bridge mode), one member's posts (`activity`) or profile
+or group (bridge mode), one member's activity (`activity`) or profile
 (`profile`), or the post editor (`createPost`). See
 [OctopusInitialScreen](../type-aliases/OctopusInitialScreen.md) for each variant's contract.
 
@@ -28,7 +28,7 @@ deep link wins.
 // Open directly on a post (bridge mode)
 await openUI({ initialScreen: { type: 'post', postId: 'post-1' } });
 
-// Open one member's Octopus posts (Unified Profile)
+// Open one member's Octopus activity (Unified Profile)
 await openUI({
   initialScreen: { type: 'activity', member: { clientUserId: 'user-42' } },
 });

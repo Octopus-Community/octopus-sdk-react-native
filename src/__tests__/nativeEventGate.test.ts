@@ -1,7 +1,12 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DeviceEventEmitter, NativeEventEmitter } from 'react-native';
-import { functionBody, maskCommentsAndStrings } from './helpers/sourceLexer';
+import ts from 'typescript';
+import {
+  functionBody,
+  maskComments,
+  maskCommentsAndStrings,
+} from './helpers/sourceLexer';
 
 /**
  * Neither native side may gate `sendEvent` on a tally of `addListener` /
@@ -25,6 +30,69 @@ const IOS_EMITTER = 'ios/OctopusEventManager.swift';
 
 const readFile = (relativePath: string): string =>
   readFileSync(join(ROOT, relativePath), 'utf8');
+
+const sentNames = (source: string): string[] => {
+  const masked = maskCommentsAndStrings(source);
+  const withLiterals = maskComments(source);
+  const calls = Array.from(masked.matchAll(/\bsendEvent\s*\(/g)).filter(
+    (match) => !/\b(?:fun|func)\s+$/.test(masked.slice(0, match.index))
+  );
+  // Locate calls on fully masked code, then recover their literal arguments at
+  // the same offsets. A dynamic name must fail, rather than evade the inventory.
+  const names = calls.flatMap((call) => {
+    const literal = withLiterals
+      .slice(call.index)
+      .match(/^sendEvent\s*\(\s*(?:name\s*:\s*)?"(\w+)"\s*,/);
+    return literal === null ? [] : [literal[1]!];
+  });
+  if (names.length !== calls.length) {
+    throw new Error('Every sendEvent call must use a literal event name.');
+  }
+  return [...new Set(names)].sort();
+};
+
+/** Direct emitter subscriptions and the four StateChannel registrations. */
+const subscribedNames = (source: string, file: string): string[] => {
+  const names: string[] = [];
+  const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+  const visit = (node: ts.Node): void => {
+    const isDirectSubscription =
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      node.expression.expression.getText(tree) === 'eventEmitter' &&
+      node.expression.name.text === 'addListener';
+    const isStateChannel =
+      ts.isNewExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 'StateChannel';
+    if (isDirectSubscription || isStateChannel) {
+      const event = node.arguments?.[0];
+      if (event && ts.isStringLiteral(event)) names.push(event.text);
+      // StateChannel forwards the literal supplied by its constructor.
+      else if (
+        file !== 'internals/stateChannels.ts' ||
+        event?.getText(tree) !== 'this.eventName' ||
+        !isDirectSubscription
+      ) {
+        throw new Error(`Unrecognised native event subscription in ${file}.`);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(tree);
+  return names;
+};
+
+const sourceFiles = (directory: string): string[] =>
+  readdirSync(join(ROOT, 'src', directory), { withFileTypes: true }).flatMap(
+    (entry) => {
+      const file = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        return entry.name === '__tests__' ? [] : sourceFiles(file);
+      }
+      return /\.tsx?$/.test(entry.name) ? [file] : [];
+    }
+  );
 
 const PLATFORMS = [
   {
@@ -249,5 +317,87 @@ describe('why a listener tally cannot be kept honest', () => {
 
     expect(counter.value).toBe(0);
     expect(emitter.listenerCount('loginRequired')).toBe(1);
+  });
+});
+
+describe('module-level event inventory', () => {
+  // Adding or removing a native channel must touch this list, so a new name (e.g.
+  // `backRequested`) cannot land without a test acknowledging it. Both platforms must
+  // send exactly the same set.
+  const EVENT_NAMES = [
+    'backRequested',
+    'bridgeShareTokenRequest',
+    'clientObjectPostChanged',
+    'communityDataChanged',
+    'connectionStateChanged',
+    'editUser',
+    'groupAccessDenied',
+    'groupsChanged',
+    'hasAccessToCommunityChanged',
+    'isInitialisedChanged',
+    'loginRequired',
+    'navigateToClientObject',
+    'navigateToProfile',
+    'navigateToUrl',
+    'notSeenNotificationsCountChanged',
+    'profileChanged',
+    'sdkEvent',
+    'userTokenRequest',
+  ];
+
+  it.each([
+    ['Android', ANDROID_EMITTER],
+    ['iOS', IOS_EMITTER],
+  ])('%s sends exactly the inventoried events', (_name, file) => {
+    expect(sentNames(readFile(file))).toEqual(EVENT_NAMES);
+  });
+
+  it('has a TypeScript subscription for every native event', () => {
+    const names = sourceFiles('').flatMap((file) =>
+      subscribedNames(readFile(join('src', file)), file)
+    );
+    expect([...new Set(names)].sort()).toEqual(EVENT_NAMES);
+  });
+
+  it('ignores commented calls, string decoys and the declaration', () => {
+    const source = [
+      '// sendEvent("comment", null)',
+      '/* sendEvent(name: "blockComment", body: nil) */',
+      'val decoy = "sendEvent(\\"stringDecoy\\", null)"',
+      'private fun sendEvent(name: String, body: Any?) {}',
+      'sendEvent ( /* label */ "loginRequired", null)',
+      'sendEvent( name : "loginRequired", body: nil)',
+    ].join('\n');
+    expect(sentNames(source)).toEqual(['loginRequired']);
+  });
+
+  it.each([
+    'sendEvent(eventName, null)',
+    'sendEvent(name: eventName, body: nil)',
+    'sendEvent("event${suffix}", null)',
+    'sendEvent("loginRequired" + suffix, null)',
+  ])('rejects an uninventoried call: %s', (dynamicCall) => {
+    expect(() =>
+      sentNames(`sendEvent("loginRequired", null)\n${dynamicCall}`)
+    ).toThrow(/literal event name/);
+  });
+
+  it('reads TypeScript subscriptions as code, including state channels', () => {
+    expect(
+      subscribedNames(
+        '// eventEmitter.addListener("comment", cb);\n' +
+          'const decoy = \'eventEmitter.addListener("string", cb)\';\n' +
+          'eventEmitter.addListener("loginRequired", cb);\n' +
+          'new StateChannel<boolean>("isInitialisedChanged", false);',
+        'fixture.ts'
+      )
+    ).toEqual(['loginRequired', 'isInitialisedChanged']);
+    expect(() =>
+      subscribedNames('eventEmitter.addListener(dynamicName, cb)', 'fixture.ts')
+    ).toThrow(/Unrecognised native event subscription/);
+  });
+
+  it('keeps the inventory sorted and free of duplicates', () => {
+    expect(EVENT_NAMES).toEqual([...new Set(EVENT_NAMES)].sort());
   });
 });

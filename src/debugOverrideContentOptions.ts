@@ -6,8 +6,9 @@ import type { ContentOptions } from './types/contentOptions';
  * community config, for local testing of the post/comment/reply composers. Not part of the
  * stable public API surface and not for use in production apps.
  *
- * Every flag not explicitly set to `false` is sent as `true` (the native default), so the
- * override always describes a complete, unambiguous config rather than a partial patch.
+ * Every flag not explicitly set to `false` is sent as `true` (the native default).
+ * `post.textRequired` follows the same rule: only `false` allows an image post without text.
+ * The override always describes a complete, unambiguous config rather than a partial patch.
  *
  * @param options - The content options to apply, or `null` to restore the backend-provided
  * config.
@@ -22,6 +23,7 @@ export function debugOverrideContentOptions(
   return OctopusReactNativeSdk.debugOverrideContentOptions({
     postEnablePictures: options.post?.enablePictures ?? true,
     postEnablePolls: options.post?.enablePolls ?? true,
+    postTextRequired: options.post?.textRequired ?? true,
     commentEnablePictures: options.comment?.enablePictures ?? true,
     replyEnablePictures: options.reply?.enablePictures ?? true,
   });

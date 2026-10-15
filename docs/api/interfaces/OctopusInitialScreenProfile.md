@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.14.0**](../README.md)
+[**@octopus-community/react-native v1.15.0**](../README.md)
 
 ---
 
@@ -27,7 +27,7 @@ affordances (the `editUser` event fires your edit flow).
 
 There is deliberately no Octopus-profile-id variant: the iOS native
 profile screen has no such form. Holding only an Octopus id, open the
-member's posts instead with `{ type: 'activity', member: { profileId } }`.
+member's activity instead with `{ type: 'activity', member: { profileId } }`.
 
 ---
 

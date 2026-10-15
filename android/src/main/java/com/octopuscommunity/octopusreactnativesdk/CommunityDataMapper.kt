@@ -1,8 +1,10 @@
 package com.octopuscommunity.octopusreactnativesdk
 
+import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.WritableMap
 import com.octopuscommunity.sdk.domain.model.OctopusCommunityData
+import com.octopuscommunity.sdk.domain.network.OctopusResult
 
 /**
  * Serializes [OctopusCommunityData] to the JS-facing `OctopusCommunityData` shape.
@@ -12,6 +14,25 @@ import com.octopuscommunity.sdk.domain.model.OctopusCommunityData
  * rename happens.
  */
 object CommunityDataMapper {
+
+  /** Only a successful lookup may resolve null; failures match iOS's SERVER_ERROR rejection. */
+  fun resolveFetchResult(result: OctopusResult<OctopusCommunityData?, Nothing>, promise: Promise) {
+    when (result) {
+      is OctopusResult.Success -> promise.resolve(result.data?.let { toWritableMap(it) })
+      is OctopusResult.Failure -> {
+        val message = when (result) {
+          is OctopusResult.Failure.NoNetwork -> "No network"
+          is OctopusResult.Failure.UserNotAuthenticated -> result.reason ?: "User not authenticated"
+          is OctopusResult.Failure.PermissionDenied -> result.reason ?: "Permission denied"
+          is OctopusResult.Failure.ContentUnavailable -> "Content unavailable"
+          is OctopusResult.Failure.StatusError -> result.description ?: "Server error ${result.code}"
+          is OctopusResult.Failure.InvalidArguments -> result.errorMessage
+        }
+        val error = (result as? OctopusResult.Failure.StatusError)?.exception
+        promise.reject("SERVER_ERROR", message, error)
+      }
+    }
+  }
 
   fun toWritableMap(data: OctopusCommunityData): WritableMap {
     val map = Arguments.createMap()

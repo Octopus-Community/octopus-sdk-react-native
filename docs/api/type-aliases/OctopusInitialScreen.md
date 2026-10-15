@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.14.0**](../README.md)
+[**@octopus-community/react-native v1.15.0**](../README.md)
 
 ---
 
@@ -18,8 +18,8 @@ the same name), as a discriminated union on `type`:
   omitting `initialScreen` entirely.
 - `post` — a specific post's detail screen (bridge mode).
 - `group` — a specific group's feed (bridge mode).
-- `activity` — the posts-only screen listing one member's Octopus posts
-  (Unified Profile). See [OctopusInitialScreenActivity.member](../interfaces/OctopusInitialScreenActivity.md#member).
+- `activity` — the member activity screen listing one member's Octopus posts
+  and, when the community exposes them, their comments (Unified Profile). See [OctopusInitialScreenActivity.member](../interfaces/OctopusInitialScreenActivity.md#member).
 - `profile` — one member's Octopus profile, or — with `clientUserId`
   omitted — the connected user's own, editable profile.
 - `createPost` — the post editor, optionally prefilled. Equivalent to

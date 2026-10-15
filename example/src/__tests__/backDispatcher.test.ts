@@ -109,8 +109,8 @@ describe('createBackDispatcher', () => {
     expect(dispatcher.size()).toBe(1);
   });
 
-  it('walks a Settings page back to the summary, then the tab to Home, then gives up', () => {
-    // The whole contract in one walk: page → summary → Home → platform (backgrounded).
+  it('walks a Settings page back to the summary, then the tab to Scenarios, then gives up', () => {
+    // The whole contract in one walk: page → summary → Scenarios → platform (backgrounded).
     const dispatcher = createBackDispatcher();
     let settingsRoute = 'appearance';
     let activeTab = 'settings';
@@ -126,15 +126,15 @@ describe('createBackDispatcher', () => {
         isShellVisible: true,
         activeTab,
       });
-      if (action !== 'goHome') return false;
-      activeTab = 'home';
+      if (action !== 'goScenarios') return false;
+      activeTab = 'scenarios';
       return true;
     });
 
     expect(dispatcher.dispatch()).toBe(true);
     expect([settingsRoute, activeTab]).toEqual(['root', 'settings']);
     expect(dispatcher.dispatch()).toBe(true);
-    expect(activeTab).toBe('home');
+    expect(activeTab).toBe('scenarios');
     expect(dispatcher.dispatch()).toBe(false);
   });
 });
@@ -144,19 +144,16 @@ describe('resolveShellBack', () => {
     isOnConfig: false,
     canCancelConfig: false,
     isShellVisible: true,
-    activeTab: 'home',
+    activeTab: 'scenarios',
   };
 
-  it('backgrounds the app on Home', () => {
+  it('backgrounds the app on Scenarios', () => {
     expect(resolveShellBack(base)).toBe('none');
   });
 
-  it.each(['settings', 'scenarios', 'community'])(
-    'returns %s to Home',
-    (activeTab) => {
-      expect(resolveShellBack({ ...base, activeTab })).toBe('goHome');
-    }
-  );
+  it.each(['settings', 'community'])('returns %s to Scenarios', (activeTab) => {
+    expect(resolveShellBack({ ...base, activeTab })).toBe('goScenarios');
+  });
 
   it('cancels the Config revisit back to the running session', () => {
     expect(
@@ -181,7 +178,7 @@ describe('resolveShellBack', () => {
     ).toBe('none');
   });
 
-  it('does not go Home before the shell is up', () => {
+  it('does not go Scenarios before the shell is up', () => {
     expect(
       resolveShellBack({
         ...base,

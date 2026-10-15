@@ -1,3 +1,4 @@
+import { sampleRadius, sampleTypography } from '../../theme/tokens';
 import { View, Text, StyleSheet } from 'react-native';
 import { SegmentControl } from '../../components/SegmentControl';
 import { chromeColors } from '../../theme/branding';
@@ -50,6 +51,7 @@ const BOTTOM_INSET_OPTIONS: { label: string; value: BottomInsetPreset }[] = [
   { label: 'Unset', value: 'unset' },
   { label: '0 (opt out)', value: 'none' },
   { label: '20pt', value: '20' },
+  { label: '70pt', value: '70' },
 ];
 
 const LINK_BACKGROUND_OPTIONS: {
@@ -84,8 +86,6 @@ export interface ThemePanelProps {
   fontOverrideMode: FontOverrideMode;
   onFontOverrideModeChange: (value: FontOverrideMode) => void;
   isDark: boolean;
-  primaryColor: string;
-  onPrimaryColor: string;
 }
 
 /**
@@ -114,8 +114,6 @@ export function ThemePanel({
   fontOverrideMode,
   onFontOverrideModeChange,
   isDark,
-  primaryColor,
-  onPrimaryColor,
 }: ThemePanelProps) {
   const chrome = chromeColors(isDark);
   const textColor = chrome.text;
@@ -133,8 +131,6 @@ export function ThemePanel({
           value={effectiveMode}
           onChange={onThemeModeChange}
           isDark={isDark}
-          primaryColor={primaryColor}
-          onPrimaryColor={onPrimaryColor}
         />
       </View>
 
@@ -145,8 +141,6 @@ export function ThemePanel({
           value={themeSet}
           onChange={onThemeSetChange}
           isDark={isDark}
-          primaryColor={primaryColor}
-          onPrimaryColor={onPrimaryColor}
         />
       </View>
 
@@ -157,8 +151,6 @@ export function ThemePanel({
           value={fontType}
           onChange={onFontTypeChange}
           isDark={isDark}
-          primaryColor={primaryColor}
-          onPrimaryColor={onPrimaryColor}
         />
       </View>
 
@@ -169,25 +161,22 @@ export function ThemePanel({
           value={fontSizeMode}
           onChange={onFontSizeModeChange}
           isDark={isDark}
-          primaryColor={primaryColor}
-          onPrimaryColor={onPrimaryColor}
         />
       </View>
 
       <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
         <Text style={[styles.label, { color: textColor }]}>Custom logo</Text>
         <Text style={[styles.hint, { color: chrome.textSecondary }]}>
-          Also overrides two icons (theme.icons): the post's "Comment" action
-          and the "more actions" button (horizontal dots instead of ⋮), plus the
-          illustration on empty post and comment lists.
+          Also overrides three icons (theme.icons): the post's "Comment" action
+          , the "more actions" button (horizontal dots instead of ⋮) and the
+          "clear text" button (outlined circle), plus the illustration on empty
+          post and comment lists.
         </Text>
         <SegmentControl
           options={LOGO_OPTIONS}
           value={logoMode}
           onChange={onLogoModeChange}
           isDark={isDark}
-          primaryColor={primaryColor}
-          onPrimaryColor={onPrimaryColor}
         />
       </View>
 
@@ -204,8 +193,6 @@ export function ThemePanel({
           value={linkBackgroundMode}
           onChange={onLinkBackgroundModeChange}
           isDark={isDark}
-          primaryColor={primaryColor}
-          onPrimaryColor={onPrimaryColor}
         />
       </View>
 
@@ -223,25 +210,25 @@ export function ThemePanel({
           value={fontOverrideMode}
           onChange={onFontOverrideModeChange}
           isDark={isDark}
-          primaryColor={primaryColor}
-          onPrimaryColor={onPrimaryColor}
         />
       </View>
 
       <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
         <Text style={[styles.label, { color: textColor }]}>Bottom inset</Text>
         <Text style={[styles.hint, { color: chrome.textSecondary }]}>
-          Safe area inset for Octopus UI (iOS pt / Android dp). "Unset" omits
-          the option entirely — on Android this resolves the inset from where
-          the embedded view is mounted; "0" opts back out of that resolution.
+          Bottom margin the Octopus UI keeps clear (iOS pt / Android dp). In an
+          embedded view it is the total band (on iOS, max(value, system safe
+          area)); in fullscreen it is added on top of the system safe area. It
+          is an initialize option, so switching preset re-inits the SDK. "Unset"
+          omits the option entirely — on Android this resolves the inset from
+          where the embedded view is mounted; "0" opts back out of that
+          resolution.
         </Text>
         <SegmentControl
           options={BOTTOM_INSET_OPTIONS}
           value={bottomInsetPreset}
           onChange={onBottomInsetPresetChange}
           isDark={isDark}
-          primaryColor={primaryColor}
-          onPrimaryColor={onPrimaryColor}
         />
       </View>
     </View>
@@ -254,18 +241,17 @@ const styles = StyleSheet.create({
   },
   card: {
     padding: 12,
-    borderRadius: 12,
+    borderRadius: sampleRadius.lg,
     borderWidth: 1,
     marginBottom: 12,
   },
   label: {
-    fontSize: 13,
-    fontWeight: '600',
+    ...sampleTypography.callout,
+
     marginBottom: 8,
   },
   hint: {
-    fontSize: 12,
+    ...sampleTypography.caption,
     marginBottom: 8,
-    lineHeight: 16,
   },
 });

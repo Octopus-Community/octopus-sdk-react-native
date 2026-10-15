@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.14.0**](../README.md)
+[**@octopus-community/react-native v1.15.0**](../README.md)
 
 ---
 
@@ -11,7 +11,7 @@
 Initializes the Octopus SDK with the provided configuration.
 
 This function must be called before using any other Octopus SDK features. It sets up the SDK
-with your API key, connection mode (SSO or Octopus-managed authentication), and optional theme
+with your API key, SSO configuration, and optional theme
 and UI options. For SSO, you also need to set up a token provider with `useUserTokenProvider` or
 `addUserTokenRequestListener` before calling `connectUser`.
 
@@ -43,6 +43,6 @@ await initialize({
 });
 await initialize({
   apiKey: 'your-api-key',
-  connectionMode: { type: 'octopus' },
+  connectionMode: { type: 'sso', appManagedFields: [] },
 });
 ```

@@ -1,4 +1,5 @@
 import { debugLog } from '../debug/debugLog';
+import { setThemeMode as applySdkThemeMode } from '../../../src/setThemeMode';
 import {
   applyThemeMode,
   coerceThemeMode,
@@ -6,11 +7,24 @@ import {
   restoreThemeMode,
 } from '../theme/themeMode';
 
-// `Appearance` is the whole of this module's contact with the platform, and it is the
-// part that can throw. Mocked rather than spied on: these tests run under the library's
+// Mock the host Appearance and SDK appearance calls, including failures. Mocked rather than spied on: these tests run under the library's
 // jest project, where a real `react-native` import from `example/` resolves to the
 // example's own copy and asks for a batched bridge that no host-side test has.
 const mockSetColorScheme = jest.fn();
+const mockSetSdkThemeMode = jest.fn();
+const mockUpdateColorScheme = jest.fn();
+jest.mock('../../../src/internals/nativeModule', () => ({
+  OctopusReactNativeSdk: {
+    updateColorScheme: (...args: unknown[]) => mockUpdateColorScheme(...args),
+  },
+}));
+jest.mock(
+  '@octopus-community/react-native',
+  () => ({
+    setThemeMode: (...args: unknown[]) => mockSetSdkThemeMode(...args),
+  }),
+  { virtual: true }
+);
 jest.mock('react-native', () => ({
   Appearance: {
     setColorScheme: (...args: unknown[]) => mockSetColorScheme(...args),
@@ -28,6 +42,10 @@ beforeEach(() => {
   debugLog.clear();
   setColorScheme.mockReset();
   setColorScheme.mockImplementation(() => {});
+  mockSetSdkThemeMode.mockReset();
+  mockSetSdkThemeMode.mockImplementation(applySdkThemeMode);
+  applySdkThemeMode('system');
+  mockUpdateColorScheme.mockClear();
 });
 
 describe('coerceThemeMode', () => {
@@ -54,11 +72,16 @@ describe('applyThemeMode', () => {
   it('maps system to undefined, so the host follows the device', () => {
     expect(applyThemeMode('system')).toBe('system');
     expect(setColorScheme).toHaveBeenCalledWith(undefined);
+    // 'system' releases the SDK force, rather than pinning an observed device value.
+    expect(mockSetSdkThemeMode).toHaveBeenCalledWith('system');
+    expect(mockUpdateColorScheme).toHaveBeenCalledWith(undefined, false);
   });
 
   it.each(['light', 'dark'] as const)('applies %s verbatim', (mode) => {
     expect(applyThemeMode(mode)).toBe(mode);
     expect(setColorScheme).toHaveBeenCalledWith(mode);
+    expect(mockSetSdkThemeMode).toHaveBeenCalledWith(mode);
+    expect(mockUpdateColorScheme).toHaveBeenCalledWith(mode, true);
   });
 
   it('falls back to system, and reports, when applying throws', () => {
@@ -70,6 +93,7 @@ describe('applyThemeMode', () => {
     // platform refuses must leave the app running on the system appearance.
     expect(applyThemeMode('dark')).toBe(FALLBACK_THEME_MODE);
     expect(setColorScheme).toHaveBeenLastCalledWith(undefined);
+    expect(mockSetSdkThemeMode).toHaveBeenLastCalledWith('system');
     expect(consoleDetails()[0]).toContain('native appearance unavailable');
   });
 
@@ -92,11 +116,51 @@ describe('applyThemeMode', () => {
   });
 });
 
-describe('restoreThemeMode', () => {
-  it('narrows then applies', () => {
-    expect(restoreThemeMode('dark')).toBe('dark');
-    expect(setColorScheme).toHaveBeenCalledWith('dark');
+it('keeps host and SDK appearances aligned through live changes', () => {
+  for (const mode of ['dark', 'light', 'system'] as const) applyThemeMode(mode);
+  expect(setColorScheme.mock.calls).toEqual([['dark'], ['light'], [undefined]]);
+  expect(mockSetSdkThemeMode.mock.calls).toEqual([
+    ['dark'],
+    ['light'],
+    ['system'],
+  ]);
+});
+
+it('releases the SDK force if applying its mode throws', () => {
+  mockSetSdkThemeMode.mockImplementation((mode) => {
+    if (mode === 'light') throw new Error('SDK appearance unavailable');
   });
+  expect(applyThemeMode('light')).toBe('system');
+  expect(setColorScheme).toHaveBeenLastCalledWith(undefined);
+  expect(mockSetSdkThemeMode).toHaveBeenLastCalledWith('system');
+});
+
+it('survives both appearance bridges being unavailable', () => {
+  setColorScheme.mockImplementation(() => {
+    throw new Error('host unavailable');
+  });
+  mockSetSdkThemeMode.mockImplementation(() => {
+    throw new Error('SDK unavailable');
+  });
+  expect(() => applyThemeMode('dark')).not.toThrow();
+  expect(applyThemeMode('dark')).toBe('system');
+});
+
+describe('restoreThemeMode', () => {
+  it.each(['light', 'dark', 'system'] as const)(
+    'restores %s to host and SDK before initialization',
+    (mode) => {
+      expect(restoreThemeMode(mode)).toBe(mode);
+      expect(setColorScheme).toHaveBeenCalledWith(
+        mode === 'system' ? undefined : mode
+      );
+      expect(mockSetSdkThemeMode).toHaveBeenCalledWith(mode);
+      expect(mockUpdateColorScheme).toHaveBeenCalledWith(
+        mode === 'system' ? undefined : mode,
+        mode !== 'system'
+      );
+    }
+  );
 
   it('never throws on a value read back from storage', () => {
     setColorScheme.mockImplementation(() => {

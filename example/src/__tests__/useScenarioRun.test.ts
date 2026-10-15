@@ -3,6 +3,8 @@ import { act, create } from 'react-test-renderer';
 
 import { useScenarioRun } from '../debug/useScenarioRun';
 import type { ScenarioRunState } from '../debug/useScenarioRun';
+import { maskApiKey, rememberApiKey } from '../config/apiKeyMask';
+import { debugLog } from '../debug/debugLog';
 
 // spec 09's Result zone must never look unchanged after a real tap, and must never
 // misreport a fast call as having taken as long as the spinner floor held the screen
@@ -54,6 +56,22 @@ afterEach(() => {
 });
 
 describe('useScenarioRun', () => {
+  it('keeps SDK errors out of scenario state and exported logs', async () => {
+    const key = rememberApiKey('life3333333333339876');
+    const harness = renderScenarioRun('switchCommunity');
+    debugLog.clear();
+    await act(async () => {
+      const result = harness.run(
+        () => Promise.reject(new Error(`Rejected ${key}`)),
+        'unused'
+      );
+      await jest.advanceTimersByTimeAsync(RUNNING_FLOOR_MS);
+      await result;
+    });
+    expect(harness.state.message).toBe(`Rejected ${maskApiKey(key)}`);
+    expect(debugLog.exportJson()).not.toContain(key);
+    debugLog.clear();
+  });
   it('reports a duration under the running floor when the call resolves fast', async () => {
     const harness = renderScenarioRun();
 

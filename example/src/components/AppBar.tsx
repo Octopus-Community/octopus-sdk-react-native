@@ -1,125 +1,124 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MaterialIcons } from '@react-native-vector-icons/material-icons/static';
-
 import { chromeColors } from '../theme/branding';
-
+import { sampleTypography } from '../theme/tokens';
 export interface AppBarProps {
-  /** The screen's own title — "Home", "Scenarios", "Account"… */
   title: string;
+  onOpenDebug?: () => void;
+  size?: 'small' | 'medium' | 'large';
   isDark: boolean;
-  /**
-   * Renders a leading back arrow and calls this on tap. Omitted on a top-level
-   * tab, where there is nothing to go back to.
-   */
   onBack?: () => void;
-  /**
-   * Handle of the back control. Defaults to `app-bar-back`; a screen whose dismissal the
-   * shared QA catalog names under another id passes that id here instead of growing a
-   * second close control just to carry it.
-   */
   backTestID?: string;
-  /**
-   * Whether the platform pill is shown next to the title. On by default: it is the
-   * one platform marker inside the app, and it belongs to the shell rather than to
-   * any one screen.
-   */
   showPlatformBadge?: boolean;
 }
-
-/**
- * The sample's app bar — navy in light theme, transparent in dark theme so the shell's
- * top-right halo glows through it with no hard edge — carrying the screen title and, glued
- * to it, the platform pill.
- *
- * The pill is deliberately a monochrome glyph plus the platform name on a translucent
- * white fill in light mode and a Signal blue tint in dark mode. A stylized React or
- * React Native mark is a trademark this sample must not draw. `code` is
- * the Material glyph the shared identity assigns to the JavaScript/React Native leg.
- */
+/** Explicit Android title roles, with a compact accessible platform badge. */
 export function AppBar({
   title,
+  onOpenDebug,
+  size = 'small',
   isDark,
   onBack,
   backTestID = 'app-bar-back',
   showPlatformBadge = true,
 }: AppBarProps) {
-  const chrome = chromeColors(isDark);
+  const c = chromeColors(isDark);
   return (
-    <View
-      testID="sample-app-bar"
-      style={[styles.bar, { backgroundColor: chrome.header }]}
-    >
-      {onBack !== undefined && (
-        <TouchableOpacity
-          testID={backTestID}
-          onPress={onBack}
-          style={styles.back}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-        >
-          <MaterialIcons name="arrow-back" size={22} color={chrome.onAppBar} />
-        </TouchableOpacity>
-      )}
-      <Text
-        style={[styles.title, { color: chrome.onAppBar }]}
-        numberOfLines={1}
-        maxFontSizeMultiplier={1.3}
-      >
-        {title}
-      </Text>
-      {showPlatformBadge && (
-        <View style={[styles.pill, chrome.badge]}>
-          <MaterialIcons
-            name="code"
-            size={12}
-            color={chrome.badgeText?.color ?? chrome.onAppBar}
-          />
-          <Text
-            style={[
-              styles.pillText,
-              { color: chrome.onAppBar },
-              chrome.badgeText,
-            ]}
-            maxFontSizeMultiplier={1.2}
+    <View testID="sample-app-bar" style={{ backgroundColor: c.header }}>
+      <View style={styles.toolbar}>
+        {onBack && (
+          <TouchableOpacity
+            testID={backTestID}
+            onPress={onBack}
+            style={styles.action}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
           >
-            React Native
+            <MaterialIcons name="arrow-back" size={24} color={c.onAppBar} />
+          </TouchableOpacity>
+        )}
+        {size === 'small' ? (
+          <Text
+            numberOfLines={3}
+            style={[styles.smallTitle, { color: c.onAppBar }]}
+          >
+            {title}
+          </Text>
+        ) : (
+          <View style={styles.spacer} />
+        )}
+        {onOpenDebug && (
+          <TouchableOpacity
+            testID="app-bar-debug-console"
+            accessibilityRole="button"
+            accessibilityLabel="Debug console"
+            onPress={onOpenDebug}
+            style={styles.action}
+          >
+            <MaterialIcons name="bug-report" size={24} color={c.onAppBar} />
+          </TouchableOpacity>
+        )}
+        {showPlatformBadge && (
+          <View
+            accessible
+            accessibilityLabel="React Native"
+            style={[
+              styles.badge,
+              { backgroundColor: c.surface, borderColor: c.outline },
+            ]}
+          >
+            <MaterialIcons name="code" size={16} color={c.text} />
+          </View>
+        )}
+      </View>
+      {size !== 'small' && (
+        <View
+          style={[styles.expanded, size === 'large' && styles.largeExpanded]}
+        >
+          <Text
+            numberOfLines={3}
+            style={[
+              size === 'large'
+                ? sampleTypography.appBarLarge
+                : sampleTypography.appBarMedium,
+              { color: c.onAppBar },
+            ]}
+          >
+            {title}
           </Text>
         </View>
       )}
     </View>
   );
 }
-
 const styles = StyleSheet.create({
-  bar: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  toolbar: {
+    minHeight: 64,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 8,
     gap: 8,
-  },
-  back: {
-    marginLeft: -6,
-    padding: 2,
-  },
-  title: {
-    fontSize: 19,
-    fontWeight: '700',
-    flexShrink: 1,
-  },
-  pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
-    borderRadius: 99,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
   },
-  pillText: {
-    fontSize: 11,
-    fontWeight: '600',
-    opacity: 0.85,
+  action: {
+    minWidth: 48,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  smallTitle: { ...sampleTypography.title2, flex: 1 },
+  spacer: { flex: 1 },
+  badge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  expanded: { paddingHorizontal: 24, paddingBottom: 12 },
+  largeExpanded: {
+    minHeight: 88,
+    justifyContent: 'flex-end',
+    paddingBottom: 16,
   },
 });

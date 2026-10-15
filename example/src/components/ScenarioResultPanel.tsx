@@ -1,35 +1,15 @@
 import { ActivityIndicator, View, Text, StyleSheet } from 'react-native';
-
 import { chromeColors } from '../theme/branding';
+import { sampleTypography } from '../theme/tokens';
 import type { ScenarioRunState } from '../debug/useScenarioRun';
-
+import { CodeResultBlock, StatusBadge } from './SampleRecipes';
 export interface ScenarioResultPanelProps {
-  /** Verbatim `result_test_id` from the scenarios catalog. */
   testID: string;
   isDark: boolean;
-  /** Idle / Running / Success / Error — spec 09's Result zone. */
   state: ScenarioRunState;
-  /**
-   * True for a "presentation" scenario (fullscreen/sheet/modal): the Result IS the screen
-   * that opened, not a returned value, so success renders the sentence alone — no code block.
-   */
   isPresentation?: boolean;
-  /**
-   * Standing configuration state shown above the Run outcome (e.g. the current not-seen
-   * count, or the connected/disconnected state) — always visible, uncolored, no duration.
-   * Scenarios with nothing to say between runs omit it.
-   */
   info?: string;
 }
-
-/**
- * Live state/result panel shown under a scenario's presets. One per scenario, carrying the
- * catalog's `result_test_id`.
- *
- * Spec 09's three guardrails: Idle shows “Not run yet”, Running shows a skeleton for at
- * least 300ms so a fast call is still visibly "doing something", and Result always attaches a
- * duration so replaying the same preset still reads as a new call.
- */
 export function ScenarioResultPanel({
   testID,
   isDark,
@@ -37,159 +17,57 @@ export function ScenarioResultPanel({
   isPresentation = false,
   info,
 }: ScenarioResultPanelProps) {
-  const chrome = chromeColors(isDark);
-  const infoLine = info ? (
-    <Text style={[styles.infoText, { color: chrome.textSecondary }]}>
-      {info}
-    </Text>
-  ) : null;
-
-  if (state.status === 'idle') {
-    return (
-      <View
-        testID={testID}
-        style={[
-          styles.panel,
-          { backgroundColor: chrome.surfaceRaised, borderColor: chrome.border },
-        ]}
-      >
-        <Text style={[styles.resultHeader, { color: chrome.text }]}>
-          Result
+  const c = chromeColors(isDark);
+  const status =
+    state.status === 'idle'
+      ? 'ready'
+      : state.status === 'success'
+        ? 'passed'
+        : state.status === 'error'
+          ? 'failed'
+          : 'running';
+  return (
+    <View testID={testID} style={styles.panel}>
+      <Text style={[sampleTypography.label, { color: c.text }]}>Result</Text>
+      {info && (
+        <Text style={[sampleTypography.caption, { color: c.textSecondary }]}>
+          {info}
         </Text>
-        {infoLine}
-        <Text style={[styles.text, { color: chrome.textSecondary }]}>
+      )}
+      <View style={styles.row}>
+        <StatusBadge status={status} isDark={isDark} />
+        {(state.status === 'success' || state.status === 'error') &&
+          state.durationMs !== undefined && (
+            <Text
+              style={[sampleTypography.caption, { color: c.textSecondary }]}
+            >
+              {state.durationMs} ms
+            </Text>
+          )}
+      </View>
+      {state.status === 'idle' ? (
+        <Text style={[sampleTypography.caption, { color: c.textSecondary }]}>
           Not run yet
         </Text>
-      </View>
-    );
-  }
-
-  if (state.status === 'running') {
-    return (
-      <View
-        testID={testID}
-        style={[
-          styles.panel,
-          { backgroundColor: chrome.surfaceRaised, borderColor: chrome.border },
-        ]}
-      >
-        <Text style={[styles.resultHeader, { color: chrome.text }]}>
-          Result
-        </Text>
-        {infoLine}
-        <View style={styles.runningRow}>
-          <ActivityIndicator size="small" color={chrome.textSecondary} />
-          <Text style={[styles.runningText, { color: chrome.textSecondary }]}>
-            Running…
-          </Text>
-        </View>
-        <View
-          style={[styles.skeletonLine, { backgroundColor: chrome.border }]}
-        />
-      </View>
-    );
-  }
-
-  const isSuccess = state.status === 'success';
-  const headerColor = isSuccess ? chrome.success : chrome.danger;
-  const duration =
-    state.durationMs !== undefined ? `${state.durationMs} ms` : null;
-
-  return (
-    <View
-      testID={testID}
-      style={[
-        styles.panel,
-        { backgroundColor: chrome.surfaceRaised, borderColor: chrome.border },
-      ]}
-    >
-      <Text style={[styles.resultHeader, { color: chrome.text }]}>Result</Text>
-      {infoLine}
-      <View style={styles.resultHeaderRow}>
-        <Text style={[styles.resultHeader, { color: headerColor }]}>
-          {isSuccess ? '✓ Success' : '✕ Error'}
-        </Text>
-        {duration ? (
-          <Text style={[styles.duration, { color: chrome.textSecondary }]}>
-            {duration}
-          </Text>
-        ) : null}
-      </View>
-      {isSuccess && !isPresentation ? (
-        <View
-          style={[
-            styles.codeBlock,
-            { backgroundColor: chrome.codeSurface },
-            isDark && [styles.darkFrame, { borderColor: chrome.border }],
-          ]}
-        >
-          <Text style={[styles.codeText, { color: chrome.onCodeSurface }]}>
-            {state.message}
-          </Text>
-        </View>
-      ) : (
-        <Text style={[styles.text, { color: chrome.text }]}>
+      ) : state.status === 'running' ? (
+        <ActivityIndicator size="small" color={c.textSecondary} />
+      ) : state.status === 'success' && isPresentation ? (
+        <Text style={[sampleTypography.caption, { color: c.text }]}>
           {state.message}
         </Text>
+      ) : (
+        <CodeResultBlock isDark={isDark} message={state.message ?? ''} />
       )}
     </View>
   );
 }
-
 const styles = StyleSheet.create({
-  darkFrame: {
-    borderWidth: 1,
-  },
-  panel: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    marginTop: 8,
-    gap: 6,
-  },
-  infoText: {
-    fontSize: 11.5,
-    lineHeight: 16,
-  },
-  runningRow: {
+  panel: { marginTop: 8, gap: 8 },
+  row: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 8,
-  },
-  runningText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  skeletonLine: {
-    height: 10,
-    borderRadius: 5,
-    opacity: 0.5,
-  },
-  resultHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-  },
-  resultHeader: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  duration: {
-    fontSize: 11,
-  },
-  // Background comes from `chrome.codeSurface` at the call site, ink from
-  // `chrome.onCodeSurface` (both theme-aware); these are shape only.
-  codeBlock: {
-    borderRadius: 10,
-    padding: 8,
-  },
-  codeText: {
-    fontFamily: 'monospace',
-    fontSize: 10,
-  },
-  text: {
-    fontSize: 12,
-    lineHeight: 17,
   },
 });

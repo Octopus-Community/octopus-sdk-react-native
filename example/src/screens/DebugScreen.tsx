@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { sampleRadius, sampleTypography, sampleSpacing } from '../theme/tokens';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Clipboard,
   ScrollView,
@@ -11,15 +12,13 @@ import {
 import { KeyValueCard } from '../components/KeyValueCard';
 import { PillButton } from '../components/PillButton';
 import type { KeyValueRow } from '../components/KeyValueCard';
-import { SegmentControl } from '../components/SegmentControl';
 import type { DebugInfoCard } from '../debug/debugInfo';
 import type { DebugEntry } from '../debug/debugLog';
 import { debugLog, useDebugLog } from '../debug/debugLog';
 import type { DebugView } from '../navigation/anchors';
 import { chromeColors } from '../theme/branding';
-
-/** Which kinds of entries the console shows. */
-type DebugFilter = 'all' | 'event' | 'api';
+import type { OctopusConnectionState } from '@octopus-community/react-native';
+import { connectionKind } from '../components/ConnectionStateCard';
 
 export interface DebugScreenProps {
   isDark: boolean;
@@ -27,7 +26,7 @@ export interface DebugScreenProps {
   onPrimaryColor: string;
   /** Live SDK state, mirroring the reference sample's "Live state" card. */
   isInitialized: boolean;
-  isUserConnected: boolean;
+  connectionState: OctopusConnectionState | null;
   hasAccessToCommunity: boolean | null;
   notSeenNotificationsCount: number;
   pushToken: string | null;
@@ -65,9 +64,8 @@ export interface DebugScreenProps {
 export function DebugScreen({
   isDark,
   primaryColor,
-  onPrimaryColor,
   isInitialized,
-  isUserConnected,
+  connectionState,
   hasAccessToCommunity,
   notSeenNotificationsCount,
   pushToken,
@@ -76,14 +74,9 @@ export function DebugScreen({
   onOpenHostCallbacks,
 }: DebugScreenProps) {
   const entries = useDebugLog();
-  const [filter, setFilter] = useState<DebugFilter>('all');
   const [copied, setCopied] = useState(false);
 
-  const filtered = useMemo(
-    () =>
-      filter === 'all' ? entries : entries.filter((e) => e.kind === filter),
-    [entries, filter]
-  );
+  const filtered = entries.filter((entry) => entry.kind === 'event');
 
   const chrome = chromeColors(isDark);
   const textColor = chrome.text;
@@ -103,24 +96,33 @@ export function DebugScreen({
     // `Clipboard` is deprecated in react-native core but still shipped in 0.81;
     // the sample deliberately avoids pulling a native clipboard dependency in
     // just to export a debug log.
-    Clipboard.setString(debugLog.exportJson());
+    Clipboard.setString(debugLog.exportJson(['event']));
     setCopied(true);
     if (copiedTimeoutRef.current) clearTimeout(copiedTimeoutRef.current);
     copiedTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
   }, []);
 
   const liveRows: KeyValueRow[] = [
-    { label: 'isInitialized', value: String(isInitialized) },
     {
-      label: 'connection',
-      value: isUserConnected ? 'connected' : 'anonymous',
+      label: 'SDK version',
+      value:
+        infoCards
+          .find((card) => card.title === 'Build')
+          ?.rows.find((row) => row.label === 'SDK version')?.value ?? '—',
+    },
+    { label: 'Status', value: isInitialized ? 'Running' : 'Not initialized' },
+    { label: 'Network', value: 'Not reported by the bridge' },
+    { label: 'Initialized', value: String(isInitialized) },
+    {
+      label: 'Connection',
+      value: connectionKind(connectionState),
     },
     {
-      label: 'hasAccessToCommunity',
+      label: 'Community access',
       value: hasAccessToCommunity === null ? '—' : String(hasAccessToCommunity),
     },
     {
-      label: 'notSeenNotificationsCount',
+      label: 'Unread notifications',
       value: String(notSeenNotificationsCount),
     },
     {
@@ -137,7 +139,7 @@ export function DebugScreen({
         testID="debug-info-list"
         contentContainerStyle={styles.content}
       >
-        <KeyValueCard title="Live state" isDark={isDark} rows={liveRows} />
+        <KeyValueCard title="SDK" isDark={isDark} rows={liveRows} />
         {infoCards.map((card) => (
           <KeyValueCard
             key={card.title}
@@ -149,7 +151,7 @@ export function DebugScreen({
         {onOpenHostCallbacks !== undefined && (
           <PillButton
             testID="debug-info-open-config-integration"
-            label="Config › Host callbacks"
+            label="Developer tools › Host app integration"
             icon="arrow-forward"
             variant="secondary"
             isDark={isDark}
@@ -164,28 +166,12 @@ export function DebugScreen({
     <ScrollView contentContainerStyle={styles.content}>
       <View style={styles.headerRow}>
         <Text style={[styles.sectionTitle, { color: textColor }]}>
-          {`Log (${filtered.length}${
-            filtered.length < entries.length ? ` of ${entries.length}` : ''
-          })`}
+          {`${filtered.length} events`}
         </Text>
         <Text style={[styles.hint, { color: secondaryColor }]}>
           newest first
         </Text>
       </View>
-
-      <SegmentControl<DebugFilter>
-        testID="debug-filter-select"
-        options={[
-          { label: 'All', value: 'all' },
-          { label: 'Events', value: 'event' },
-          { label: 'API calls', value: 'api' },
-        ]}
-        value={filter}
-        onChange={setFilter}
-        isDark={isDark}
-        primaryColor={primaryColor}
-        onPrimaryColor={onPrimaryColor}
-      />
 
       {/* `primaryColor` (the control fill) draws the 1pt outline, where 3:1 is the floor;
           the label draws in `chrome.accent`, because the fill blue only holds 3.50:1 as
@@ -197,7 +183,7 @@ export function DebugScreen({
           onPress={handleCopy}
           activeOpacity={0.8}
         >
-          <Text style={[styles.actionText, { color: chrome.accent }]}>
+          <Text style={[styles.actionText, { color: chrome.accentText }]}>
             {copied ? 'Copied' : 'Copy log'}
           </Text>
         </TouchableOpacity>
@@ -207,7 +193,7 @@ export function DebugScreen({
           onPress={() => debugLog.clear()}
           activeOpacity={0.8}
         >
-          <Text style={[styles.actionText, { color: chrome.accent }]}>
+          <Text style={[styles.actionText, { color: chrome.accentText }]}>
             Clear
           </Text>
         </TouchableOpacity>
@@ -216,9 +202,7 @@ export function DebugScreen({
       <View testID="debug-log-list" style={styles.list}>
         {filtered.length === 0 ? (
           <Text style={[styles.empty, { color: secondaryColor }]}>
-            {entries.length === 0
-              ? 'No log entries yet.'
-              : 'No entry matches this filter.'}
+            No SDK events yet.
           </Text>
         ) : (
           filtered.map((entry) => (
@@ -292,7 +276,7 @@ function LogRow({ entry, isDark }: { entry: DebugEntry; isDark: boolean }) {
 
 const styles = StyleSheet.create({
   content: {
-    padding: 16,
+    padding: sampleSpacing.gutter,
     gap: 12,
     paddingBottom: 32,
   },
@@ -302,11 +286,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   sectionTitle: {
-    fontSize: 15,
-    fontWeight: '600',
+    ...sampleTypography.body,
   },
   hint: {
-    fontSize: 12,
+    ...sampleTypography.caption,
   },
   actionsRow: {
     flexDirection: 'row',
@@ -315,19 +298,18 @@ const styles = StyleSheet.create({
   action: {
     flex: 1,
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: sampleRadius.md,
     paddingVertical: 9,
     alignItems: 'center',
   },
   actionText: {
-    fontSize: 13,
-    fontWeight: '600',
+    ...sampleTypography.callout,
   },
   list: {
     gap: 0,
   },
   empty: {
-    fontSize: 13,
+    ...sampleTypography.callout,
     paddingVertical: 12,
   },
   row: {
@@ -353,20 +335,18 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
   },
   kindChipText: {
-    fontSize: 10,
-    fontWeight: '700',
+    ...sampleTypography.caption,
+
     letterSpacing: 0.5,
   },
   kind: {
     flexShrink: 1,
-    fontSize: 13,
-    fontWeight: '600',
+    ...sampleTypography.callout,
   },
   time: {
-    fontSize: 12,
+    ...sampleTypography.caption,
   },
   detail: {
-    fontSize: 12,
-    lineHeight: 16,
+    ...sampleTypography.caption,
   },
 });

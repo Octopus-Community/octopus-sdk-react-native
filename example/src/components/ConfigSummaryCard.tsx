@@ -1,7 +1,9 @@
+import { sampleRadius, sampleTypography } from '../theme/tokens';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { chromeColors, OCTOPUS_BRAND } from '../theme/branding';
 import { PillButton } from './PillButton';
+import { SampleInfoRow } from './SampleInfoRow';
 
 /** One line of the summary: what it is, and what it currently is set to. */
 export interface ConfigSummaryRow {
@@ -24,7 +26,7 @@ export interface ConfigSummaryCardProps {
  *
  * Framed in the accent (light) rather than drawn as a plain card on purpose: it is a *summary of
  * elsewhere*, so it should not read as another card of settings that live here. The row count
- * is the caller's business — Home shows the full eight, a narrower surface can pass three of
+ * is the caller's business — Settings shows the full overview, a narrower surface can pass three of
  * the same rows and get the same block.
  */
 export function ConfigSummaryCard({
@@ -52,20 +54,7 @@ export function ConfigSummaryCard({
       <Text style={[styles.title, { color: chrome.text }]}>{title}</Text>
       <View style={styles.rows}>
         {rows.map((row) => (
-          <View key={row.label} style={styles.row}>
-            <Text
-              style={[styles.rowLabel, { color: chrome.textSecondary }]}
-              numberOfLines={1}
-            >
-              {row.label}
-            </Text>
-            <Text
-              style={[styles.rowValue, { color: chrome.textBody }]}
-              numberOfLines={2}
-            >
-              {row.value}
-            </Text>
-          </View>
+          <SampleInfoRow key={row.label} {...row} isDark={isDark} />
         ))}
       </View>
       {onEdit !== undefined && (
@@ -85,34 +74,17 @@ export function ConfigSummaryCard({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 14,
+    borderRadius: sampleRadius.md,
     borderWidth: 1,
     padding: 16,
   },
   title: {
-    fontSize: 15,
-    fontWeight: '700',
+    ...sampleTypography.body,
+
     marginBottom: 12,
   },
   rows: {
     gap: 8,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  rowLabel: {
-    fontSize: 12.5,
-    // Fixed rather than flexible: the values line up in a column, which is what makes eight
-    // rows scannable instead of eight sentences.
-    width: 132,
-  },
-  rowValue: {
-    flex: 1,
-    fontSize: 12.5,
-    fontWeight: '600',
-    textAlign: 'right',
   },
   edit: {
     marginTop: 14,

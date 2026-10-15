@@ -1,8 +1,12 @@
+import { sampleTypography } from '../theme/tokens';
+import { chromeColors } from '../theme/branding';
 import { StyleSheet, Text, View } from 'react-native';
 
 import {
   octopusHostLabel,
-  octopusShowsServerWarning,
+  octopusIsInternalBuild,
+  PRODUCTION_HOST,
+  shouldShowServerWarning,
 } from '../config/demoConfig';
 
 /**
@@ -22,15 +26,33 @@ import {
  * Mounted above every tab and not dismissible, mirroring the Flutter sample's
  * `ProductionWarningBanner` and the Android sample's.
  */
-export function ProductionWarningBanner() {
-  if (!octopusShowsServerWarning) return null;
+export function ProductionWarningBanner({
+  isDark = false,
+  host = octopusHostLabel,
+}: {
+  isDark?: boolean;
+  host?: string;
+}) {
+  const chrome = chromeColors(isDark);
+  if (
+    !shouldShowServerWarning(octopusIsInternalBuild, host === PRODUCTION_HOST)
+  )
+    return null;
 
   return (
-    <View testID="env-warning-banner" style={styles.banner}>
+    <View
+      testID="env-warning-banner"
+      style={[
+        styles.banner,
+        { backgroundColor: chrome.dangerSurface, borderColor: chrome.danger },
+      ]}
+    >
       <Text style={styles.icon}>⚠️</Text>
       <View style={styles.textColumn}>
-        <Text style={styles.title}>PRODUCTION SERVER — {octopusHostLabel}</Text>
-        <Text style={styles.body}>
+        <Text style={[styles.title, { color: chrome.danger }]}>
+          PRODUCTION SERVER — {host}
+        </Text>
+        <Text style={[styles.body, { color: chrome.danger }]}>
           Client communities may be reachable. DO NOT publish test content.
         </Text>
       </View>
@@ -42,27 +64,23 @@ const styles = StyleSheet.create({
   banner: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: '#7F1D1D',
+    borderWidth: 1,
     paddingHorizontal: 12,
     paddingVertical: 8,
     gap: 8,
   },
   icon: {
-    fontSize: 14,
-    lineHeight: 18,
+    ...sampleTypography.callout,
   },
   textColumn: {
     flex: 1,
   },
   title: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
+    ...sampleTypography.caption,
+
     letterSpacing: 0.3,
   },
   body: {
-    color: '#FECACA',
-    fontSize: 12,
-    lineHeight: 16,
+    ...sampleTypography.caption,
   },
 });

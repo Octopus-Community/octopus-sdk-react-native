@@ -1,6 +1,13 @@
 import OctopusUI
 import UIKit
 
+/// One icon override as it crosses the bridge: where to load it from and, when the host's
+/// image source declared one, its pixel density (`Image.resolveAssetSource().scale`).
+struct OctopusIconSource {
+  let uri: String
+  let scale: CGFloat?
+}
+
 /// The native icon set with the host's `theme.icons` overrides applied.
 ///
 /// `images` is keyed by the dotted slot path the TypeScript layer puts on the wire
@@ -113,7 +120,8 @@ func octopusIcons(from images: [String: UIImage]) -> OctopusUI.OctopusTheme.Asse
       toggle: pair("common.toggle"),
       moreActions: images["common.moreActions"],
       activityButton: images["common.activityButton"],
-      listCellNavIndicator: images["common.listCellNavIndicator"]
+      listCellNavIndicator: images["common.listCellNavIndicator"],
+      clearText: images["common.clearText"]
     ),
     screenStates: Icons.ScreenStates(
       emptyContent: images["screenStates.emptyContent"],

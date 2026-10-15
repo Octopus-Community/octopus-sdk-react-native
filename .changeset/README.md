@@ -32,7 +32,10 @@ interactive prompt isn't an option:
 Fix `OctopusUIView` ignoring `interceptUrls` prop updates on Android.
 ```
 
-Docs-only, CI, and other non-user-facing changes don't need a changeset.
+Only changes that never reach the public mirror skip the changeset: `.claude/**`, `CLAUDE.md`
+and `.github/**` (except the two templates) — the exemption list in
+`.claude/rules/definition-of-done.md` is the authority. `CONTRIBUTING.md`, the READMEs and
+`.changeset/**` are mirrored, so a change to them carries a `patch` changeset.
 
 ### Sample-only changes
 
@@ -48,10 +51,10 @@ read, rather than lost.
 ## How a release happens
 
 1. PRs land on `main`, each carrying its changeset(s).
-2. The **Release** workflow keeps a `chore(release): version packages` PR up to
-   date — it consumes the pending changesets, bumping `version` in `package.json`
-   and prepending the entries to `CHANGELOG.md`. A maintainer opens that PR once
-   per release cycle; it is then left open so the workflow has something to
-   update.
+2. The **Release** workflow automatically creates or updates a
+   `chore(release): version packages` PR when changesets are pending — it consumes
+   them, bumping `version` in `package.json` and prepending the entries to
+   `CHANGELOG.md`. With no pending changesets, it creates no PR. Manual creation
+   is a fallback only after a verified workflow or permissions error.
 3. Merging that PR lands the version bump. Cutting a GitHub Release for the new
    tag triggers the npm publish (`release-publish.yml`).

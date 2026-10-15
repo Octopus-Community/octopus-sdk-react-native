@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useTabVisible } from './tabVisibility';
 import { BackHandler } from 'react-native';
 import {
   appBackDispatcher,
@@ -22,13 +23,17 @@ export function useHardwareBack(
   handler: BackHandlerFn,
   dispatcher: BackDispatcher = appBackDispatcher
 ): void {
+  const visible = useTabVisible();
   const handlerRef = useRef(handler);
   useLayoutEffect(() => {
     handlerRef.current = handler;
   });
   useEffect(
-    () => dispatcher.register(level, () => handlerRef.current()),
-    [dispatcher, level]
+    () =>
+      visible
+        ? dispatcher.register(level, () => handlerRef.current())
+        : undefined,
+    [dispatcher, level, visible]
   );
 }
 

@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.14.0**](../README.md)
+[**@octopus-community/react-native v1.15.0**](../README.md)
 
 ---
 
@@ -13,6 +13,14 @@ as the native SDK holds it. Field values reflect any local `debugOverride*`
 too — this reads the same effective config the SDK UI consumes.
 
 ## Properties
+
+### consentTexts
+
+> **consentTexts**: [`OctopusConsentTexts`](OctopusConsentTexts.md) \| `null`
+
+Effective community consent wordings, or `null` when none are configured.
+
+---
 
 ### displayAccountAge
 
@@ -31,6 +39,14 @@ Unified Profile activation flag (`CommunityConfig.exposeClientUserId`).
 ### forceLoginOnStrongActions
 
 > **forceLoginOnStrongActions**: `boolean`
+
+---
+
+### forceNicknameChoice
+
+> **forceNicknameChoice**: `boolean`
+
+Whether the native nickname choice field starts empty before the first contribution.
 
 ---
 

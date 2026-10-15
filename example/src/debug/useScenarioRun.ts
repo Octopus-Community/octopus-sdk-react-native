@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { debugLog } from './debugLog';
+import { redactApiKeys } from '../config/apiKeyMask';
 
 /** Where a scenario's last (or in-flight) run stands. */
 export type ScenarioRunStatus = 'idle' | 'running' | 'success' | 'error';
@@ -71,10 +72,11 @@ export function useScenarioRun(
         // Same floor on success and error alike — spec 09 draws no distinction between the
         // two for how long the spinner must stay visible, only for what duration is reported.
         await floor;
-        const message =
+        const message = redactApiKeys(
           typeof successMessage === 'function'
             ? successMessage(value)
-            : successMessage;
+            : successMessage
+        );
         if (isMountedRef.current) {
           setState({ status: 'success', durationMs, message });
         }
@@ -83,7 +85,9 @@ export function useScenarioRun(
       } catch (e) {
         const durationMs = Date.now() - startedAt;
         await floor;
-        const message = e instanceof Error ? e.message : String(e);
+        const message = redactApiKeys(
+          e instanceof Error ? e.message : String(e)
+        );
         if (isMountedRef.current) {
           setState({ status: 'error', durationMs, message });
         }

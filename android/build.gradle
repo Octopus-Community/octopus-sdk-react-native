@@ -94,4 +94,5 @@ dependencies {
   api "com.octopuscommunity:octopus-sdk-ui:$octopus_community_version"
 
   testImplementation "junit:junit:4.13.2"
+  testImplementation "org.robolectric:robolectric:4.16"
 }

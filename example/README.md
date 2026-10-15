@@ -53,6 +53,27 @@ for that session only — never written to device storage — so it is re-entere
 > for you — an Octopus developer sets it once in their own `.env`. The Android and Flutter samples
 > gate their banner on the same marker.
 
+## Community navigation
+
+Choose **In tab** or **Full screen** in Scenarios → Community navigation. This preference is
+saved separately from the demo configuration and applies immediately. The Community tab owns
+one retained `OctopusUIView` in both modes; Full screen hides the tab bar and adds the SDK's own
+close action. The separate **Open community** launch button still demonstrates native `openUI()`.
+
+Switching tabs preserves the native screen. Tapping Community again resets to the feed.
+A new SDK session or presentation mode also clears the previous stack. Login, profile editing,
+and intercepted profile screens cover Community without rebuilding it, so Back returns to the
+same SDK screen.
+
+Notification taps wait in a persisted inbox until initialization and sample presentation
+dismissal have completed. Transport ids deduplicate background, initial, and foreground tap
+callbacks. Posts/profiles use the SDK notification path; `/group/<id>` and `/member/<id>` use the
+public group and member-activity initial screens. A consumed target stays on its native surface
+until a root reset; it is never reapplied just because an unrelated tab is selected.
+
+Future Modal/Sheet demos must participate in the presentation-dismissal barrier before a push
+can mount its target. They remain separate from the persisted Community preference.
+
 ## Demo content ids
 
 `src/config/sampleFixtures.ts` holds default ids of posts, a comment, a member and a group
@@ -63,11 +84,11 @@ key still comes from the existing configuration.
 After initialization, **Scenarios → Initial screen → Demo post → Run** opens
 `post.text` by id. The embedded Post preview uses the same target.
 **Push notifications → Run** replays a synthetic notification for that post through
-`getOctopusNotification` and `openNotification`; it does not require a push service.
+`getOctopusNotification` and the same pending-tap router as device pushes; it does not require a push service.
 Reactions use the distinct `post.reactionStack` fixture. Group presets and the
 editable group form use `topic.default`. Community-data lookup starts at `user.other`
 and later reuses the latest successful lookup; the activity preset opens the other
-member's posts directly. Host `clientUserId` presets still use the configured SSO user.
+member's Octopus activity directly. Host `clientUserId` presets still use the configured SSO user.
 
 Non-blank `.env` overrides take precedence. Restart Metro with `yarn example start:reset` after editing them:
 development needs no native rebuild, but a release needs a new JS bundle.
@@ -82,13 +103,10 @@ posting group (the bridge has no prefilled topic parameter).
 
 ## What the example demonstrates
 
-The app opens on a **Config** screen — pick an API key, an auth mode, a user id and a theme, then
-**Start** — and then shows four tabs:
-
-The auth mode decides who owns the login: **SSO** connects the app's own user with an injected JWT
-(`connectionMode: { type: 'sso' }`), **Octopus** lets the SDK run its own login flow
-(`{ type: 'octopus' }`). In Octopus mode there is no host user, so the Connection presets and the
-`clientUserId` lookups are disabled and say why.
+The app opens on a **Config** screen — pick an API key, a user id and a theme, then
+**Start** — and then shows four tabs. Authentication always uses SSO:
+`connectionMode: { type: 'sso', appManagedFields: [...] }`. The app owns sign-in and supplies
+an injected demo JWT. Saved configurations using a removed authentication mode return to Config.
 
 - **Home** — Read-only dashboard: SDK status, which API key and server are in use, connection state, unseen-notification count, community access.
 - **Scenarios** — The searchable index of capabilities. Each scenario opens its own page with single-tap QA presets carrying fixed `testID`s, its result panel, and the free-form controls for that capability: theming lives in the Theme scenario, batch group sync in Sync Followed Groups, the free-text custom event in Custom Events, the push token in Push Notifications.

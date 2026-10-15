@@ -15,13 +15,15 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
   private lazy var uiManager = OctopusUIManager()
   private lazy var eventManager = OctopusEventManager(bridge: bridge)
   private let sdkInitializer = OctopusSDKInitializer()
+  // Snapshot of the last successful initialization, retained through stop/community switches.
+  private var initializedAppManagedAudioSession = false
   private var ssoAuthenticator: OctopusSSOAuthenticator?
   private lazy var bridgeShareTokenBroker = OctopusBridgeShareTokenBroker(
     eventManager: eventManager
   )
   private var theme: OctopusTheme?
   private var logoSource: [String: Any]?
-  private var iconSources: [String: String]?
+  private var iconSources: [String: OctopusIconSource]?
   private var fontConfiguration: [String: Any]?
   private var uiConfiguration: OctopusUIConfiguration?
   private var topAppBar: OctopusTopAppBarConfig?
@@ -59,6 +61,7 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
       cancellables.removeAll()
 
       self.octopusSDK = try sdkInitializer.initialize(options: options, eventManager: eventManager)
+      self.initializedAppManagedAudioSession = options["appManagedAudioSession"] as? Bool ?? false
       self.ssoAuthenticator = OctopusSSOAuthenticator(octopusSDK: self.octopusSDK!, eventManager: eventManager)
       self.theme = sdkInitializer.parseTheme(from: options)
       self.logoSource = sdkInitializer.getLogoSource(from: options)
@@ -73,6 +76,8 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
       applyNavigateToClientObjectCallback()
 
       resolve(nil)
+    } catch InitializationError.invalidConnectionModeType {
+      reject("INITIALIZE_ERROR", InitializationError.invalidConnectionModeType.localizedDescription, nil)
     } catch {
       reject("INITIALIZE_ERROR", "Failed to initialize Octopus SDK: \(error.localizedDescription)", error)
     }
@@ -373,8 +378,9 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
   func closeUI(resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) -> Void {
     DispatchQueue.main.async {
       do {
-        try self.uiManager.closeUI()
-        resolve(nil)
+        try self.uiManager.closeUI {
+          resolve(nil)
+        }
       } catch {
         reject("CLOSE_UI_ERROR", error.localizedDescription, error)
       }
@@ -940,6 +946,44 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
     }
   }
 
+  @objc(debugOverrideForceNicknameChoice:withResolver:withRejecter:)
+  func debugOverrideForceNicknameChoice(
+    enabled: NSDictionary?,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) -> Void {
+    guard let octopus = octopusSDK else {
+      reject("OVERRIDE_ERROR", "SDK not initialized. Call initialize() first.", nil)
+      return
+    }
+    let mapped = (enabled?["value"] as? NSNumber)?.boolValue
+    Task { @MainActor in
+      octopus.debugOverrideForceNicknameChoice(mapped)
+      resolve(nil)
+    }
+  }
+
+  @objc(debugOverrideConsentTexts:withResolver:withRejecter:)
+  func debugOverrideConsentTexts(
+    texts: NSDictionary?,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) -> Void {
+    guard let octopus = octopusSDK else {
+      reject("OVERRIDE_ERROR", "SDK not initialized. Call initialize() first.", nil)
+      return
+    }
+    do {
+      let mapped = try DebugOverrideMappers.toConsentTexts(texts)
+      Task { @MainActor in
+        octopus.debugOverrideConsentTexts(mapped)
+        resolve(nil)
+      }
+    } catch {
+      reject("OVERRIDE_ERROR", error.localizedDescription, error)
+    }
+  }
+
   /// Debug-only read of the community config the backend currently serves (GetConfig), so the
   /// sample can display the live server state next to the API key it runs on. Resolves `nil`
   /// while no config has been fetched yet. Values reflect any local `debugOverride*` too —
@@ -970,6 +1014,8 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
       }
       resolve([
         "exposeClientUserId": config.exposeClientUserId,
+        "forceNicknameChoice": config.forceNicknameChoice,
+        "consentTexts": DebugOverrideMappers.fromConsentTexts(config.consentTexts).map { $0 as Any } ?? NSNull(),
         "forceLoginOnStrongActions": config.forceLoginOnStrongActions,
         "displayAccountAge": config.displayAccountAge,
         "termsAcceptanceMode": String(describing: config.termsAcceptanceMode),
@@ -1039,10 +1085,7 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
 
   // MARK: - Lifecycle management (Parity wave — lifecycle)
 
-  /// Targets a new community. Mirrors the Flutter plugin's `switchCommunity`/
-  /// `switchCommunityOctopusAuth` pair, unified here into a single method whose
-  /// `connectionMode` reuses the same shape as `initialize` (divergence accepted — see the
-  /// port inventory).
+  /// Targets a new community using the same required SSO configuration as `initialize`.
   ///
   /// - If an SDK instance already exists, this calls the native instance-level
   ///   `switchCommunity(apiKey:connectionMode:configuration:)`, which reuses the same
@@ -1063,13 +1106,16 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
     }
 
     do {
+      var options = params
+      options["appManagedAudioSession"] = initializedAppManagedAudioSession
       let connectionMode = try sdkInitializer.parseConnectionMode(from: connectionModeMap, eventManager: eventManager)
-      let configuration = try sdkInitializer.parseConfiguration(from: params)
+      let configuration = try sdkInitializer.parseConfiguration(from: options)
 
+      try sdkInitializer.declareSdkFamily(options: options)
       guard let octopus = octopusSDK else {
         // Cold start: no instance to call switchCommunity on yet.
         cancellables.removeAll()
-        octopusSDK = try sdkInitializer.initialize(options: params, eventManager: eventManager)
+        octopusSDK = try sdkInitializer.initialize(options: options, eventManager: eventManager)
         ssoAuthenticator = OctopusSSOAuthenticator(octopusSDK: octopusSDK!, eventManager: eventManager)
         startObservingReactiveEvents()
         resolve(nil)

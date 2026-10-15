@@ -74,6 +74,7 @@ export const ICON_SLOT_PATHS: readonly string[] = [
   'common.moreActions',
   'common.activityButton',
   'common.listCellNavIndicator',
+  'common.clearText',
   'screenStates.emptyContent',
   'screenStates.emptyNotifications',
   'screenStates.networkError',
@@ -111,7 +112,43 @@ const uriOf = (value: unknown): string | null => {
   return typeof uri === 'string' && uri.length > 0 ? uri : null;
 };
 
+/**
+ * The pixel density of an image source, or `null` when it carries none the bridges can use.
+ * Only a finite positive number qualifies; anything else leaves the native default density.
+ */
+const scaleOf = (value: unknown): number | null => {
+  if (!isPlainObject(value)) return null;
+  const scale = value.scale;
+  return typeof scale === 'number' && Number.isFinite(scale) && scale > 0
+    ? scale
+    : null;
+};
+
+/**
+ * `source` with an unusable `scale` (not a finite positive number) removed, so the native side
+ * falls back to the default density. Returns `source` itself when its scale is valid or absent.
+ * Applied to the logo, whose image source crosses the bridge as is, with the same rule the
+ * icon scales follow.
+ */
+export function withValidScale<T extends object>(source: T): T {
+  if (!('scale' in source)) return source;
+  if (scaleOf(source) !== null) return source;
+  const rest = { ...source } as T & { scale?: unknown };
+  delete rest.scale;
+  return rest;
+}
+
 const warn = (message: string): void => log(LogLevel.WARN, message);
+
+/**
+ * The wire form of `theme.icons`: `uris` maps each dotted slot path to its image URI, and
+ * `scales` maps a path to the source's pixel density for the slots that carry one. Both share
+ * the same keys, `scales` being a subset of `uris`.
+ */
+export interface FlatIconOverrides {
+  uris: Record<string, string>;
+  scales: Record<string, number>;
+}
 
 /**
  * Flattens `theme.icons` into the wire map both bridges read: dotted slot path → image URI
@@ -126,6 +163,19 @@ const warn = (message: string): void => log(LogLevel.WARN, message);
 export function flattenIconOverrides(
   icons: OctopusIcons | undefined | null
 ): Record<string, string> | undefined {
+  return flattenIconOverridesWithScales(icons)?.uris;
+}
+
+/**
+ * Same flattening and same warnings as {@link flattenIconOverrides}, plus each source's pixel
+ * `scale`. iOS needs it: an image downloaded from a URL (a Metro dev server, or any remote
+ * `http(s)` source) carries no density of its own, and drawing it at scale 1 makes a `@3x`
+ * asset appear three times too large. A source with no valid `scale` is simply absent from
+ * `scales` and keeps the native default density.
+ */
+export function flattenIconOverridesWithScales(
+  icons: OctopusIcons | undefined | null
+): FlatIconOverrides | undefined {
   if (icons == null) return undefined;
   if (!isPlainObject(icons)) {
     warn(
@@ -135,6 +185,7 @@ export function flattenIconOverrides(
   }
 
   const out: Record<string, string> = {};
+  const scales: Record<string, number> = {};
 
   const visit = (node: Record<string, unknown>, prefix: string): void => {
     for (const [key, value] of Object.entries(node)) {
@@ -149,6 +200,8 @@ export function flattenIconOverrides(
           );
         } else {
           out[path] = uri;
+          const scale = scaleOf(value);
+          if (scale !== null) scales[path] = scale;
         }
       } else if (ON_OFF_SET.has(path)) {
         const pair = isPlainObject(value) ? value : {};
@@ -161,6 +214,10 @@ export function flattenIconOverrides(
         } else {
           out[`${path}.on`] = on;
           out[`${path}.off`] = off;
+          const onScale = scaleOf(pair.on);
+          if (onScale !== null) scales[`${path}.on`] = onScale;
+          const offScale = scaleOf(pair.off);
+          if (offScale !== null) scales[`${path}.off`] = offScale;
         }
       } else if (GROUP_SET.has(path)) {
         if (isPlainObject(value)) {
@@ -177,5 +234,5 @@ export function flattenIconOverrides(
   };
 
   visit(icons as Record<string, unknown>, '');
-  return Object.keys(out).length > 0 ? out : undefined;
+  return Object.keys(out).length > 0 ? { uris: out, scales } : undefined;
 }

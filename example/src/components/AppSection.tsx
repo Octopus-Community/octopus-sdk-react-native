@@ -1,7 +1,8 @@
+import { sampleRadius, sampleTypography } from '../theme/tokens';
 import { useSyncExternalStore } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { sampleVersion } from '../config/sampleVersion';
+import { sampleVersionLabel } from '../config/sampleVersion';
 import { chromeColors } from '../theme/branding';
 import {
   describeAppUpdateStatus,
@@ -22,7 +23,7 @@ function describeProvenance(status: AppUpdateStatus): string {
     case 'unsupported':
       return 'Local build · no in-app update flow';
     case 'notFromPlayStore':
-      return 'Not installed from the Play Store';
+      return 'Not installed from Play Store';
     default:
       return 'Play Store · internal testing';
   }
@@ -33,7 +34,7 @@ export interface AppSectionProps {
 }
 
 /**
- * The Home tab's "App" section — which build of the sample this is, where it came from, and
+ * Settings' "App" section — which build of the sample this is, where it came from, and
  * the one control that can replace it.
  *
  * Always rendered, unlike the card it replaces: a build with no in-app update flow (iOS, or a
@@ -48,6 +49,8 @@ export function AppSection({ isDark }: AppSectionProps) {
   const canUpdate = status.kind === 'available';
   const busy = status.kind === 'checking';
   const supported = status.kind !== 'unsupported';
+  const provenance = describeProvenance(status);
+  const updateStatus = describeAppUpdateStatus(status);
 
   return (
     <View
@@ -56,28 +59,30 @@ export function AppSection({ isDark }: AppSectionProps) {
     >
       <Text style={[styles.title, { color: chrome.text }]}>App</Text>
       <Text style={[styles.version, { color: chrome.text }]}>
-        Sample {sampleVersion}
+        Sample {sampleVersionLabel}
       </Text>
       <Text style={[styles.provenance, { color: chrome.textSecondary }]}>
-        {describeProvenance(status)}
+        {provenance}
       </Text>
       {supported && (
         <>
-          <Text
-            testID="sample-update-status"
-            style={[
-              styles.status,
-              {
-                color: isAppUpdateProblem(status)
-                  ? chrome.danger
-                  : canUpdate
-                    ? chrome.accent
-                    : chrome.textSecondary,
-              },
-            ]}
-          >
-            {describeAppUpdateStatus(status)}
-          </Text>
+          {updateStatus !== provenance && (
+            <Text
+              testID="sample-update-status"
+              style={[
+                styles.status,
+                {
+                  color: isAppUpdateProblem(status)
+                    ? chrome.danger
+                    : canUpdate
+                      ? chrome.accent
+                      : chrome.textSecondary,
+                },
+              ]}
+            >
+              {updateStatus}
+            </Text>
+          )}
           <PillButton
             testID="sample-update-action"
             label={canUpdate ? 'Update now' : 'Check for update'}
@@ -94,25 +99,24 @@ export function AppSection({ isDark }: AppSectionProps) {
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 14,
+    borderRadius: sampleRadius.md,
     padding: 16,
     gap: 4,
   },
   title: {
-    fontSize: 15,
-    fontWeight: '700',
+    ...sampleTypography.body,
+
     marginBottom: 6,
   },
   version: {
-    fontSize: 13.5,
-    fontWeight: '600',
+    ...sampleTypography.callout,
   },
   provenance: {
-    fontSize: 12.5,
+    ...sampleTypography.caption,
   },
   status: {
-    fontSize: 12,
-    lineHeight: 18,
+    ...sampleTypography.caption,
+
     marginTop: 6,
     marginBottom: 10,
   },

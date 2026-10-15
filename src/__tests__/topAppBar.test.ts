@@ -25,7 +25,7 @@ describe('initialize forwards topAppBar', () => {
   it('forwards a text title with center alignment and colored background', async () => {
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       topAppBar: {
         title: { type: 'text', text: 'My Community' },
         alignment: 'center',
@@ -44,7 +44,7 @@ describe('initialize forwards topAppBar', () => {
   it('forwards a logo title with leading alignment', async () => {
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       topAppBar: { title: { type: 'logo' }, alignment: 'leading' },
     });
     const payload = mockInitialize.mock.calls[0][0];
@@ -55,7 +55,10 @@ describe('initialize forwards topAppBar', () => {
   });
 
   it('omits topAppBar from the payload when not provided', async () => {
-    await initialize({ apiKey: 'k', connectionMode: { type: 'octopus' } });
+    await initialize({
+      apiKey: 'k',
+      connectionMode: { type: 'sso', appManagedFields: [] },
+    });
     const payload = mockInitialize.mock.calls[0][0];
     expect(payload.topAppBar).toBeUndefined();
   });
@@ -67,7 +70,7 @@ describe('initialize warns on a text title combined with a theme logo', () => {
     setLogger(logger);
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       theme: { logo: { image: logo } },
       topAppBar: { title: { type: 'text', text: 'My Community' } },
     });
@@ -84,7 +87,7 @@ describe('initialize warns on a text title combined with a theme logo', () => {
     setLogger(logger);
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       topAppBar: { title: { type: 'text', text: 'My Community' } },
     });
     expect(
@@ -97,7 +100,7 @@ describe('initialize warns on a text title combined with a theme logo', () => {
     setLogger(logger);
     await initialize({
       apiKey: 'k',
-      connectionMode: { type: 'octopus' },
+      connectionMode: { type: 'sso', appManagedFields: [] },
       theme: { logo: { image: logo } },
       topAppBar: { title: { type: 'logo' } },
     });

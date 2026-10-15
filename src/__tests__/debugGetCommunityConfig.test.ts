@@ -19,6 +19,8 @@ describe('debugGetCommunityConfig', () => {
       exposeClientUserId: true,
       forceLoginOnStrongActions: false,
       displayAccountAge: true,
+      forceNicknameChoice: false,
+      consentTexts: null,
       termsAcceptanceMode: 'implicit',
     };
     mockDebugGetCommunityConfig.mockResolvedValue(snapshot);
@@ -37,3 +39,53 @@ describe('debugGetCommunityConfig', () => {
     await expect(debugGetCommunityConfig()).rejects.toThrow('CONFIG_ERROR');
   });
 });
+
+it.each([true, false])(
+  'reads the effective forceNicknameChoice value %s',
+  async (forceNicknameChoice) => {
+    mockDebugGetCommunityConfig.mockResolvedValue({
+      forceNicknameChoice,
+      termsAcceptanceMode: 'IMPLICIT',
+    });
+    expect(await debugGetCommunityConfig()).toMatchObject({
+      forceNicknameChoice,
+      termsAcceptanceMode: 'implicit',
+    });
+  }
+);
+
+it('defaults forceNicknameChoice to false when an older snapshot omits it', async () => {
+  mockDebugGetCommunityConfig.mockResolvedValue({
+    termsAcceptanceMode: 'implicit',
+  });
+  expect(await debugGetCommunityConfig()).toMatchObject({
+    forceNicknameChoice: false,
+    consentTexts: null,
+  });
+});
+
+it.each([
+  null,
+  { mode: 'implicit', notice: '  **Notice**\nsecond line  ' },
+  {
+    mode: 'multiCheckbox',
+    termsLabel: null,
+    privacyLabel: '',
+    rulesLabel: '   ',
+  },
+  { mode: 'singleCheckbox', label: 'Agree', belowText: 'One\n\nTwo' },
+])(
+  'reads consentTexts %j without rewriting the wordings or aligning their mode',
+  async (consentTexts) => {
+    mockDebugGetCommunityConfig.mockResolvedValue({
+      forceNicknameChoice: false,
+      consentTexts,
+      termsAcceptanceMode: 'EXPLICIT_MULTI_CHECKBOX',
+    });
+    expect(await debugGetCommunityConfig()).toEqual({
+      forceNicknameChoice: false,
+      consentTexts,
+      termsAcceptanceMode: 'explicit_multi_checkbox',
+    });
+  }
+);

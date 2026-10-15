@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.14.0**](../README.md)
+[**@octopus-community/react-native v1.15.0**](../README.md)
 
 ---
 
@@ -42,14 +42,20 @@ Edits the profile picture.
 
 ---
 
-### emptyNotifications?
+### ~~emptyNotifications?~~
 
 > `optional` **emptyNotifications**: `ImageResolvedAssetSource`
 
 Illustration of an empty notification list.
 
-Native 1.14 on iOS and Android renders [OctopusScreenStatesIcons.emptyNotifications](OctopusScreenStatesIcons.md#emptynotifications)
-instead. This per-feature slot is accepted but has no visible effect with the native 1.14 SDKs.
+Native 1.15 on iOS and Android renders [OctopusScreenStatesIcons.emptyNotifications](OctopusScreenStatesIcons.md#emptynotifications)
+instead. This per-feature slot is accepted but has no visible effect with the native 1.15 SDKs.
+
+#### Deprecated
+
+Use [OctopusScreenStatesIcons.emptyNotifications](OctopusScreenStatesIcons.md#emptynotifications) via
+`theme.icons.screenStates.emptyNotifications` instead. This slot has no visible effect.
+It will be removed in a future major version together with the native SDKs.
 
 ---
 
@@ -58,6 +64,9 @@ instead. This per-feature slot is accepted but has no visible effect with the na
 > `optional` **notConnected**: `ImageResolvedAssetSource`
 
 The avatar shown when the user is not connected (error state).
+
+**Android caveat (native 1.15.x):** the Android SDK declares this slot but no screen reads
+it, so an override only shows on iOS.
 
 ---
 

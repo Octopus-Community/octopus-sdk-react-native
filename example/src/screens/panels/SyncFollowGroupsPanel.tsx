@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { sampleFixtures } from '../../config/sampleFixtures';
+import { redactApiKeys } from '../../config/apiKeyMask';
 import { debugLog } from '../../debug/debugLog';
 import { panelColors, panelStyles } from './panelStyles';
 
@@ -44,7 +45,7 @@ export function SyncFollowGroupsPanel({
         `✓ ${res.map((r) => `${r.groupId} → ${r.status}`).join(', ')}`
       );
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
+      const message = redactApiKeys(e instanceof Error ? e.message : String(e));
       setError(message);
       debugLog.apiCall('syncFollowGroups', `✕ ${message}`);
     } finally {

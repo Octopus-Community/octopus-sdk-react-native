@@ -11,9 +11,10 @@ import notifee, { AndroidImportance, EventType } from '@notifee/react-native';
 import {
   isOctopusNotification,
   getOctopusNotification,
-  openNotification,
-  registerPushNotificationToken,
 } from '@octopus-community/react-native';
+
+import { pushInbox, pushTapId } from './navigation/pushInbox';
+import { formatRedactedError } from './config/apiKeyMask';
 
 export interface SetupOctopusPushOptions {
   /** Called with the device push token once available (debug aid). */
@@ -36,6 +37,10 @@ function toPayload(
   message: FirebaseMessagingTypes.RemoteMessage
 ): Record<string, any> {
   const payload: Record<string, any> = { ...(message.data ?? {}) };
+  payload.sample_push_id =
+    message.messageId ??
+    payload.sample_push_id ??
+    `fcm-${Date.now()}-${Math.random()}`;
   const notif = message.notification;
   if (notif?.title && payload.title === undefined) payload.title = notif.title;
   if (notif?.body && payload.body === undefined) payload.body = notif.body;
@@ -57,6 +62,7 @@ async function displayOctopusNotification(
     title: notification.title,
     body: notification.body,
     // Carry the raw Octopus keys so the tap handler can re-parse and deep-link.
+    id: payload.sample_push_id,
     data: notification.rawPayload,
     android: {
       channelId: CHANNEL_ID,
@@ -66,26 +72,18 @@ async function displayOctopusNotification(
   });
 }
 
-// Route a notification tap to the Octopus deep-link. Requires the SDK to be
-// initialized (true by the time the user taps and the app is open).
-function routeTap(data?: Record<string, any> | null): void {
+// All tap sources converge on the persisted inbox, including headless startup.
+async function routeTap(
+  data?: Record<string, any> | null,
+  transportId?: string
+): Promise<void> {
   if (!data || !isOctopusNotification(data)) return;
   const notification = getOctopusNotification(data);
   if (!notification) return;
-  openNotification(notification).catch((err) =>
-    console.error('Octopus openNotification error', err)
-  );
-}
-
-async function registerCurrentToken(
-  onToken?: (token: string | null) => void
-): Promise<void> {
-  const token = await messaging().getToken();
-  if (!token || token.length === 0) return;
-  // Logged so you can copy it into the Firebase Console "Send test message" flow.
-  console.log('[Octopus] FCM registration token:', token);
-  onToken?.(token);
-  await registerPushNotificationToken(token);
+  await pushInbox.enqueue({
+    id: pushTapId(notification, transportId),
+    notification,
+  });
 }
 
 /**
@@ -98,51 +96,48 @@ export function registerOctopusFcmBackground(): void {
     await displayOctopusNotification(toPayload(message));
   });
   notifee.onBackgroundEvent(async ({ type, detail }) => {
-    if (type === EventType.PRESS) routeTap(detail.notification?.data);
+    if (type === EventType.PRESS)
+      await routeTap(detail.notification?.data, detail.notification?.id);
   });
 }
 
-/**
- * Bootstraps Octopus push handling (foreground) on Android. Call once after the
- * SDK has been initialized. iOS uses `push.ios.ts`.
- */
+/** Attach once, before SDK initialization; token registration belongs to the session. */
 export async function setupOctopusPush(
   options?: SetupOctopusPushOptions
-): Promise<void> {
-  const status = await messaging().requestPermission();
-  const authorized =
-    status === messaging.AuthorizationStatus.AUTHORIZED ||
-    status === messaging.AuthorizationStatus.PROVISIONAL;
-  if (!authorized) return;
-
-  await ensureChannel();
-
-  await registerCurrentToken(options?.onToken);
-  messaging().onTokenRefresh(() => {
-    registerCurrentToken(options?.onToken).catch((err) =>
-      console.error('Octopus token refresh error', err)
-    );
-  });
-
-  // Foreground: display the notification ourselves (the system never shows
-  // data-only messages automatically).
-  messaging().onMessage(async (message) => {
-    await displayOctopusNotification(toPayload(message));
-  });
-
-  // Foreground notification taps → deep-link.
-  notifee.onForegroundEvent(({ type, detail }) => {
-    if (type === EventType.PRESS) routeTap(detail.notification?.data);
-  });
-
-  // Cold-start tap: app opened from a notification while it was quit.
-  const initialNotifee = await notifee.getInitialNotification();
-  if (initialNotifee) routeTap(initialNotifee.notification.data);
-
-  // Hybrid messages (notification block) tapped from the system tray.
-  messaging().onNotificationOpenedApp((message) =>
-    routeTap(toPayload(message))
-  );
-  const initialFcm = await messaging().getInitialNotification();
-  if (initialFcm) routeTap(toPayload(initialFcm));
+): Promise<() => void> {
+  const subscriptions = [
+    messaging().onTokenRefresh((token) => options?.onToken?.(token)),
+    messaging().onMessage((message) =>
+      displayOctopusNotification(toPayload(message))
+    ),
+    notifee.onForegroundEvent(({ type, detail }) => {
+      if (type === EventType.PRESS)
+        routeTap(detail.notification?.data, detail.notification?.id).catch(
+          (error) =>
+            console.error('Push tap failed', formatRedactedError(error))
+        );
+    }),
+    messaging().onNotificationOpenedApp((message) => {
+      routeTap(toPayload(message), message.messageId).catch((error) =>
+        console.error('Push tap failed', formatRedactedError(error))
+      );
+    }),
+  ];
+  try {
+    const initialNotifee = await notifee.getInitialNotification();
+    if (initialNotifee)
+      await routeTap(
+        initialNotifee.notification.data,
+        initialNotifee.notification.id
+      );
+    const initialFcm = await messaging().getInitialNotification();
+    if (initialFcm) await routeTap(toPayload(initialFcm), initialFcm.messageId);
+    await messaging().requestPermission();
+    await notifee.requestPermission();
+    await ensureChannel();
+    options?.onToken?.(await messaging().getToken());
+  } catch (error) {
+    console.error('Octopus push setup error', formatRedactedError(error));
+  }
+  return () => subscriptions.forEach((unsubscribe) => unsubscribe());
 }

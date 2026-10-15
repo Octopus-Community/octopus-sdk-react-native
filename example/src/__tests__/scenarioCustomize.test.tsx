@@ -1,12 +1,18 @@
 // The workspace has separate root/example RN copies. Use host nodes so the test
 // exercises the editor state without loading a second native bridge into Jest.
 jest.mock('react-native', () => ({
+  Platform: { select: (values: { default: string }) => values.default },
   Text: 'Text',
   TextInput: 'TextInput',
   TouchableOpacity: 'TouchableOpacity',
+  Pressable: 'Pressable',
   View: 'View',
   ActivityIndicator: 'ActivityIndicator',
   StyleSheet: { create: (styles: unknown) => styles },
+}));
+
+jest.mock('@react-native-vector-icons/material-icons/static', () => ({
+  MaterialIcons: 'MaterialIcons',
 }));
 
 import { act, create } from 'react-test-renderer';

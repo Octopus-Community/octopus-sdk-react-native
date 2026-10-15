@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import {
+  sampleRadius,
+  sampleTypography,
+  sampleMonoFont,
+  sampleSpacing,
+} from '../theme/tokens';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import {
   View,
@@ -11,6 +17,7 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@react-native-vector-icons/material-icons/static';
 import { useHardwareBack } from '../navigation/useHardwareBack';
+import { useTabVisible } from '../navigation/tabVisibility';
 import * as Octopus from '@octopus-community/react-native';
 import {
   trackCustomEvent,
@@ -29,6 +36,8 @@ import {
   debugOverrideProfileFieldsLock,
   debugOverrideContentOptions,
   debugOverrideTermsAcceptanceMode,
+  debugOverrideForceNicknameChoice,
+  debugOverrideConsentTexts,
   navigateToOctopusCreatePost,
   isNavigateToOctopusCreatePostError,
   syncFollowGroups,
@@ -44,7 +53,19 @@ import type {
 } from '@octopus-community/react-native';
 import { PillButton } from '../components/PillButton';
 import { PresetButton } from '../components/PresetButton';
-import { UnifiedProfileSection } from '../components/UnifiedProfileSection';
+import {
+  LiveCommunityConfigCard,
+  useLiveCommunityConfig,
+} from '../components/LiveCommunityConfigCard';
+import { ScenarioDetailFrame } from '../components/ScenarioDetailFrame';
+import { ScenarioBlock } from '../components/SampleRecipes';
+import { KeyValueCard } from '../components/KeyValueCard';
+import { ScenarioParameters } from '../components/ScenarioParameters';
+import {
+  AdditionalScenarioPanel,
+  ADDITIONAL_SCENARIOS,
+} from './panels/AdditionalScenarioPanel';
+import type { CommunityPresentationMode } from '../components/CommunityPresentation';
 import type { ExposeClientUserIdOverride } from '../scenarios/unifiedProfile';
 import { chromeColors } from '../theme/branding';
 import { ScenarioResultPanel } from '../components/ScenarioResultPanel';
@@ -66,16 +87,13 @@ import {
   USER_TOKEN_ENV_VARS,
 } from '../config/demoConfig';
 import { useScenarioRun } from '../debug/useScenarioRun';
+import { redactApiKeys } from '../config/apiKeyMask';
 import { sampleSupport } from '../config/sampleSupport';
 import { sampleFixtures } from '../config/sampleFixtures';
 import { debugLog } from '../debug/debugLog';
 import type { CommunityLocaleOverride } from './SettingsScreen';
 import { withSectionOpen } from '../navigation/anchors';
-import type {
-  ConfigSection,
-  NavRequest,
-  ScenarioSectionId,
-} from '../navigation/anchors';
+import type { NavRequest, ScenarioSectionId } from '../navigation/anchors';
 import { useAnchorScroll } from '../navigation/useAnchorScroll';
 import { ScenarioCustomize } from '../components/ScenarioCustomize';
 import { SyncFollowGroupsPanel } from './panels/SyncFollowGroupsPanel';
@@ -110,15 +128,6 @@ const SAMPLE_CUSTOM_EVENT_PROPERTIES: Record<string, string> = {
   source: 'scenarios-tab',
   preset: 'with-props',
 };
-
-/**
- * Bundled sample group ids for the `syncFollowGroups` presets. RN has no fetchGroups /
- * groups-list binding (out of scope for this screen), so batch presets act on a fixed set
- * instead of a real fetched list — the same "replay a fixed payload" shape as the
- * pushNotifications preset above, rather than the Android sample's approach of batching
- * over its live `OctopusSDK.groups` cache.
- */
-const SAMPLE_GROUP_IDS = [sampleFixtures.topic.default];
 
 /** Labels for the `reactions` scenario's `EnumParamField` — hoisted to module scope so it
  *  is a stable reference, not a fresh object on every render (which would otherwise force
@@ -160,125 +169,18 @@ type ClientProfileView =
   | { status: 'error'; message: string }
   | { status: 'unknown' };
 
-/**
- * Card titles, spelled exactly as the shared cross-platform scenario catalog's `title:` field.
- * The catalog is the source of truth for the wording, so the reference sample and this one label
- * the same capability the same way — and the search box below filters on it.
- */
-const SCENARIO_TITLES = {
-  connection: 'Connection',
-  communityAccess: 'Community Access',
-  notSeenNotifications: 'Not-Seen Notifications',
-  pushNotifications: 'Push Notifications',
-  customEvents: 'Custom Events',
-  locale: 'Locale',
-  theme: 'Theme',
-  createPost: 'Create Post (Bridge Share)',
-  initialScreen: 'Initial Screen',
-  embeddedBack: 'Embedded Back Button',
-  reactions: 'Reactions',
-  profileFieldsLock: 'Profile Field Lock',
-  contentOptions: 'Content Options',
-  termsAcceptance: 'Terms Acceptance (Consent)',
-  communityData: 'Community Data (Unified Profile)',
-  syncFollowGroups: 'Sync Followed Groups',
-  lifecycle: 'Lifecycle',
-} as const;
-
-/** A scenario the list can open. */
-export type ScenarioId = keyof typeof SCENARIO_TITLES;
-
-/**
- * One-line capability summary per card, condensed from the catalog's `capability:` field so a
- * reader of the list knows what a scenario exercises before opening it.
- */
-const SCENARIO_SUBTITLES: Record<ScenarioId, string> = {
-  connection: 'connectUser / disconnectUser, per-entitlement test users',
-  communityAccess:
-    'overrideCommunityAccess, trackCommunityAccess, access stream',
-  notSeenNotifications: 'not-seen count stream + forced refresh',
-  pushNotifications: 'push-tap deep link, replayed from a bundled payload',
-  customEvents: 'trackCustomEvent, with and without properties',
-  locale: 'overrideDefaultLocale',
-  theme: 'custom Octopus theme — colors, fonts, logo, insets',
-  createPost: 'prefilled create-post screen + post CTA',
-  initialScreen:
-    'openUI({ initialScreen }) — feed, post, group, profile, editor',
-  embeddedBack:
-    'showBackButton / navBarLeadingAction + onBackRequested, embedded and fullscreen',
-  reactions: 'setReaction — set / change / unreact',
-  profileFieldsLock: 'per-field lock: nickname / avatar / bio',
-  contentOptions: 'per-content-type options: pictures, polls',
-  termsAcceptance: 'terms acceptance modes + the consent sheet',
-  communityData: 'fetchCommunityData by profileId or clientUserId',
-  syncFollowGroups: 'batch follow / unfollow with per-action timestamps',
-  lifecycle: 'switchCommunity — re-target the SDK at another community',
-};
-
-/** Observable outcomes, separate from the API/capability labels in the list. */
-const SCENARIO_OUTCOMES: Record<ScenarioId, string> = {
-  connection:
-    'The connection state changes; the Community tab reflects the connected user and their access.',
-  communityAccess:
-    'The access state updates and the Community tab reflects whether access is granted.',
-  notSeenNotifications:
-    'The current unseen count in Result after a refresh or an incoming update.',
-  pushNotifications:
-    'The community opens at the post linked by the sample notification.',
-  customEvents:
-    'A debug console entry for each event sent; this call has no visible community UI.',
-  locale:
-    'Community labels and relative dates follow the selected language. Unsupported codes use the SDK fallback.',
-  theme:
-    'The Community tab uses the chosen colors, fonts and logo; the sample shell keeps its own palette.',
-  createPost:
-    'A post editor pre-filled with the selected text and attachments.',
-  initialScreen: 'The community opens directly at the selected destination.',
-  embeddedBack:
-    'The chosen back control appears; using it invokes the host callback or closes the fullscreen view.',
-  reactions:
-    'The selected reaction appears on the target post, or is removed when you unreact.',
-  profileFieldsLock:
-    'The chosen profile fields become editable or locked in the community profile editor.',
-  contentOptions:
-    'The community editor offers only the picture and poll options enabled for that content type.',
-  termsAcceptance:
-    'The community uses the selected consent mode when terms must be accepted.',
-  communityData:
-    'The fetched profile data in Result, with updates while observation is active.',
-  syncFollowGroups:
-    'The selected groups become followed or unfollowed in the Community tab.',
-  lifecycle: 'The Community tab switches to the newly selected demo community.',
-};
-
-/**
- * The binding calls each scenario drives, shown as monospace chips on the row and again at the
- * head of the detail.
- *
- * These are the package's own exported names, not prose: a chip is what a host developer
- * greps for after seeing the scenario work. Only the calls the scenario itself makes are
- * listed — the listeners `App` registers once at mount are Developer tools' business.
- */
-const SCENARIO_APIS: Record<ScenarioId, string[]> = {
-  connection: ['connectUser', 'disconnectUser'],
-  communityAccess: ['overrideCommunityAccess', 'trackCommunityAccess'],
-  notSeenNotifications: ['updateNotSeenNotificationsCount'],
-  pushNotifications: ['isOctopusNotification', 'openNotification'],
-  customEvents: ['trackCustomEvent'],
-  locale: ['overrideDefaultLocale'],
-  theme: ['initialize', 'setThemeMode'],
-  createPost: ['navigateToOctopusCreatePost'],
-  initialScreen: ['openUI'],
-  embeddedBack: ['OctopusUIView', 'openUI'],
-  reactions: ['setReaction'],
-  profileFieldsLock: ['debugOverrideProfileFieldsLock'],
-  contentOptions: ['debugOverrideContentOptions'],
-  termsAcceptance: ['debugOverrideTermsAcceptanceMode'],
-  communityData: ['fetchCommunityData', 'startObservingCommunityData'],
-  syncFollowGroups: ['syncFollowGroups'],
-  lifecycle: ['switchCommunity'],
-};
-
+import { groupSyncActions } from '../scenarios/groupSync';
+import {
+  SCENARIO_TITLES,
+  SCENARIO_SUBTITLES,
+  SCENARIO_OUTCOMES,
+  SCENARIO_APIS,
+  SCENARIO_SECTIONS,
+  matchesQuery,
+} from '../scenarios/catalog';
+import type { ScenarioId } from '../scenarios/catalog';
+import { CONSENT_TEXTS_PRESETS } from '../scenarios/consentTexts';
+export type { ScenarioId } from '../scenarios/catalog';
 /**
  * Scenarios whose effect is visible in the community itself, and which therefore offer the
  * "Verify in Community" step of the shared detail skeleton.
@@ -296,91 +198,13 @@ const VERIFIABLE_IN_COMMUNITY: ScenarioId[] = [
   'profileFieldsLock',
   'contentOptions',
   'termsAcceptance',
+  'forceNicknameChoice',
+  'consentTexts',
   'syncFollowGroups',
   // A switch lands on a different community's feed — the Community tab is where that is
   // actually observable, and the only way to tell a successful switch from a claimed one.
   'lifecycle',
 ];
-
-/** A collapsible group of the list — the shared six, in the shared order. */
-interface ScenarioSection {
-  /** Typed against the anchors, so a link can never name a section this list lacks. */
-  id: ScenarioSectionId;
-  title: string;
-  scenarios: ScenarioId[];
-}
-
-/**
- * The six sections the shared design gives the list, in order.
- *
- * The grouping is the point: fifteen flat rows made a reader scan the whole list to find the
- * one capability they came for. These sections are also the list ORDER — every scenario
- * belongs to exactly one of them, and a scenario named in none would simply not be reachable,
- * so adding a scenario means adding it here too.
- */
-const SCENARIO_SECTIONS: ScenarioSection[] = [
-  {
-    id: 'sso',
-    title: 'Sign-in & user',
-    scenarios: [
-      'connection',
-      'profileFieldsLock',
-      'termsAcceptance',
-      'communityData',
-    ],
-  },
-  {
-    id: 'community',
-    title: 'Community & groups',
-    scenarios: [
-      'communityAccess',
-      'createPost',
-      'reactions',
-      'contentOptions',
-      'syncFollowGroups',
-    ],
-  },
-  {
-    id: 'notifications',
-    title: 'Notifications',
-    scenarios: ['notSeenNotifications', 'pushNotifications'],
-  },
-  {
-    id: 'presentation',
-    title: 'Presentation modes',
-    scenarios: ['initialScreen', 'embeddedBack'],
-  },
-  {
-    id: 'appearance',
-    title: 'Theme & language',
-    scenarios: ['theme', 'locale'],
-  },
-  {
-    id: 'host',
-    title: 'Host callbacks & events',
-    scenarios: ['customEvents', 'lifecycle'],
-  },
-];
-
-/**
- * Which sections are open, remembered across visits to the tab.
- *
- * Module-level on purpose: the screen unmounts every time QA leaves the tab, so component
- * state would re-collapse the section they were working in on every round trip to Community.
- * Nothing here is persisted to disk — remembering across a process restart would be
- * remembering a session that no longer exists.
- */
-const DEFAULT_OPEN_SECTION_IDS: ReadonlySet<string> = new Set([
-  'sso',
-  'community',
-]);
-
-const expandedSections: Record<string, boolean> = Object.fromEntries(
-  SCENARIO_SECTIONS.map((section) => [
-    section.id,
-    DEFAULT_OPEN_SECTION_IDS.has(section.id),
-  ])
-);
 
 /**
  * The entitlement variants the Connection scenario walks, in preset order.
@@ -397,27 +221,6 @@ const ENTITLEMENT_VARIANTS: EntitlementVariant[] = [
   'moderator',
   'premiumModerator',
 ];
-
-/**
- * Case-insensitive substring match over a scenario's title, its capability line AND its API
- * names; an empty query matches everything.
- *
- * The API names are in scope because that is how a host developer arrives: they read
- * `setReaction` in the documentation and want the scenario that calls it, not the scenario
- * whose title happens to contain the word "reaction".
- */
-function matchesQuery(id: ScenarioId, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (q === '') return true;
-  const haystack = [
-    SCENARIO_TITLES[id],
-    SCENARIO_SUBTITLES[id],
-    ...SCENARIO_APIS[id],
-  ]
-    .join(' ')
-    .toLowerCase();
-  return haystack.includes(q);
-}
 
 /**
  * Zone 4 of the shared detail skeleton — placed by each card immediately above its
@@ -462,13 +265,9 @@ function ApiChips({
       {SCENARIO_APIS[id].map((api) => (
         <View
           key={api}
-          style={[
-            styles.apiChip,
-            { backgroundColor: chrome.tint },
-            chrome.badge,
-          ]}
+          style={[styles.apiChip, { backgroundColor: chrome.tint }]}
         >
-          <Text style={[styles.apiChipText, { color: chrome.accent }]}>
+          <Text style={[styles.apiChipText, { color: chrome.accentText }]}>
             {api}
           </Text>
         </View>
@@ -486,11 +285,8 @@ function ApiChips({
  */
 function ScenarioCard({
   id,
-  title,
   selected,
-  cardBg,
   chrome,
-  borderColor,
   textColor,
   children,
 }: {
@@ -508,15 +304,24 @@ function ScenarioCard({
   }, [selected, id]);
   if (selected !== id) return null;
   return (
-    <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
+    <View style={styles.detail}>
       {/* Zone 1 of the shared detail skeleton: what this calls, then what it does. Repeated
           from the list row on purpose — the row is gone by the time this is on screen. */}
-      <Text style={[styles.cardTitle, { color: textColor }]}>{title}</Text>
       <ApiChips id={id} chrome={chrome} />
-      <Text style={[styles.rowSubtitle, { color: chrome.textSecondary }]}>
-        {`You will see: ${SCENARIO_OUTCOMES[id]}`}
+      <Text style={[styles.rowSubtitle, { color: textColor }]}>
+        {SCENARIO_SUBTITLES[id]}
       </Text>
-      {children}
+      <ScenarioBlock title="Try it" isDark={chrome === chromeColors(true)}>
+        <ScenarioParameters
+          id={id}
+          isDark={chrome.screen === chromeColors(true).screen}
+        />
+        <Text
+          testID="scenario-you-will-see"
+          style={[styles.rowSubtitle, { color: chrome.textSecondary }]}
+        >{`You will see: ${SCENARIO_OUTCOMES[id]}`}</Text>
+        {children}
+      </ScenarioBlock>
     </View>
   );
 }
@@ -525,7 +330,6 @@ function ScenarioCard({
 function ScenarioRow({
   id,
   onOpen,
-  cardBg,
   chrome,
   borderColor,
   textColor,
@@ -542,21 +346,23 @@ function ScenarioRow({
   return (
     <TouchableOpacity
       testID={`scenarios-${id}-card`}
-      style={[styles.row, { backgroundColor: cardBg, borderColor }]}
+      style={[styles.row, { borderColor }]}
       onPress={() => onOpen(id)}
       activeOpacity={0.7}
       accessibilityRole="button"
     >
       <View style={styles.rowTextColumn}>
-        <Text style={[styles.cardTitle, { color: textColor }]}>
+        <Text style={[sampleTypography.scenarioTitle, { color: textColor }]}>
           {SCENARIO_TITLES[id]}
         </Text>
-        <Text style={[styles.rowSubtitle, { color: secondaryColor }]}>
+        <Text
+          numberOfLines={2}
+          style={[styles.rowSubtitle, { color: secondaryColor }]}
+        >
           {SCENARIO_SUBTITLES[id]}
         </Text>
         <ApiChips id={id} chrome={chrome} />
       </View>
-      <Text style={[styles.rowChevron, { color: secondaryColor }]}>›</Text>
     </TouchableOpacity>
   );
 }
@@ -677,7 +483,20 @@ const EMBEDDED_BACK_PRESENTATIONS: { key: string; label: string }[] = [
   { key: 'fullscreen', label: 'Fullscreen openUI' },
 ];
 
+export type ScenarioTopBarOwner = 'shell' | 'sample' | 'community';
+
 export interface ScenariosScreenProps {
+  launchActions?: React.ReactNode;
+  isInitialized: boolean;
+  effectiveApiKey: string;
+  isSdkInitializing: boolean;
+  onRestartSdk: () => void;
+  onStopSdk: () => Promise<void>;
+  onResetSdk: () => Promise<void>;
+  onOpenPresentation: (mode: CommunityPresentationMode) => void;
+  onUnifiedProfileChange: (enabled: boolean) => Promise<void>;
+  onTopBarChange?: (owner: ScenarioTopBarOwner) => void;
+  onOpenDebug: () => void;
   isDark: boolean;
   primaryColor: string;
   /**
@@ -685,18 +504,11 @@ export interface ScenariosScreenProps {
    * the `communityData` presets look up the member the Connection presets create.
    */
   clientUserId: string;
-  /** Whether the SDK runs in `sso` mode; `octopus` mode has no host user to connect. */
-  isSsoAuth: boolean;
   /**
    * Switches to the Community tab — the "Verify in Community" step of the shared detail
    * skeleton, offered by the scenarios whose effect is visible there.
    */
   onVerifyInCommunity: () => void;
-  /**
-   * Back to the Config screen at one section — the hints that name a setting only Config
-   * holds (the auth mode, the SSO user id) link straight to it. Applying restarts the SDK.
-   */
-  onOpenConfigSection: (section: ConfigSection) => void;
   /**
    * A section a link asked for (`scenarios/<section>`): the list shows, the search clears,
    * that section opens and scrolls into view. Applied on mount and on every new request.
@@ -716,6 +528,8 @@ export interface ScenariosScreenProps {
   ) => Promise<void>;
 
   // connection
+  connectionState: Octopus.OctopusConnectionState | null;
+  profileClientUserId: string | null;
   isMockUserConnected: boolean;
   isConnectingUser: boolean;
   /**
@@ -790,6 +604,7 @@ export interface ScenariosScreenProps {
   activeCustomApiKey: string | null;
   /** Bumped by every switch — keys the embedded preview, which the switch invalidated. */
   communitySessionNonce: number;
+  onOpenCommunityNotification?: typeof openNotification;
 }
 
 /**
@@ -804,18 +619,29 @@ export interface ScenariosScreenProps {
  * gate.
  */
 export function ScenariosScreen({
+  launchActions,
+  isInitialized,
+  effectiveApiKey,
+  onRestartSdk,
+  isSdkInitializing,
+  onStopSdk,
+  onResetSdk,
+  onOpenPresentation,
+  onUnifiedProfileChange,
+  onTopBarChange,
+  onOpenDebug,
   isDark,
   primaryColor,
   clientUserId,
-  isSsoAuth,
   onVerifyInCommunity,
-  onOpenConfigSection,
   sectionRequest,
   interceptUrls,
   interceptProfileTaps,
   exposeClientUserIdOverride,
   onExposeClientUserIdOverrideChange,
   isMockUserConnected,
+  connectionState,
+  profileClientUserId,
   isConnectingUser,
   onConnectUser,
   onDisconnectUser,
@@ -848,8 +674,14 @@ export function ScenariosScreen({
   activeApiKeyId,
   activeCustomApiKey,
   communitySessionNonce,
+  onOpenCommunityNotification = openNotification,
 }: ScenariosScreenProps) {
+  const liveConfig = useLiveCommunityConfig(
+    isInitialized,
+    communitySessionNonce
+  );
   const chrome = chromeColors(isDark);
+  const isVisible = useTabVisible();
   const textColor = chrome.text;
   const secondaryColor = chrome.textSecondary;
   const cardBg = chrome.surface;
@@ -1054,12 +886,12 @@ export function ScenariosScreen({
               'Sample payload could not be parsed (missing link_path)'
             );
           }
-          await openNotification(notification);
+          await onOpenCommunityNotification(notification);
           return notification;
         },
         (notification) => `Opened deep link: ${notification.linkPath}`
       ),
-    [runPushNotificationsPreset]
+    [runPushNotificationsPreset, onOpenCommunityNotification]
   );
 
   const localeResultText = [
@@ -1076,15 +908,13 @@ export function ScenariosScreen({
   // --- connection ---------------------------------------------------------------------------
   // Standing status only — the Result panel below now carries the outcome (success/error +
   // duration) of the last Run, so this line no longer repeats `connectionError`.
-  const connectionResultText = !isSsoAuth
-    ? 'The SDK runs in octopus mode — the SDK owns the login, so there is no host user to connect'
-    : hasNoUserToken
-      ? `No SSO token injected — set ${USER_TOKEN_ENV_VARS.none} in .env, see the example README`
-      : isConnectingUser
-        ? 'Connecting…'
-        : isMockUserConnected
-          ? 'Connected'
-          : 'Disconnected';
+  const connectionResultText = hasNoUserToken
+    ? `No SSO token injected — set ${USER_TOKEN_ENV_VARS.none} in .env, see the example README`
+    : isConnectingUser
+      ? 'Connecting…'
+      : isMockUserConnected
+        ? 'Connected'
+        : 'Disconnected';
 
   // --- theme ----------------------------------------------------------------------------------
   const onDefaultThemePreset = useCallback(() => {
@@ -1242,7 +1072,7 @@ export function ScenariosScreen({
           type: 'activity',
           member: { clientUserId },
         },
-        "Opened the SSO member's posts (by clientUserId)"
+        "Opened the SSO member's Octopus activity (by clientUserId)"
       ),
     [runInitialScreenPreset, clientUserId]
   );
@@ -1250,7 +1080,7 @@ export function ScenariosScreen({
     () =>
       runInitialScreenPreset(
         { type: 'activity', member: { profileId: sampleFixtures.user.other } },
-        `Opened the other member's posts (${sampleFixtures.user.other})`
+        `Opened the other member's Octopus activity (${sampleFixtures.user.other})`
       ),
     [runInitialScreenPreset]
   );
@@ -1528,7 +1358,7 @@ export function ScenariosScreen({
     [runContentOptions]
   );
   const [postDisabled, setPostDisabled] = useState<
-    ReadonlySet<'pictures' | 'polls'>
+    ReadonlySet<'pictures' | 'polls' | 'text'>
   >(new Set());
   const [commentDisabled, setCommentDisabled] = useState<
     ReadonlySet<'pictures'>
@@ -1567,6 +1397,7 @@ export function ScenariosScreen({
         post: {
           enablePictures: !postDisabled.has('pictures'),
           enablePolls: !postDisabled.has('polls'),
+          textRequired: !postDisabled.has('text'),
         },
         comment: { enablePictures: !commentDisabled.has('pictures') },
         reply: { enablePictures: !replyDisabled.has('pictures') },
@@ -1585,10 +1416,16 @@ export function ScenariosScreen({
   // together with other flags) falls back to the scenario's generic run id.
   const contentOptionsPresetTestID = (() => {
     if (clearContentOptions.has('clear')) return 'qa-run-contentOptions';
+    const postTextOptional = postDisabled.has('text');
     const postPictures = postDisabled.has('pictures');
     const postPolls = postDisabled.has('polls');
     const commentPictures = commentDisabled.has('pictures');
     const replyPictures = replyDisabled.has('pictures');
+    if (postTextOptional) {
+      return !postPictures && !postPolls && !commentPictures && !replyPictures
+        ? 'qa-preset-contentOptions-7'
+        : 'qa-run-contentOptions';
+    }
     if (!postPictures && !postPolls && !commentPictures && !replyPictures) {
       return 'qa-preset-contentOptions-1';
     }
@@ -1644,6 +1481,61 @@ export function ScenariosScreen({
     );
   }, [clearTermsAcceptance, termsAcceptanceMode, runTermsAcceptancePreset]);
 
+  const [forceNicknameChoiceRunState, runForceNicknameChoice] = useScenarioRun(
+    'forceNicknameChoice'
+  );
+  const [forceNicknameChoice, setForceNicknameChoice] = useState<
+    'on' | 'off' | 'clear'
+  >('on');
+  const onRunForceNicknameChoice = useCallback(
+    () =>
+      runForceNicknameChoice(
+        () =>
+          debugOverrideForceNicknameChoice(
+            forceNicknameChoice === 'clear'
+              ? null
+              : forceNicknameChoice === 'on'
+          ),
+        forceNicknameChoice === 'clear'
+          ? 'Override cleared'
+          : `Override applied: ${forceNicknameChoice}`
+      ),
+    [forceNicknameChoice, runForceNicknameChoice]
+  );
+
+  const [consentTextsRunState, runConsentTexts] =
+    useScenarioRun('consentTexts');
+  const [consentTextsPreset, setConsentTextsPreset] = useState('1');
+  const onRunConsentTexts = useCallback(
+    () =>
+      runConsentTexts(
+        async () => {
+          if (consentTextsPreset === 'clear') {
+            await debugOverrideTermsAcceptanceMode(null);
+            await debugOverrideConsentTexts(null);
+            return;
+          }
+          const preset = CONSENT_TEXTS_PRESETS.find(
+            (candidate) => candidate.id === consentTextsPreset
+          );
+          if (!preset) throw new Error('Choose a consent texts preset');
+          await debugOverrideTermsAcceptanceMode(preset.termsMode);
+          await debugOverrideConsentTexts(preset.texts);
+        },
+        consentTextsPreset === 'clear'
+          ? 'Texts and mode overrides cleared'
+          : 'Consent texts and mode applied'
+      ),
+    [consentTextsPreset, runConsentTexts]
+  );
+
+  const [manualProfileId, setManualProfileId] = useState(
+    sampleFixtures.user.other
+  );
+  const [manualCommunityDataRunState, runManualCommunityData] =
+    useScenarioRun('fetchCommunityData');
+  const [lifecycleControlState, runLifecycleControl] =
+    useScenarioRun('lifecycle');
   // --- communityData --------------------------------------------------------------------------
   const [communityDataRunState, runCommunityData] =
     useScenarioRun('communityData');
@@ -1654,29 +1546,28 @@ export function ScenariosScreen({
   const [observedCommunityData, setObservedCommunityData] =
     useState<OctopusCommunityData | null>(null);
   const [hasObservedUpdate, setHasObservedUpdate] = useState(false);
+  useEffect(() => {
+    setIsObserving(false);
+    setObservedCommunityData(null);
+    setHasObservedUpdate(false);
+    setLastProfileId(sampleFixtures.user.other);
+  }, [communitySessionNonce]);
   const [query, setQuery] = useState('');
-  // Seeded from the module-level record so the collapse state survives leaving the tab; the
-  // state itself only exists to re-render on a toggle.
-  const [sectionOpen, setSectionOpen] =
-    useState<Record<string, boolean>>(expandedSections);
+  const [sectionOpen, setSectionOpen] = useState<Record<string, boolean>>({});
   const toggleSection = useCallback((sectionId: string) => {
-    expandedSections[sectionId] = expandedSections[sectionId] === false;
-    setSectionOpen({ ...expandedSections });
+    setSectionOpen((previous) => ({
+      ...previous,
+      [sectionId]: !previous[sectionId],
+    }));
   }, []);
-  // A link names a section: back to the list, unfiltered — a search would hide the other
-  // sections and a leftover query could hide the one asked for — with that section open.
-  // Written to the module-level record too, like a toggle, so it stays open after the tab.
+  // Explicit anchors open their destination; searching reveals all matching rows.
   const requestedSection = sectionRequest?.target;
   const sectionRequestNonce = sectionRequest?.nonce;
   useEffect(() => {
     if (requestedSection === undefined) return;
     setSelected(null);
     setQuery('');
-    Object.assign(
-      expandedSections,
-      withSectionOpen(expandedSections, requestedSection)
-    );
-    setSectionOpen({ ...expandedSections });
+    setSectionOpen((previous) => withSectionOpen(previous, requestedSection));
   }, [requestedSection, sectionRequestNonce]);
   const { scrollRef: listScrollRef, onSectionLayout } =
     useAnchorScroll(sectionRequest);
@@ -1701,7 +1592,7 @@ export function ScenariosScreen({
         (data) => {
           if (data) {
             setLastProfileId(data.profileId);
-            return `Found — profileId=${data.profileId}, messageCount=${data.messageCount ?? '—'}`;
+            return `Found — profileId=${data.profileId}, messageCount=${data.messageCount ?? '—'}, gamification.level=${data.gamification?.level ?? 'null'}`;
           }
           return 'No community data for this clientUserId (unknown member)';
         }
@@ -1716,7 +1607,7 @@ export function ScenariosScreen({
       () => fetchCommunityData({ profileId: lastProfileId }),
       (data) =>
         data
-          ? `Found — profileId=${data.profileId}, messageCount=${data.messageCount ?? '—'}`
+          ? `Found — profileId=${data.profileId}, messageCount=${data.messageCount ?? '—'}, gamification.level=${data.gamification?.level ?? 'null'}`
           : 'No community data for this profileId (unknown member)'
     );
   }, [runCommunityData, lastProfileId]);
@@ -1770,10 +1661,7 @@ export function ScenariosScreen({
   const onOpenClientProfilePreset = useCallback(async () => {
     const memberId = lastProfileId
       ? { profileId: lastProfileId }
-      : isSsoAuth
-        ? { clientUserId }
-        : null;
-    if (!memberId) return;
+      : { clientUserId };
     await runCommunityData(
       async () => {
         try {
@@ -1783,7 +1671,9 @@ export function ScenariosScreen({
           );
           return data;
         } catch (e) {
-          const message = e instanceof Error ? e.message : String(e);
+          const message = redactApiKeys(
+            e instanceof Error ? e.message : String(e)
+          );
           setClientProfileView({ status: 'error', message });
           throw e;
         }
@@ -1793,12 +1683,23 @@ export function ScenariosScreen({
           ? `Client profile page — profileId=${data.profileId}`
           : 'Client profile page — member unknown'
     );
-  }, [lastProfileId, isSsoAuth, clientUserId, runCommunityData]);
+  }, [lastProfileId, clientUserId, runCommunityData]);
 
   const onCloseClientProfilePreset = useCallback(
     () => setClientProfileView(null),
     []
   );
+
+  // Distinguish sample headers from native community chrome for the shell and status band.
+  useEffect(() => {
+    onTopBarChange?.(
+      isEmbeddedBackRouteOpen
+        ? 'community'
+        : selected !== null && clientProfileView === null
+          ? 'sample'
+          : 'shell'
+    );
+  }, [isEmbeddedBackRouteOpen, selected, clientProfileView, onTopBarChange]);
 
   // Hardware Back pops the route on screen, in the order the routes below render: the embedded
   // host route, then the host-rendered profile, then the detail back to the list — each one
@@ -1820,44 +1721,7 @@ export function ScenariosScreen({
     return false;
   });
 
-  type CommunityDataAction =
-    | 'fetchByClientUserId'
-    | 'fetchByProfileId'
-    | 'startObserving'
-    | 'stopObserving'
-    | 'contractViolation'
-    | 'openClientProfile';
-  const [communityDataAction, setCommunityDataAction] =
-    useState<CommunityDataAction>('fetchByClientUserId');
-  const onRunCommunityData = useCallback(() => {
-    switch (communityDataAction) {
-      case 'fetchByClientUserId':
-        return onFetchByClientUserIdPreset();
-      case 'fetchByProfileId':
-        return onFetchByProfileIdPreset();
-      case 'startObserving':
-        return onStartObservingPreset();
-      case 'stopObserving':
-        return onStopObservingPreset();
-      case 'contractViolation':
-        return onContractViolationPreset();
-      case 'openClientProfile':
-        return onOpenClientProfilePreset();
-    }
-  }, [
-    communityDataAction,
-    onFetchByClientUserIdPreset,
-    onFetchByProfileIdPreset,
-    onStartObservingPreset,
-    onStopObservingPreset,
-    onContractViolationPreset,
-    onOpenClientProfilePreset,
-  ]);
-
   const communityDataInfo = [
-    isSsoAuth
-      ? null
-      : 'The SDK runs in octopus mode — it owns the user, so there is no clientUserId to look up',
     lastProfileId
       ? `Profile id (fixture or last lookup): ${lastProfileId}`
       : null,
@@ -1875,57 +1739,33 @@ export function ScenariosScreen({
     .join('\n');
 
   // --- syncFollowGroups -------------------------------------------------------------------
-  const [followedByGroupId, setFollowedByGroupId] = useState<
-    Record<string, boolean>
-  >(() => Object.fromEntries(SAMPLE_GROUP_IDS.map((id) => [id, false])));
   const [syncFollowGroupsRunState, runSyncFollowGroups] =
     useScenarioRun('syncFollowGroups');
-
   const runSyncFollowGroupsPreset = useCallback(
-    (followedFor: (groupId: string) => boolean) => {
-      const actions = SAMPLE_GROUP_IDS.map((groupId) => ({
-        groupId,
-        followed: followedFor(groupId),
-        actionDate: new Date(),
-      }));
-      return runSyncFollowGroups(
+    (mode: 'invertAll' | 'followAll' | 'unfollowAll') =>
+      runSyncFollowGroups(
         async () => {
-          const results = await syncFollowGroups(actions);
-          // No live groups list to read back (fetchGroups isn't bridged on RN), so this
-          // screen's own last-requested value IS its notion of "currently followed" —
-          // that is what the next "Invert all" tap flips, not a server-confirmed state.
-          setFollowedByGroupId((prev) => {
-            const next = { ...prev };
-            for (const action of actions)
-              next[action.groupId] = action.followed;
-            return next;
-          });
-          return results;
+          const groups = await Octopus.fetchGroups();
+          const actions = groupSyncActions(groups, mode);
+          if (actions.length === 0) throw new Error('No followable groups');
+          return syncFollowGroups(actions);
         },
-        (results) => {
-          const summary = results
-            .map((r) => `${r.groupId} → ${r.status}`)
-            .join(', ');
-          return `Synced ${actions.length} group(s): ${summary}`;
-        }
-      );
-    },
+        (results) => results.map((r) => `${r.groupId} → ${r.status}`).join(', ')
+      ),
     [runSyncFollowGroups]
   );
-
   const onInvertAllGroupsPreset = useCallback(
-    () => runSyncFollowGroupsPreset((groupId) => !followedByGroupId[groupId]),
-    [runSyncFollowGroupsPreset, followedByGroupId]
+    () => runSyncFollowGroupsPreset('invertAll'),
+    [runSyncFollowGroupsPreset]
   );
   const onFollowAllGroupsPreset = useCallback(
-    () => runSyncFollowGroupsPreset(() => true),
+    () => runSyncFollowGroupsPreset('followAll'),
     [runSyncFollowGroupsPreset]
   );
   const onUnfollowAllGroupsPreset = useCallback(
-    () => runSyncFollowGroupsPreset(() => false),
+    () => runSyncFollowGroupsPreset('unfollowAll'),
     [runSyncFollowGroupsPreset]
   );
-
   type SyncFollowGroupsAction = 'invertAll' | 'followAll' | 'unfollowAll';
   const [syncFollowGroupsAction, setSyncFollowGroupsAction] =
     useState<SyncFollowGroupsAction>('invertAll');
@@ -1945,12 +1785,15 @@ export function ScenariosScreen({
     onUnfollowAllGroupsPreset,
   ]);
 
-  const syncFollowGroupsInfo = `Sample groups: ${SAMPLE_GROUP_IDS.map(
-    (id) => `${id}=${followedByGroupId[id] ? 'followed' : 'unfollowed'}`
-  ).join(', ')}`;
+  const syncFollowGroupsInfo =
+    'Uses the current server follow state of every followable group.';
 
   // --- lifecycle ------------------------------------------------------------------------------
   const [lifecycleRunState, runLifecycle] = useScenarioRun('switchCommunity');
+  const lifecyclePending =
+    isSdkInitializing ||
+    lifecycleControlState.status === 'running' ||
+    lifecycleRunState.status === 'running';
   // One option per key set the build injected — the scenario enumerates NOTHING itself, so a
   // key added to the launcher's `OCTOPUS_NAMED_API_KEYS` table shows up here with no edit to
   // this file, and a build carrying none falls back to the free-text field below.
@@ -1980,14 +1823,17 @@ export function ScenariosScreen({
     );
   }, [activeApiKeyId]);
 
-  const { hasSwitchableSlot, resolvedSelectedId, switchTarget } =
-    resolveSwitchTarget(
-      injectedApiKeys,
-      activeApiKeyId,
-      switchTargetId,
-      switchCustomKey,
-      activeCustomApiKey
-    );
+  const { hasSwitchableSlot, resolvedSelectedId, switchTarget } = useMemo(
+    () =>
+      resolveSwitchTarget(
+        injectedApiKeys,
+        activeApiKeyId,
+        switchTargetId,
+        switchCustomKey,
+        activeCustomApiKey
+      ),
+    [activeApiKeyId, switchTargetId, switchCustomKey, activeCustomApiKey]
+  );
 
   const onRunSwitchCommunity = () => {
     if (switchTarget === null) return;
@@ -2035,12 +1881,12 @@ export function ScenariosScreen({
             testID="embeddedBack-host-back"
             label="Back to scenario"
             onPress={onCloseEmbeddedBackRoute}
-            primaryColor={primaryColor}
             isDark={isDark}
           />
         </View>
         <View style={styles.embeddedBackHost}>
           <Octopus.OctopusUIView
+            isVisible={isVisible}
             interceptUrls={interceptUrls}
             interceptProfileTaps={interceptProfileTaps}
             showBackButton={embeddedBackPreset.showBackButton}
@@ -2087,7 +1933,6 @@ export function ScenariosScreen({
               testID="client-profile-back"
               label="Back to scenarios"
               onPress={onCloseClientProfilePreset}
-              primaryColor={primaryColor}
               isDark={isDark}
             />
           </View>
@@ -2106,122 +1951,196 @@ export function ScenariosScreen({
     })).filter(({ matches }) => matches.length > 0);
     const total = sections.reduce((n, { matches }) => n + matches.length, 0);
     return (
-      <ScrollView
-        ref={listScrollRef}
-        style={[styles.container, { backgroundColor: chrome.screen }]}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator
-        keyboardShouldPersistTaps="handled"
-      >
-        <TextInput
-          testID="scenarios-search-input"
-          style={[
-            styles.searchInput,
-            { backgroundColor: cardBg, borderColor, color: textColor },
-          ]}
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search scenarios"
-          placeholderTextColor={chrome.textPlaceholder}
-          autoCorrect={false}
-          autoCapitalize="none"
-          clearButtonMode="while-editing"
-        />
-        {total === 0 ? (
-          <Text style={[styles.emptyState, { color: secondaryColor }]}>
-            No scenario matches “{query.trim()}”.
-          </Text>
-        ) : (
-          sections.map(({ section, matches }) => {
-            // A search opens whatever it matched: a hit hidden inside a collapsed section
-            // would read as "no result" to the person who typed the query.
-            const open = isSearching || sectionOpen[section.id] !== false;
-            return (
-              <View
-                key={section.id}
-                style={styles.section}
-                onLayout={onSectionLayout(section.id)}
-              >
-                <TouchableOpacity
-                  testID={`scenarios-section-${section.id}`}
-                  style={styles.sectionHeader}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                  onPress={() => toggleSection(section.id)}
-                  disabled={isSearching}
+      <View style={[styles.container, { backgroundColor: chrome.screen }]}>
+        <View style={[styles.searchArea, { borderColor: chrome.outline }]}>
+          <MaterialIcons name="search" size={24} color={secondaryColor} />
+          <TextInput
+            testID="scenarios-search-input"
+            style={[
+              styles.searchInput,
+              {
+                borderColor: chrome.outline,
+                color: textColor,
+              },
+            ]}
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search scenarios"
+            placeholderTextColor={chrome.textPlaceholder}
+            autoCorrect={false}
+            autoCapitalize="none"
+            clearButtonMode="while-editing"
+          />
+        </View>
+        <ScrollView
+          ref={listScrollRef}
+          style={[styles.container, { backgroundColor: chrome.screen }]}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator
+          keyboardShouldPersistTaps="handled"
+        >
+          {!isSearching && (
+            <>
+              {launchActions}
+              <LiveCommunityConfigCard
+                isDark={isDark}
+                apiKey={effectiveApiKey}
+                config={liveConfig}
+              />
+            </>
+          )}
+          {total === 0 ? (
+            <Text style={[styles.emptyState, { color: secondaryColor }]}>
+              {`No scenario matches "${query.trim()}".`}
+            </Text>
+          ) : (
+            sections.map(({ section, matches }) => {
+              // A search opens whatever it matched: a hit hidden inside a collapsed section
+              // would read as "no result" to the person who typed the query.
+              const open = isSearching || sectionOpen[section.id] === true;
+              const forceLoginSubtitle =
+                !isSearching && section.id === 'sso'
+                  ? liveConfig === null
+                    ? 'Force login: —'
+                    : liveConfig.forceLoginOnStrongActions
+                      ? 'Force login: Visitors must sign in before strong actions.'
+                      : 'Force login: Visitors can browse the community before signing in.'
+                  : undefined;
+              return (
+                <View
+                  key={section.id}
+                  style={styles.section}
+                  onLayout={onSectionLayout(section.id)}
                 >
-                  <Text style={[styles.sectionTitle, { color: textColor }]}>
-                    {section.title}
-                  </Text>
-                  <View style={styles.sectionCountRow}>
-                    <Text
-                      style={[styles.sectionCount, { color: secondaryColor }]}
-                    >
-                      {matches.length}
-                    </Text>
-                    {!isSearching && (
-                      <MaterialIcons
-                        name={open ? 'expand-less' : 'expand-more'}
-                        size={18}
-                        color={secondaryColor}
+                  <TouchableOpacity
+                    testID={`scenarios-section-${section.id}`}
+                    style={[
+                      styles.sectionHeader,
+                      { backgroundColor: `${chrome.surface3}66` },
+                    ]}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    onPress={() => toggleSection(section.id)}
+                    disabled={isSearching}
+                    accessibilityState={{
+                      expanded: open,
+                      disabled: isSearching,
+                    }}
+                    accessibilityLabel={[
+                      section.title,
+                      `${matches.length} scenarios`,
+                      forceLoginSubtitle,
+                    ]
+                      .filter(Boolean)
+                      .join(', ')}
+                    accessibilityHint={
+                      isSearching
+                        ? undefined
+                        : `${open ? 'Collapse' : 'Expand'} section`
+                    }
+                  >
+                    <View style={styles.sectionText}>
+                      <Text style={[styles.sectionTitle, { color: textColor }]}>
+                        {section.title}
+                      </Text>
+                      {forceLoginSubtitle !== undefined && (
+                        <Text
+                          style={[
+                            sampleTypography.caption,
+                            { color: secondaryColor },
+                          ]}
+                        >
+                          {forceLoginSubtitle}
+                        </Text>
+                      )}
+                    </View>
+                    <View style={styles.sectionCountRow}>
+                      <Text
+                        style={[
+                          styles.sectionCount,
+                          {
+                            color: textColor,
+                            backgroundColor: chrome.surface3,
+                            borderColor: chrome.outline,
+                          },
+                        ]}
+                      >
+                        {matches.length}
+                      </Text>
+                      {!isSearching && (
+                        <MaterialIcons
+                          name={open ? 'expand-less' : 'expand-more'}
+                          size={18}
+                          color={secondaryColor}
+                        />
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                  {open &&
+                    matches.map((id) => (
+                      <ScenarioRow
+                        key={id}
+                        id={id}
+                        onOpen={setSelected}
+                        cardBg={cardBg}
+                        chrome={chrome}
+                        borderColor={borderColor}
+                        textColor={textColor}
+                        secondaryColor={secondaryColor}
                       />
-                    )}
-                  </View>
-                </TouchableOpacity>
-                {open &&
-                  matches.map((id) => (
-                    <ScenarioRow
-                      key={id}
-                      id={id}
-                      onOpen={setSelected}
-                      cardBg={cardBg}
-                      chrome={chrome}
-                      borderColor={borderColor}
-                      textColor={textColor}
-                      secondaryColor={secondaryColor}
-                    />
-                  ))}
-                {/* After the section's cards, like Android's `extraContent`; a search
-                    lists matching scenarios only, so it hides this panel. */}
-                {open && section.id === 'sso' && !isSearching && (
-                  <UnifiedProfileSection
-                    isDark={isDark}
-                    override={exposeClientUserIdOverride}
-                    onOverrideChange={onExposeClientUserIdOverrideChange}
-                  />
-                )}
-              </View>
-            );
-          })
-        )}
-        <View style={styles.bottomSpacer} />
-      </ScrollView>
+                    ))}
+                </View>
+              );
+            })
+          )}
+          <View style={styles.bottomSpacer} />
+        </ScrollView>
+      </View>
     );
   }
 
   // The detail route: one scenario, opened from the list. Every `ScenarioCard` below renders
   // only when it is the open one, so the JSX stays a flat catalog of scenarios.
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: chrome.screen }]}
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator
-      keyboardShouldPersistTaps="handled"
+    <ScenarioDetailFrame
+      title={SCENARIO_TITLES[selected]}
+      isDark={isDark}
+      onBack={() => setSelected(null)}
+      onOpenDebug={onOpenDebug}
+      forceLogin={
+        SCENARIO_SECTIONS.find(
+          (section) => section.id === 'sso'
+        )?.scenarios.includes(selected)
+          ? liveConfig?.forceLoginOnStrongActions
+          : undefined
+      }
     >
-      <TouchableOpacity
-        testID="scenarios-back-button"
-        style={styles.backRow}
-        onPress={() => setSelected(null)}
-        activeOpacity={0.7}
-        accessibilityRole="button"
-      >
-        {/* `chrome.accent`, not the `primaryColor` control fill: Accent blue is never a
-            label or icon ink on a light background (3.50:1). */}
-        <MaterialIcons name="arrow-back" size={20} color={chrome.accent} />
-        <Text style={[styles.backLabel, { color: chrome.accent }]}>
-          Scenarios
-        </Text>
-      </TouchableOpacity>
+      {ADDITIONAL_SCENARIOS.includes(selected) && (
+        <ScenarioCard
+          id={selected}
+          title={SCENARIO_TITLES[selected]}
+          selected={selected}
+          cardBg={cardBg}
+          chrome={chrome}
+          borderColor={borderColor}
+          textColor={textColor}
+        >
+          <AdditionalScenarioPanel
+            id={selected}
+            isDark={isDark}
+            onOpenPresentation={onOpenPresentation}
+            onVerifyInCommunity={onVerifyInCommunity}
+            onUnifiedProfileChange={onUnifiedProfileChange}
+            unifiedProfileEnabled={
+              interceptProfileTaps && liveConfig?.exposeClientUserId === true
+            }
+            exposeClientUserIdOverride={exposeClientUserIdOverride}
+            onExposeClientUserIdOverrideChange={
+              onExposeClientUserIdOverrideChange
+            }
+          />
+        </ScenarioCard>
+      )}
       <ScenarioCard
         id="connection"
         title={SCENARIO_TITLES.connection}
@@ -2231,24 +2150,7 @@ export function ScenariosScreen({
         borderColor={borderColor}
         textColor={textColor}
       >
-        {!isSsoAuth && (
-          <>
-            <Text style={[styles.hint, { color: secondaryColor }]}>
-              The SDK was started in octopus mode: it owns the login, so the
-              host has no user to connect. Pick SSO in Config › Authentication
-              to run these presets — applying restarts the SDK.
-            </Text>
-            <PillButton
-              testID="scenarios-connection-open-config-auth"
-              label="Config › Authentication"
-              icon="arrow-forward"
-              variant="secondary"
-              isDark={isDark}
-              onPress={() => onOpenConfigSection('auth')}
-            />
-          </>
-        )}
-        {isSsoAuth && missingEntitlementVariants.length > 0 && (
+        {missingEntitlementVariants.length > 0 && (
           <Text style={[styles.hint, { color: secondaryColor }]}>
             {`No token injected for ${missingEntitlementVariants
               .map(
@@ -2260,13 +2162,39 @@ export function ScenariosScreen({
               )}. The sample signs nothing itself — each entitlement combination is a pre-baked token the build injects, so a preset without one stays disabled.`}
           </Text>
         )}
+        <KeyValueCard
+          title="Live state"
+          isDark={isDark}
+          rows={[
+            {
+              label: 'connectionState',
+              value:
+                connectionState == null
+                  ? '—'
+                  : !connectionState.connected
+                    ? 'Disconnected'
+                    : connectionState.isGuest
+                      ? 'Guest'
+                      : `Connected (${profileClientUserId ?? '—'})`,
+            },
+            {
+              label: 'isUserConnected',
+              value:
+                connectionState == null
+                  ? '—'
+                  : String(
+                      connectionState.connected && !connectionState.isGuest
+                    ),
+            },
+          ]}
+        />
         <TextParamField
           testID="qa-param-connection-userId"
           label="User id"
           value={connectionUserId}
           onChangeText={setConnectionUserId}
           isDark={isDark}
-          editable={isSsoAuth && !isMockUserConnected}
+          editable={!isMockUserConnected}
         />
         <TextParamField
           testID="qa-param-connection-nickname"
@@ -2274,7 +2202,7 @@ export function ScenariosScreen({
           value={connectionNickname}
           onChangeText={setConnectionNickname}
           isDark={isDark}
-          editable={isSsoAuth && !isMockUserConnected}
+          editable={!isMockUserConnected}
         />
         <SetParamField
           testID="qa-param-connection-entitlements"
@@ -2286,14 +2214,12 @@ export function ScenariosScreen({
             {
               key: 'premium',
               label: ENTITLEMENT_LABELS.premium,
-              disabled:
-                !isSsoAuth || !hasUserToken('premium') || isMockUserConnected,
+              disabled: !hasUserToken('premium') || isMockUserConnected,
             },
             {
               key: 'moderator',
               label: ENTITLEMENT_LABELS.moderator,
-              disabled:
-                !isSsoAuth || !hasUserToken('moderator') || isMockUserConnected,
+              disabled: !hasUserToken('moderator') || isMockUserConnected,
             },
           ]}
         />
@@ -2313,10 +2239,9 @@ export function ScenariosScreen({
           state={connectionRunState}
           isDark={isDark}
           onPress={onRunConnection}
-          idleLabel={isMockUserConnected ? 'Disconnect' : 'Connect'}
+          idleLabel="Execute"
           disabled={
-            !isSsoAuth ||
-            (isMockUserConnected ? false : !hasUserToken(connectionVariant))
+            isMockUserConnected ? false : !hasUserToken(connectionVariant)
           }
         />
       </ScenarioCard>
@@ -2440,6 +2365,30 @@ export function ScenariosScreen({
           isOctopusNotification → getOctopusNotification → openNotification path
           a real push tap takes.
         </Text>
+        <KeyValueCard
+          title="Live state"
+          isDark={isDark}
+          rows={[
+            {
+              label: 'Push registration',
+              value: pushToken ? 'Device token available' : 'No device token',
+            },
+          ]}
+        />
+        <PresetButton
+          testID="push-registration-button"
+          label="Register this device token"
+          isDark={isDark}
+          disabled={
+            !pushToken || pushNotificationsRunState.status === 'running'
+          }
+          onPress={() =>
+            runPushNotificationsPreset(
+              () => Octopus.registerPushNotificationToken(pushToken!),
+              'Device token registered'
+            )
+          }
+        />
         <ScenarioResultPanel
           testID="pushNotifications-result"
           isDark={isDark}
@@ -2617,8 +2566,6 @@ export function ScenariosScreen({
           fontOverrideMode={fontOverrideMode}
           onFontOverrideModeChange={onFontOverrideModeChange}
           isDark={isDark}
-          primaryColor={primaryColor}
-          onPrimaryColor={onPrimaryColor}
         />
         <ScenarioResultPanel
           testID="theme-result"
@@ -2696,24 +2643,6 @@ export function ScenariosScreen({
         borderColor={borderColor}
         textColor={textColor}
       >
-        {!isSsoAuth && (
-          <>
-            <Text style={[styles.hint, { color: secondaryColor }]}>
-              The presets using clientUserId need SSO auth mode — pick it in
-              Config › Authentication, with OCTOPUS_SSO_USER_ID /
-              OCTOPUS_SSO_USER_TOKEN set in .env. The other-member preset using
-              profileId works in either auth mode.
-            </Text>
-            <PillButton
-              testID="scenarios-initialscreen-open-config-auth"
-              label="Config › Authentication"
-              icon="arrow-forward"
-              variant="secondary"
-              isDark={isDark}
-              onPress={() => onOpenConfigSection('auth')}
-            />
-          </>
-        )}
         <EnumParamField
           testID="qa-param-initialScreen-target"
           label="Target"
@@ -2730,7 +2659,7 @@ export function ScenariosScreen({
             {
               key: 'activityByClientUserId',
               label: 'Member posts (by clientUserId)',
-              disabled: !isSsoAuth || clientUserId === '',
+              disabled: clientUserId === '',
             },
             {
               key: 'activityByProfileId',
@@ -2739,7 +2668,7 @@ export function ScenariosScreen({
             {
               key: 'profileByClientUserId',
               label: 'Member profile (by clientUserId)',
-              disabled: !isSsoAuth || clientUserId === '',
+              disabled: clientUserId === '',
             },
             { key: 'ownProfile', label: 'Own profile' },
           ]}
@@ -2800,6 +2729,7 @@ export function ScenariosScreen({
             */}
             <Octopus.OctopusUIView
               key={`${embeddedScreenKey}-${communitySessionNonce}`}
+              isVisible={isVisible}
               interceptUrls={interceptUrls}
               interceptProfileTaps={interceptProfileTaps}
               initialScreen={
@@ -3018,6 +2948,11 @@ export function ScenariosScreen({
         borderColor={borderColor}
         textColor={textColor}
       >
+        <Text style={[styles.hint, { color: secondaryColor }]}>
+          Text optional allows an image post, with or without a poll, to omit
+          text. A poll alone still needs text. The server still applies the
+          community's own content settings.
+        </Text>
         <SetParamField
           testID="qa-param-contentOptions-post"
           label="Post: disabled"
@@ -3027,6 +2962,7 @@ export function ScenariosScreen({
           options={[
             { key: 'pictures', label: 'Pictures' },
             { key: 'polls', label: 'Polls' },
+            { key: 'text', label: 'Text required' },
           ]}
         />
         <SetParamField
@@ -3074,6 +3010,118 @@ export function ScenariosScreen({
           state={contentOptionsRunState}
           isDark={isDark}
           onPress={onRunContentOptions}
+        />
+      </ScenarioCard>
+
+      <ScenarioCard
+        id="forceNicknameChoice"
+        title={SCENARIO_TITLES.forceNicknameChoice}
+        selected={selected}
+        cardBg={cardBg}
+        chrome={chrome}
+        borderColor={borderColor}
+        textColor={textColor}
+      >
+        <Text style={[styles.hint, { color: secondaryColor }]}>
+          Use Profile fields lock preset 1 to make the nickname editable, then a
+          fresh guest or an SSO member with an unconfirmed nickname that the
+          host does not manage. A locked, app-managed or already confirmed
+          nickname skips this screen. Start a first post, comment or reply in
+          Community to see it.
+        </Text>
+        <EnumParamField
+          testID="qa-param-forceNicknameChoice-enabled"
+          label="Nickname field"
+          typeName="Bool?"
+          isDark={isDark}
+          value={forceNicknameChoice}
+          onChange={(value) => {
+            if (value === 'on' || value === 'off' || value === 'clear')
+              setForceNicknameChoice(value);
+          }}
+          options={[
+            { key: 'on', label: 'On — the member types a nickname' },
+            { key: 'off', label: 'Off — the generated nickname is prefilled' },
+            { key: 'clear', label: 'Clear override (backend default)' },
+          ]}
+        />
+        <ScenarioResultPanel
+          testID="forceNicknameChoice-result"
+          isDark={isDark}
+          state={forceNicknameChoiceRunState}
+        />
+        <VerifyInCommunityButton
+          id="forceNicknameChoice"
+          isDark={isDark}
+          onPress={onVerifyInCommunity}
+        />
+        <ScenarioRunButton
+          testID={
+            forceNicknameChoice === 'on'
+              ? 'qa-preset-forceNicknameChoice-1'
+              : forceNicknameChoice === 'off'
+                ? 'qa-preset-forceNicknameChoice-2'
+                : 'qa-preset-forceNicknameChoice-clear'
+          }
+          state={forceNicknameChoiceRunState}
+          isDark={isDark}
+          onPress={onRunForceNicknameChoice}
+        />
+      </ScenarioCard>
+
+      <ScenarioCard
+        id="consentTexts"
+        title={SCENARIO_TITLES.consentTexts}
+        selected={selected}
+        cardBg={cardBg}
+        chrome={chrome}
+        borderColor={borderColor}
+        textColor={textColor}
+      >
+        <Text style={[styles.hint, { color: secondaryColor }]}>
+          Each preset applies the consent mode, then its wordings. Preset 7
+          leaves fields blank; preset 8 deliberately mismatches mode and texts
+          to show the SDK wording. Clear restores both backend texts and mode.
+          Start a first contribution to see the consent sheet or inline notice;
+          use a member who has not already accepted the terms. Markdown, links
+          and scrolling are native.
+        </Text>
+        <EnumParamField
+          testID="qa-param-consentTexts-preset"
+          label="Consent wordings"
+          typeName="ConsentTexts"
+          isDark={isDark}
+          value={consentTextsPreset}
+          onChange={setConsentTextsPreset}
+          options={[
+            ...CONSENT_TEXTS_PRESETS.map((preset) => ({
+              key: preset.id,
+              label: `Preset ${preset.id} · ${preset.label}`,
+            })),
+            { key: 'clear', label: 'Clear overrides (backend texts and mode)' },
+          ]}
+        />
+        <ScenarioResultPanel
+          testID="consentTexts-result"
+          isDark={isDark}
+          state={consentTextsRunState}
+        />
+        <VerifyInCommunityButton
+          id="consentTexts"
+          isDark={isDark}
+          onPress={onVerifyInCommunity}
+        />
+        <ScenarioRunButton
+          testID={
+            consentTextsPreset === 'clear'
+              ? 'qa-preset-consentTexts-clear'
+              : (CONSENT_TEXTS_PRESETS.find(
+                  (preset) => preset.id === consentTextsPreset
+                )?.testID ?? 'qa-run-consentTexts')
+          }
+          state={consentTextsRunState}
+          isDark={isDark}
+          onPress={onRunConsentTexts}
         />
       </ScenarioCard>
 
@@ -3152,50 +3200,76 @@ export function ScenariosScreen({
         borderColor={borderColor}
         textColor={textColor}
       >
-        <EnumParamField
-          testID="qa-param-communityData-action"
-          label="Action"
-          typeName="CommunityDataAction"
-          options={[
+        <Text style={[styles.hint, { color: secondaryColor }]}>
+          RN returns profileId, messageCount and gamification.level here.
+          Nickname and clientUserId are not available through this API.
+        </Text>
+        {[
+          [
+            'qa-preset-communityData-1',
+            'Preset 1 · Fetch by clientUserId',
+            onFetchByClientUserIdPreset,
+            false,
+          ],
+          [
+            'qa-preset-communityData-2',
+            'Preset 2 · Fetch by profileId (from the last lookup)',
+            onFetchByProfileIdPreset,
+            !lastProfileId,
+          ],
+          [
+            'qa-preset-communityData-3',
+            'Preset 3 · Observe by clientUserId (start)',
+            onStartObservingPreset,
+            false,
+          ],
+          [
+            'qa-preset-communityData-4',
+            'Preset 4 · Stop observing',
+            onStopObservingPreset,
+            !isObserving,
+          ],
+          [
+            'qa-preset-communityData-5',
+            'Preset 5 · Contract: both / neither id throws',
+            onContractViolationPreset,
+            false,
+          ],
+          [
+            'qa-preset-communityData-6',
+            'Preset 6 · Open the host-rendered profile page',
+            onOpenClientProfilePreset,
+            false,
+          ],
+        ].map(([testID, label, action, disabled]) => (
+          <PresetButton
+            key={testID as string}
+            testID={testID as string}
+            label={label as string}
+            onPress={action as () => void}
+            disabled={!!disabled || communityDataRunState.status === 'running'}
+            isDark={isDark}
+          />
+        ))}
+        <KeyValueCard
+          title="Live state"
+          isDark={isDark}
+          rows={[
+            { label: 'lookup clientUserId', value: clientUserId },
+            { label: 'observing', value: isObserving ? 'yes' : 'no' },
             {
-              key: 'fetchByClientUserId',
-              label: 'Fetch by clientUserId',
-              disabled: !isSsoAuth,
-              testID: 'qa-preset-communityData-1',
+              label: 'last value from',
+              value: hasObservedUpdate ? 'subscription' : '—',
             },
             {
-              key: 'fetchByProfileId',
-              label: 'Fetch by profileId (fixture or last lookup)',
-              disabled: !lastProfileId,
-              testID: 'qa-preset-communityData-2',
+              label: 'profileId',
+              value: observedCommunityData?.profileId ?? '—',
             },
             {
-              key: 'startObserving',
-              label: 'Observe by clientUserId (start)',
-              disabled: !isSsoAuth,
-              testID: 'qa-preset-communityData-3',
-            },
-            {
-              key: 'stopObserving',
-              label: 'Stop observing',
-              disabled: !isObserving,
-              testID: 'qa-preset-communityData-4',
-            },
-            {
-              key: 'contractViolation',
-              label: 'Contract: both / neither id throws',
-              testID: 'qa-preset-communityData-5',
-            },
-            {
-              key: 'openClientProfile',
-              label: 'Open the host-rendered profile page',
-              disabled: !lastProfileId && !isSsoAuth,
-              testID: 'qa-preset-communityData-6',
+              label: 'messageCount',
+              value: String(observedCommunityData?.messageCount ?? 'null'),
             },
           ]}
-          value={communityDataAction}
-          onChange={(key) => setCommunityDataAction(key as CommunityDataAction)}
-          isDark={isDark}
         />
         <ScenarioResultPanel
           testID="communityData-result"
@@ -3203,11 +3277,28 @@ export function ScenariosScreen({
           state={communityDataRunState}
           info={communityDataInfo}
         />
+        <TextParamField
+          testID="qa-param-communityData-userId"
+          label="User ID"
+          value={manualProfileId}
+          onChangeText={setManualProfileId}
+          isDark={isDark}
+        />
+        <ScenarioResultPanel
+          testID="communityData-manual-result"
+          isDark={isDark}
+          state={manualCommunityDataRunState}
+        />
         <ScenarioRunButton
           testID="qa-run-communityData"
-          state={communityDataRunState}
+          state={manualCommunityDataRunState}
           isDark={isDark}
-          onPress={onRunCommunityData}
+          onPress={() =>
+            runManualCommunityData(
+              () => fetchCommunityData({ profileId: manualProfileId }),
+              (data) => JSON.stringify(data)
+            )
+          }
         />
       </ScenarioCard>
 
@@ -3221,9 +3312,8 @@ export function ScenariosScreen({
         textColor={textColor}
       >
         <Text style={[styles.hint, { color: secondaryColor }]}>
-          Batches follow/unfollow across a bundled set of sample group ids (RN
-          has no fetchGroups binding yet). "Invert all" flips whatever this
-          screen last requested for each id, not a server-confirmed state.
+          Fetches every followable group before applying the batch. "Invert all"
+          flips each group’s current server follow state.
         </Text>
         <EnumParamField
           testID="qa-param-syncFollowGroups-action"
@@ -3287,6 +3377,32 @@ export function ScenariosScreen({
           being left, so the switch drops them and the embedded views are
           remounted on the new one.
         </Text>
+        <PresetButton
+          testID="qa-preset-lifecycle-2"
+          disabled={lifecyclePending}
+          label="Reset the SDK"
+          isDark={isDark}
+          onPress={() => runLifecycleControl(onResetSdk, 'SDK reset')}
+        />
+        <PresetButton
+          testID="qa-preset-lifecycle-3"
+          disabled={lifecyclePending}
+          label="Stop the SDK"
+          isDark={isDark}
+          onPress={() => runLifecycleControl(onStopSdk, 'SDK stopped')}
+        />
+        <PresetButton
+          testID="lifecycle-restart-button"
+          disabled={lifecyclePending}
+          label="Restart the SDK"
+          isDark={isDark}
+          onPress={onRestartSdk}
+        />
+        <ScenarioResultPanel
+          testID="lifecycle-control-result"
+          isDark={isDark}
+          state={lifecycleControlState}
+        />
         {hasSwitchableSlot ? (
           <EnumParamField
             testID="qa-param-lifecycle-target"
@@ -3312,6 +3428,7 @@ export function ScenariosScreen({
         ) : (
           <TextParamField
             testID="qa-param-lifecycle-apiKey"
+            secureTextEntry
             label="Target API key"
             value={switchCustomKey}
             onChangeText={setSwitchCustomKey}
@@ -3336,12 +3453,12 @@ export function ScenariosScreen({
           isDark={isDark}
           onPress={onRunSwitchCommunity}
           idleLabel="Switch community"
-          disabled={switchTarget === null}
+          disabled={switchTarget === null || lifecyclePending}
         />
       </ScenarioCard>
 
       <View style={styles.bottomSpacer} />
-    </ScrollView>
+    </ScenarioDetailFrame>
   );
 }
 
@@ -3349,17 +3466,26 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  searchInput: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
+  searchArea: {
+    marginHorizontal: 16,
+    marginTop: 16,
     marginBottom: 16,
-    minHeight: 44,
+    minHeight: 64,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+  },
+  searchInput: {
+    ...sampleTypography.body,
+    flex: 1,
+    minHeight: 64,
+    paddingVertical: 12,
   },
   emptyState: {
-    fontSize: 13,
+    ...sampleTypography.callout,
     marginBottom: 16,
   },
   section: {
@@ -3370,12 +3496,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 10,
+    paddingHorizontal: 12,
+    minHeight: 48,
+    borderRadius: 12,
+    gap: 8,
   },
+  sectionText: { flex: 1 },
   sectionTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
+    ...sampleTypography.callout,
+
+    fontWeight: '600',
+    flex: 1,
   },
   sectionCountRow: {
     flexDirection: 'row',
@@ -3383,109 +3514,101 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   sectionCount: {
-    fontSize: 12,
-    fontWeight: '600',
+    ...sampleTypography.caption,
+    borderWidth: 1,
+    borderRadius: sampleRadius.pill,
+    minWidth: 24,
+    textAlign: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
   },
   apiChips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
-    marginTop: 6,
+    marginTop: 0,
   },
   apiChip: {
-    borderRadius: 6,
+    borderRadius: sampleRadius.sm,
     paddingHorizontal: 7,
     paddingVertical: 3,
   },
   apiChipText: {
-    fontSize: 10,
-    fontWeight: '600',
-    fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }),
+    ...sampleTypography.caption,
+
+    fontFamily: sampleMonoFont,
   },
   verifyButton: {
     marginTop: 4,
     marginBottom: 8,
   },
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
+    paddingHorizontal: 16,
+    paddingTop: 0,
   },
   card: {
     padding: 12,
-    borderRadius: 12,
+    borderRadius: sampleRadius.lg,
     borderWidth: 1,
     marginBottom: 12,
   },
   cardTitle: {
-    fontSize: 15,
-    fontWeight: '600',
+    ...sampleTypography.buttonLabel,
+
     marginBottom: 8,
   },
   hint: {
-    fontSize: 12,
+    ...sampleTypography.caption,
     marginBottom: 8,
-    lineHeight: 16,
   },
-  presetRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
+  presetRow: { gap: 8, alignItems: 'stretch' },
+  detail: { gap: 12, marginBottom: 16 },
   embeddedPreviewHint: {
     marginTop: 12,
   },
   embeddedChip: {
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 14,
+    borderRadius: sampleRadius.md,
     borderWidth: 1,
   },
   embeddedChipDisabled: {
     opacity: 0.4,
   },
   embeddedChipText: {
-    fontSize: 12,
-    fontWeight: '600',
+    ...sampleTypography.caption,
   },
   embeddedPreviewHost: {
     height: 360,
     marginTop: 10,
-    borderRadius: 14,
+    borderRadius: sampleRadius.md,
     overflow: 'hidden',
   },
   embeddedBackBand: {
-    paddingHorizontal: 16,
+    paddingHorizontal: sampleSpacing.gutter,
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
     gap: 8,
   },
   embeddedBackBandText: {
-    fontSize: 12,
-    lineHeight: 16,
+    ...sampleTypography.caption,
   },
   embeddedBackHost: {
     flex: 1,
   },
   row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: sampleRadius.lg,
     borderWidth: 1,
-    marginBottom: 10,
-    gap: 8,
-    minHeight: 48,
+    marginTop: 8,
   },
-  rowTextColumn: {
-    flex: 1,
-  },
+  rowTextColumn: { gap: 4 },
   rowSubtitle: {
-    fontSize: 12,
-    lineHeight: 16,
+    ...sampleTypography.caption,
   },
   rowChevron: {
-    fontSize: 22,
-    lineHeight: 24,
+    ...sampleTypography.title2,
   },
   backRow: {
     flexDirection: 'row',
@@ -3496,8 +3619,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   backLabel: {
-    fontSize: 14,
-    fontWeight: '600',
+    ...sampleTypography.callout,
   },
   bottomSpacer: {
     height: 24,

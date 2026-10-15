@@ -48,7 +48,7 @@ export interface OctopusPostCreationIcons {
   /**
    * Adds an option to the poll.
    *
-   * **Android caveat (native 1.13.x):** the Android SDK does not read this slot, so an override
+   * **Android caveat (native 1.15.x):** the Android SDK does not read this slot, so an override
    * only shows on iOS.
    */
   addPollOption?: OctopusIconSource;
@@ -57,7 +57,7 @@ export interface OctopusPostCreationIcons {
   /**
    * Removes a poll option.
    *
-   * **Android caveat (native 1.13.x):** the Android SDK does not read this slot, so an override
+   * **Android caveat (native 1.15.x):** the Android SDK does not read this slot, so an override
    * only shows on iOS.
    */
   deletePollOption?: OctopusIconSource;
@@ -70,22 +70,34 @@ export interface OctopusPostIcons {
   /**
    * Illustration of an empty group feed.
    *
-   * Native 1.14 on iOS and Android renders {@link OctopusScreenStatesIcons.emptyContent}
-   * instead. This per-feature slot is accepted but has no visible effect with the native 1.14 SDKs.
+   * Native 1.15 on iOS and Android renders {@link OctopusScreenStatesIcons.emptyContent}
+   * instead. This per-feature slot is accepted but has no visible effect with the native 1.15 SDKs.
+   *
+   * @deprecated Use {@link OctopusScreenStatesIcons.emptyContent} via
+   * `theme.icons.screenStates.emptyContent` instead. This slot has no visible effect.
+   * It will be removed in a future major version together with the native SDKs.
    */
   emptyFeedInGroups?: OctopusIconSource;
   /**
    * Illustration of the current user's empty post feed on their profile.
    *
-   * Native 1.14 on iOS and Android renders {@link OctopusScreenStatesIcons.emptyContent}
-   * instead. This per-feature slot is accepted but has no visible effect with the native 1.14 SDKs.
+   * Native 1.15 on iOS and Android renders {@link OctopusScreenStatesIcons.emptyContent}
+   * instead. This per-feature slot is accepted but has no visible effect with the native 1.15 SDKs.
+   *
+   * @deprecated Use {@link OctopusScreenStatesIcons.emptyContent} via
+   * `theme.icons.screenStates.emptyContent` instead. This slot has no visible effect.
+   * It will be removed in a future major version together with the native SDKs.
    */
   emptyFeedInCurrentUserProfile?: OctopusIconSource;
   /**
    * Illustration of another user's empty post feed on their profile.
    *
-   * Native 1.14 on iOS and Android renders {@link OctopusScreenStatesIcons.emptyContent}
-   * instead. This per-feature slot is accepted but has no visible effect with the native 1.14 SDKs.
+   * Native 1.15 on iOS and Android renders {@link OctopusScreenStatesIcons.emptyContent}
+   * instead. This per-feature slot is accepted but has no visible effect with the native 1.15 SDKs.
+   *
+   * @deprecated Use {@link OctopusScreenStatesIcons.emptyContent} via
+   * `theme.icons.screenStates.emptyContent` instead. This slot has no visible effect.
+   * It will be removed in a future major version together with the native SDKs.
    */
   emptyFeedInOtherUserProfile?: OctopusIconSource;
   /** Shown in place of a post that is no longer available. */
@@ -93,21 +105,21 @@ export interface OctopusPostIcons {
   /**
    * Next to the comment count of a post.
    *
-   * **Not drawn at native 1.13.x:** declared by both native SDKs, but no screen reads it at
+   * **Not drawn at native 1.15.x:** declared by both native SDKs, but no screen reads it at
    * the current pins, so an override is accepted and has no visible effect yet.
    */
   commentCount?: OctopusIconSource;
   /**
    * Next to the view count of a post.
    *
-   * **Not drawn at native 1.13.x:** declared by both native SDKs, but no screen reads it at
+   * **Not drawn at native 1.15.x:** declared by both native SDKs, but no screen reads it at
    * the current pins, so an override is accepted and has no visible effect yet.
    */
   viewCount?: OctopusIconSource;
   /**
    * Opens the full reaction picker.
    *
-   * **Not drawn at native 1.13.x:** declared by both native SDKs, but no screen reads it at
+   * **Not drawn at native 1.15.x:** declared by both native SDKs, but no screen reads it at
    * the current pins, so an override is accepted and has no visible effect yet.
    */
   moreReactions?: OctopusIconSource;
@@ -136,8 +148,12 @@ export interface OctopusCommentIcons {
   /**
    * Illustration of a post without comments.
    *
-   * Native 1.14 on iOS and Android renders {@link OctopusScreenStatesIcons.emptyContent}
-   * instead. This per-feature slot is accepted but has no visible effect with the native 1.14 SDKs.
+   * Native 1.15 on iOS and Android renders {@link OctopusScreenStatesIcons.emptyContent}
+   * instead. This per-feature slot is accepted but has no visible effect with the native 1.15 SDKs.
+   *
+   * @deprecated Use {@link OctopusScreenStatesIcons.emptyContent} via
+   * `theme.icons.screenStates.emptyContent` instead. This slot has no visible effect.
+   * It will be removed in a future major version together with the native SDKs.
    */
   emptyFeed?: OctopusIconSource;
   /** Shown in place of a comment that is no longer available. */
@@ -238,7 +254,7 @@ export interface OctopusGamificationIcons {
   /**
    * Illustration at the top of the gamification rules.
    *
-   * **iOS caveat (native 1.13.x):** the iOS SDK ignores this slot and uses the `badge` image
+   * **iOS caveat (native 1.15.x):** the iOS SDK ignores this slot and uses the `badge` image
    * (or its own default) for the rules header, so an override here only shows on Android,
    * and a `badge` override also changes the rules header on iOS.
    */
@@ -247,15 +263,39 @@ export interface OctopusGamificationIcons {
 
 /** Icons of the settings screens. */
 export interface OctopusSettingsIcons {
-  /** The account entry. */
+  /**
+   * The account entry, removed from the native 1.15 SDKs with Octopus-owned authentication.
+   *
+   * @deprecated No longer displayed by either native SDK since 1.15: user accounts are managed
+   * by your app. This slot is accepted but has no visible effect. It will be removed in a future
+   * major version together with the native SDKs.
+   */
   account?: OctopusIconSource;
-  /** The help entry. */
+  /**
+   * The help entry.
+   *
+   * **Not drawn at native 1.15.x:** declared by both native SDKs, but no screen reads it at
+   * the current pins, so an override is accepted and has no visible effect.
+   */
   help?: OctopusIconSource;
   /** The information entry. */
   info?: OctopusIconSource;
-  /** The logout entry. */
+  /**
+   * The logout entry, removed from the native 1.15 SDKs with Octopus-owned authentication.
+   *
+   * @deprecated No longer displayed by either native SDK since 1.15: user accounts are managed
+   * by your app. This slot is accepted but has no visible effect. It will be removed in a future
+   * major version together with the native SDKs.
+   */
   logout?: OctopusIconSource;
-  /** The warning shown before an account deletion. */
+  /**
+   * The warning shown before an account deletion, removed from the native 1.15 SDKs with
+   * Octopus-owned authentication.
+   *
+   * @deprecated No longer displayed by either native SDK since 1.15: user accounts are managed
+   * by your app. This slot is accepted but has no visible effect. It will be removed in a future
+   * major version together with the native SDKs.
+   */
   deleteAccountWarning?: OctopusIconSource;
 }
 
@@ -270,13 +310,22 @@ export interface OctopusProfileIcons {
   /**
    * Illustration of an empty notification list.
    *
-   * Native 1.14 on iOS and Android renders {@link OctopusScreenStatesIcons.emptyNotifications}
-   * instead. This per-feature slot is accepted but has no visible effect with the native 1.14 SDKs.
+   * Native 1.15 on iOS and Android renders {@link OctopusScreenStatesIcons.emptyNotifications}
+   * instead. This per-feature slot is accepted but has no visible effect with the native 1.15 SDKs.
+   *
+   * @deprecated Use {@link OctopusScreenStatesIcons.emptyNotifications} via
+   * `theme.icons.screenStates.emptyNotifications` instead. This slot has no visible effect.
+   * It will be removed in a future major version together with the native SDKs.
    */
   emptyNotifications?: OctopusIconSource;
   /** Reports a profile. */
   report?: OctopusIconSource;
-  /** The avatar shown when the user is not connected (error state). */
+  /**
+   * The avatar shown when the user is not connected (error state).
+   *
+   * **Android caveat (native 1.15.x):** the Android SDK declares this slot but no screen reads
+   * it, so an override only shows on iOS.
+   */
   notConnected?: OctopusIconSource;
   /** Blocks a user. */
   blockUser?: OctopusIconSource;
@@ -289,7 +338,7 @@ export interface OctopusCommonIcons {
   /**
    * Checkbox pair. Absent: the native default pair.
    *
-   * **Android caveat (native 1.13.x):** the Android SDK draws the platform checkbox and does
+   * **Android caveat (native 1.15.x):** the Android SDK draws its own checkbox and does
    * not read this pair, so an override only shows on iOS.
    */
   checkbox?: OctopusIconOnOff;
@@ -304,6 +353,8 @@ export interface OctopusCommonIcons {
   activityButton?: OctopusIconSource;
   /** The navigation indicator (right arrow) of list cells. */
   listCellNavIndicator?: OctopusIconSource;
+  /** Button that clears a text field, including the nickname choice field. Absent: the native default. */
+  clearText?: OctopusIconSource;
 }
 
 /**
@@ -345,7 +396,7 @@ export interface OctopusScreenStatesIcons {
  * ```tsx
  * await initialize({
  *   apiKey: 'your-api-key',
- *   connectionMode: { type: 'octopus' },
+ *   connectionMode: { type: 'sso', appManagedFields: [] },
  *   theme: {
  *     icons: {
  *       content: {

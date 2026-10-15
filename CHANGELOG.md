@@ -1,5 +1,71 @@
 # @octopus-community/react-native
 
+## 1.15.0
+
+### Minor Changes
+
+- 8d2c85a: Bump the wrapped native Octopus SDKs to **1.15.0** on both platforms (Android from 1.14.2, iOS from 1.14.0), and add the native 1.15 debug configuration APIs: optional text for image posts, forced nickname choice and its config snapshot, the `common.clearText` icon override, and community consent wordings with their config snapshot.
+
+  Declare the React Native SDK family with the wrapper package version on initialization and community switches. Android community-data lookups now reject with `SERVER_ERROR` on native failures and resolve `null` only when a member is unknown, matching iOS. Correct the retired settings-screen event documentation and migration link, and document the reacting-members lookup deferral pending iOS support.
+
+- 8d2c85a: **Breaking — the `octopus` connection mode is removed.** Authentication is now SSO-only, following the native SDKs 1.15, which removed Octopus-owned authentication.
+
+  **Removed:** `connectionMode: { type: 'octopus', deepLink? }` from `initialize` and `switchCommunity`, together with Octopus-owned email Magic Link sign-in and the native account settings, account deletion and logout screens. `connectionMode` stays required and accepts only `{ type: 'sso', appManagedFields: [...] }`; a caller still passing the removed mode is rejected with `INITIALIZE_ERROR` or `SWITCH_COMMUNITY_ERROR`, without falling back to SSO.
+
+  To migrate, pass the SSO object, handle the host login callback, and call `connectUser` with a backend token provider registered through `addUserTokenRequestListener` or `useUserTokenProvider`. The example no longer offers an authentication-mode selector. Before/after code is in the 1.15.0 section of `MIGRATING.md`.
+
+### Patch Changes
+
+- 8d2c85a: Android: keep the 1.14 horizontal slide between SDK screens. Native Android 1.15 lets SDK screens
+  inherit the host `NavHost` transitions, and the bridge's `NavHost` sets none, so they would have
+  cross-faded instead of matching the iOS navigation push. No JavaScript or bridge API change.
+- 54de12d: Android: stop forwarding the deprecated `profile.emptyNotifications` icon to the native notifications icon group, where it had no visible effect. As on iOS, an empty notification list draws `screenStates.emptyNotifications`.
+- b4c20aa: Fix Android `OctopusUIView` crashing inside React Native modals and sheets when their window does not supply a ViewModelStoreOwner. Preserve owners provided by the host view tree and fall back to the host Activity for missing view-model and saved-state owners.
+- fd4035e: Keep the embedded Android community's navigation stack when React Native temporarily
+  detaches and re-attaches its native view, while pausing its system back handling during
+  detachment. Dispose the retained composition when React Native unmounts the view or the
+  host Activity is destroyed.
+- b5e3a2c: Added the iOS-only `appManagedAudioSession` initialization option (default `false`). Set it to `true` to let the host app own `AVAudioSession` configuration and activation during community video playback. Community switches, including after `stop()`, retain the value from the last successful initialization. Android ignores the option.
+- 69bbd25: Refresh the TSDoc caveats on icons and the activity screen for the native 1.14.x SDKs, note the platform decoder limits on inline HEIF/AVIF profile pictures in `connectUser`, and drop a `files` entry that pointed at a script that does not exist.
+- 8d2c85a: **Deprecated:** the `settings.account`, `settings.logout` and `settings.deleteAccountWarning` icon slots, matching both native SDKs 1.15. The screens that drew them were removed with Octopus-owned authentication, so they remain accepted for compatibility but have no visible effect on either platform; they will be removed in a future major version together with the native SDKs. The TSDoc caveats on the other icon slots are re-checked against the native 1.15.0 sources, and `settings.help`, which neither native 1.15 SDK draws, now says so.
+- 39c3c47: Deprecate the five legacy empty-state icon slots: `content.post.emptyFeedInGroups`,
+  `content.post.emptyFeedInCurrentUserProfile`, `content.post.emptyFeedInOtherUserProfile`,
+  `content.comment.emptyFeed` and `profile.emptyNotifications`. They remain accepted for
+  compatibility but have no visible effect on either platform. They will be removed in
+  a future major version together with the native SDKs. Use
+  `theme.icons.screenStates.emptyContent` for empty post and comment lists, and
+  `theme.icons.screenStates.emptyNotifications` for empty notification lists instead.
+- 87d188a: Persist the example app's Community presentation preference, preserve its navigation across tab switches and host callbacks, and route notification taps once after startup. Sample only.
+- 3d2b2f1: Allow the host Edit profile screen to edit nickname and bio as well as the avatar through `connectUser`, retaining previous host profile values when editing a single field. Host app integration can configure the SSO app-managed fields on restart, keeping only the avatar managed by default. Restart preserves the host connection when the managed fields are unchanged; changing them disconnects the user before applying the new set. The editor honors the requested field and keeps community-managed fields read-only with an explanation. Sample only.
+- 87d188a: Wait for the internal feedback sheet to finish closing before routing a notification tap in the example app. Sample only.
+- fca9ff3: The sample now answers the SDK's host callbacks with real host screens instead of routing through Settings: `loginRequired` opens a host "Sign in" screen (SSO connect, visible error, back to the community on success), `editUser` opens a host "Edit profile" screen that saves the avatar through `connectUser`, and `navigateToProfile` opens the host "Client profile" screen, now showing the known host account data. Back preserves the embedded Community tab or Scenarios preview; it reopens the fullscreen community only when fullscreen mode is selected and the callback came from outside the Scenarios preview, after a successful SDK close. Sample only.
+- 55e04f0: Document scene reconnection and inbound URL forwarding in the iOS example, and log scene setup failures instead of returning silently. Sample only.
+- beea32e: Adopt the UIScene life cycle in the iOS example app, which apps built with the iOS 27 SDK (Xcode 27) require. Sample only.
+- 555e717: Ship the A3 launcher icon on the example app: the Octopus app symbol with its three dots and the React logo, as Android vector layers with a themed monochrome layer, legacy and Play Store rasters, and an opaque iOS app icon. Sample only.
+- cc5df3e: Mask the API key wherever the example app shows, logs or copies it, and reflow its settings rows at large text sizes. Sample only.
+- e300275: The example app's Metro cache key now includes the native SDK pin files, so a pin bump invalidates the internal-feedback Babel transform that injects both pins into `index.js` when `OCTOPUS_INTERNAL_FEEDBACK=true`, and its Theme panel gains a `70pt` bottom-inset preset that sits above a home-indicator iPhone's safe area. Sample only.
+- 7f8289f: Align the Scenarios tab with the Android sample, add modal and sheet community containers, and expose the available bridge scenarios with outcome wording and live state. Sample only.
+- 1dc5c2b: Keep example API keys out of error panels and console diagnostics, cover non-JSON key formats, and register pasted keys only when starting an SDK session. Preserve error names, codes and stacks in redacted logs, distinguish key provenance from community labels, and disable autofill for key inputs. Sample only.
+- 2926623: Wait for iOS fullscreen dismissal, including any presented sheets, to complete before resolving `closeUI()`, so a host can present a React Native `Modal` immediately after `await closeUI()` without retrying. Concurrent close requests share the dismissal, including one already started by the SDK's back arrow. Android keeps its existing immediate resolution after requesting closure. Calls with no fullscreen UI keep their existing platform-specific result.
+- 8fc0bc6: Bump the wrapped Android Octopus SDK to **1.14.2** (iOS stays on 1.14.0). A fix-only patch: a
+  banned SSO user browsing as a guest now sees the ban before posting, commenting or opening a
+  profile; SSO profile sync no longer overwrites the nickname; SSO login no longer fails on an
+  avatar that cannot be encoded; concurrent `initialize()` / `stop()` calls are safe; and the
+  gamification rules sheet shows once. No JavaScript or bridge API change.
+- 1f1722e: Fix profile picture parsing on Android and iOS (#318). Trim surrounding whitespace before recognizing HTTP/HTTPS URLs case-insensitively. URLs require a host and URL-encoded paths. Accept canonical standard base64 with an optional image data URI prefix, missing padding or line breaks. URL-safe base64 is rejected; the bridge imposes no base64 size limit. Decoded base64 must be recognized by the platform image decoder on both platforms, rather than a fixed image-signature list. Android local files, drawables (including vectors) and assets remain supported when readable, with decoding delegated to the native SDK. iOS validates local and remote bytes with its image decoder as well.
+
+  Invalid picture syntax, undecodable base64 or missing/unreadable local inputs now reject `connectUser` with the existing `CONNECT_USER_ERROR` code before calling the native SDK, preserving the stored avatar. Android passes valid remote URLs directly to the native SDK without a bridge download. iOS still downloads remote bytes before connecting, and failed downloads, non-2xx HTTP responses or undecodable bytes reject with `CONNECT_USER_ERROR` before any avatar update. Android hosts must now handle a rejected connection for malformed picture inputs or unreadable local pictures, where Android previously kept the avatar silently. Empty and whitespace-only values still mean no picture. Android inline pictures use a content-hash cache URI, reused for identical data; a successful replacement removes the previous cached file.
+
+- 5f1372d: Fix retained Android `OctopusUIView` instances consuming system Back while hidden. Set `isVisible={false}` for an inactive tab or covered host screen to cap the view's lifecycle at `CREATED` without losing navigation history. Hiding a resumed view sends `ON_PAUSE`/`ON_STOP`: Back handlers stop intercepting, video pauses, and gamification marks the screen as hidden. Showing it again follows the host lifecycle, sending `ON_RESUME` when the host is resumed and rerunning screen resume-driven refreshes. The example forwards its tab visibility to the community view. The prop defaults to `true` and is a no-op on iOS.
+- cdfaaaa: Clarify the member activity screen, default colors and fonts for icons-only themes, the Android checkbox override caveat, and the embedded iOS keyboard threshold. Remove unused package file entries.
+- d6ff068: Clarify automatic version pull request creation and the lint/type checks performed by pre-commit hooks in the contributor guide.
+- cd8a781: Align the sample's shared controls, screen layouts and light/dark colour roles with the Android sample design system.
+- 3d937d7: Refresh the example app with a three-tab shell, shared accessible design tokens, and platform launcher icons. The published SDK API and native bridge are unchanged.
+- a0aa4cf: Add experimental iOS Swift Package Manager support for React Native 0.87 and later alongside the existing CocoaPods podspec. Both installation paths pin the same native Octopus SDK version.
+- 07ec7fa: Harden the loading of `theme.logo` and `theme.icons`. One slow or failing image no longer holds back the others: the logo is applied as soon as it loads instead of waiting for every icon, and a remote image that cannot be reached falls back to its default after a short timeout (connect and read timeouts on Android, request and resource timeouts on iOS) instead of blocking every override. On iOS, an icon or logo downloaded from a URL (a Metro dev server or any remote `http(s)` source) is now drawn at the pixel density of its image source, where it used to appear two to three times too large. `initialize()` sends that density to the native side as `theme.iconOverrideScales`.
+- af6bf9a: Document three platform gaps in the TSDoc and the theming guide: the iOS SDK does not read the `settings.account` / `settings.help` icon slots, the Android SDK never draws `profile.notConnected`, and on iOS a hardware keyboard can make an embedded `bottomSafeAreaInset` drop its band earlier than the value alone would suggest. Also note that a theme carrying only `icons` renders the SDK's default fonts. Documentation only, no behavior change.
+- ab30936: Restrict launcher-test secret-scan exemptions to known synthetic values so unrelated secrets in the same file remain detectable. Development tooling only.
+
 ## 1.14.0
 
 ### Minor Changes

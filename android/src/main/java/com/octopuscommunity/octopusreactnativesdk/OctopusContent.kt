@@ -39,6 +39,7 @@ import androidx.navigation.compose.rememberNavController
 import com.octopuscommunity.sdk.domain.model.CreatePostScreenInfo
 import com.octopuscommunity.sdk.ui.OctopusImagesDefaults
 import com.octopuscommunity.sdk.ui.OctopusTheme
+import com.octopuscommunity.sdk.ui.OctopusTransitionsDefaults
 import com.octopuscommunity.sdk.ui.OctopusTypography
 import com.octopuscommunity.sdk.ui.OctopusTypographyDefaults
 import com.octopuscommunity.sdk.ui.components.NavigationIconType
@@ -58,11 +59,9 @@ import com.octopuscommunity.sdk.ui.octopusComposables
 import com.octopuscommunity.sdk.ui.octopusDarkColorScheme
 import com.octopuscommunity.sdk.ui.octopusLightColorScheme
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
 
 // Cache for loaded images to avoid reloading on recomposition
@@ -178,22 +177,27 @@ internal fun OctopusContent(
     }
   }
 
-  // `theme.icons` overrides: loaded off the main thread, keyed on the (value-equal) source
-  // map so a recomposition never reloads them. Until they arrive — and for any override that
-  // fails to load — the native default icon is shown.
+  // `theme.icons` overrides: each one loads off the main thread on its own coroutine and joins
+  // the map as soon as it is ready, so one slow or failing icon never holds back the others
+  // (nor the logo, which has its own effect above). Keyed on the (value-equal) source map so a
+  // recomposition never reloads them. Until an icon arrives — and for any override that fails
+  // to load — the native default icon is shown. A remote load is bounded by connect/read
+  // timeouts and an overall deadline (see `fetchRemote`), so a hung host ends as a plain failure.
   var iconPainters by remember { mutableStateOf<Map<String, Painter>>(emptyMap()) }
 
   LaunchedEffect(themeConfig?.iconSources) {
     val sources = themeConfig?.iconSources
-    iconPainters = if (sources.isNullOrEmpty()) {
-      emptyMap()
-    } else {
+    iconPainters = emptyMap()
+    if (!sources.isNullOrEmpty()) {
       coroutineScope {
-        sources
-          .map { (path, uri) -> async { loadImageFromUri(uri, context)?.let { path to it } } }
-          .awaitAll()
-          .filterNotNull()
-          .toMap()
+        for ((path, uri) in sources) {
+          launch {
+            val painter = loadImageFromUri(uri, context) ?: return@launch
+            // Resumes on the effect's dispatcher (main), so this read-modify-write is never
+            // interleaved with another icon's.
+            iconPainters = iconPainters + (path to painter)
+          }
+        }
       }
     }
   }
@@ -410,6 +414,10 @@ internal fun OctopusContent(
       }
       octopusComposables(
         navController = navController,
+        // Since native 1.15 the SDK destinations inherit the host NavHost transitions, and this
+        // NavHost sets none (cross-fade). Keep the 1.14 horizontal slide, the Android match for
+        // the iOS navigation push.
+        transitions = OctopusTransitionsDefaults(),
         // Propagate the host bottom content padding to the SDK sub-screens too
         // (post/comment detail, create-post, …), not just the main feed above. The
         // embedded platform view consumes the system-bar insets, so without this the
@@ -629,16 +637,13 @@ private suspend fun loadImageFromUri(uri: String, context: Context): Painter? {
   }
 }
 
-private fun loadFromNetwork(url: String): Painter? {
-  return try {
-    URL(url).openStream().use { inputStream ->
-      val bitmap = BitmapFactory.decodeStream(inputStream)
-      bitmap?.let { BitmapPainter(it.asImageBitmap()) }
-    }
-  } catch (e: Exception) {
-    Log.w("OctopusActivity", "Failed to load image from network: $url", e)
-    null
+private suspend fun loadFromNetwork(url: String): Painter? {
+  // See `fetchRemote`: timeouts, an overall deadline, and a disconnect on cancellation.
+  val painter = fetchRemote(url) { inputStream ->
+    BitmapFactory.decodeStream(inputStream)?.let { BitmapPainter(it.asImageBitmap()) }
   }
+  if (painter == null) Log.w("OctopusActivity", "Failed to load image from network: $url")
+  return painter
 }
 
 private fun loadReactNativeAsset(assetName: String, context: Context): Painter? {

@@ -1,3 +1,4 @@
+import { sampleSize, sampleTypography } from '../theme/tokens';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialIcons } from '@react-native-vector-icons/material-icons/static';
@@ -133,19 +134,18 @@ const styles = StyleSheet.create({
   },
   message: {
     flex: 1,
-    fontSize: 14,
-    lineHeight: 20,
+    ...sampleTypography.callout,
+
     paddingVertical: 10,
   },
   action: {
-    minHeight: 40,
+    minHeight: sampleSize.touch,
     justifyContent: 'center',
     paddingHorizontal: 12,
     borderRadius: 4,
   },
   actionLabel: {
-    fontSize: 14,
-    fontWeight: '600',
+    ...sampleTypography.callout,
   },
   dismiss: {
     width: 40,

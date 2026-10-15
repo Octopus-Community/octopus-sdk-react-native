@@ -51,7 +51,7 @@ export interface OpenUIOptions {
 
   /**
    * The screen the UI opens on: the main feed (the default), a specific post
-   * or group (bridge mode), one member's posts (`activity`) or profile
+   * or group (bridge mode), one member's activity (`activity`) or profile
    * (`profile`), or the post editor (`createPost`). See
    * {@link OctopusInitialScreen} for each variant's contract.
    *
@@ -63,7 +63,7 @@ export interface OpenUIOptions {
    * // Open directly on a post (bridge mode)
    * await openUI({ initialScreen: { type: 'post', postId: 'post-1' } });
    *
-   * // Open one member's Octopus posts (Unified Profile)
+   * // Open one member's Octopus activity (Unified Profile)
    * await openUI({
    *   initialScreen: { type: 'activity', member: { clientUserId: 'user-42' } },
    * });
@@ -193,7 +193,7 @@ export interface OpenUIOptions {
  *   `addNavigateToProfileListener` instead of having the SDK open its own profile
  *   screens, `notification` to open directly on deep-linked content,
  *   `initialScreen` to open on a specific screen (a post, a group, one
- *   member's posts or profile, or the post editor), and `onBackRequested` to
+ *   member's activity or profile, or the post editor), and `onBackRequested` to
  *   be told when the user leaves the UI from its root screen.
  * @returns A promise that resolves when the UI has been opened.
  * @throws An error whose `code` is `OPEN_UI_ERROR` (as a promise rejection) when

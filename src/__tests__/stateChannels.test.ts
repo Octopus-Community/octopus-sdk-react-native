@@ -70,7 +70,7 @@ const emit = (event: string, payload: unknown): void => {
 
 const initializeParams = {
   apiKey: 'k',
-  connectionMode: { type: 'octopus' as const },
+  connectionMode: { type: 'sso' as const, appManagedFields: [] },
 };
 
 const wireGroup = (overrides: Record<string, unknown> = {}) => ({

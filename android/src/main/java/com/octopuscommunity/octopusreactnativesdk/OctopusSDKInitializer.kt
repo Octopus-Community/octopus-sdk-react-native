@@ -5,6 +5,8 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.ReadableType
 import com.octopuscommunity.sdk.ApiServer
+import com.octopuscommunity.sdk.InternalOctopusApi
+import com.octopuscommunity.sdk.SdkFamily
 import com.octopuscommunity.sdk.OctopusSDK
 import com.octopuscommunity.sdk.domain.model.ConnectionMode
 import android.graphics.Color
@@ -20,8 +22,6 @@ class OctopusSDKInitializer {
 
     try {
       val connectionMode = parseConnectionMode(options)
-      // Parity wave — lifecycle
-      val deepLinksBasePaths = parseDeepLinksBasePaths(options)
       val apiServer = parseApiServer(options)
 
       // Store theme configuration for later use in UI
@@ -35,11 +35,11 @@ class OctopusSDKInitializer {
       val topAppBarConfig = parseTopAppBarConfig(options)
       OctopusTopAppBarManager.setConfig(topAppBarConfig)
 
+      declareSdkFamily(options)
       OctopusSDK.initialize(
         context = context,
         apiKey = apiKey,
         connectionMode = connectionMode,
-        deepLinksBasePaths = deepLinksBasePaths,
         apiServer = apiServer
       )
       promise.resolve(null)
@@ -55,6 +55,14 @@ class OctopusSDKInitializer {
       promise.reject("INITIALIZE_ERROR", e.message ?: "Failed to initialize Octopus SDK", e)
       return false
     }
+  }
+
+  @OptIn(InternalOctopusApi::class)
+  fun declareSdkFamily(options: ReadableMap) {
+    val version = requireNotNull(options.getString("sdkVersion")) {
+      "Missing React Native SDK version"
+    }
+    OctopusSDK.setSdkFamily(SdkFamily.REACT_NATIVE, version)
   }
 
   fun parseThemeConfig(options: ReadableMap): OctopusThemeConfig? {
@@ -337,51 +345,23 @@ class OctopusSDKInitializer {
   }
 
   fun parseConnectionMode(options: ReadableMap): ConnectionMode {
-    val connectionModeMap = options.getMap("connectionMode")
-    return when (val connectionModeType = connectionModeMap?.getString("type")) {
-      "sso" -> {
-        ConnectionMode.SSO(
-          appManagedFields = ProfileFieldMapper.fromReactNativeArray(
-            if (connectionModeMap.hasKey("appManagedFields")) connectionModeMap.getArray("appManagedFields") else null
-          )
-        )
-      }
-
-      "octopus" -> {
-        // Parity wave — lifecycle: this used to return null here, relying on
-        // OctopusSDK.initialize()'s default parameter value for `connectionMode` — which is
-        // ConnectionMode.SSO(), NOT OctopusAuth. That silently put every "octopus" mode caller
-        // into SSO mode with an empty appManagedFields set. Construct the correct value
-        // explicitly instead.
-        ConnectionMode.OctopusAuth
-      }
-
-      else -> {
-        throw InvalidConnectionModeException("Invalid connection mode type: $connectionModeType")
-      }
+    val connectionModeMap = options.takeIf {
+      it.hasKey("connectionMode") && !it.isNull("connectionMode") &&
+        it.getType("connectionMode") == ReadableType.Map
+    }?.getMap("connectionMode")
+    val mode = connectionModeMap?.takeIf {
+      it.hasKey("type") && !it.isNull("type") && it.getType("type") == ReadableType.String
+    }?.getString("type")
+    if (mode != "sso") {
+      throw InvalidConnectionModeException(
+        "Octopus-owned authentication was removed. SSO is required (connectionMode.type must be 'sso')."
+      )
     }
-  }
-
-  /**
-   * Parity wave — lifecycle.
-   *
-   * Extracts the deep link base paths forwarded to native `initialize`/`switchCommunity` as
-   * `deepLinksBasePaths`. Only the octopus-managed connection mode carries a `deepLink` option
-   * on the TS side (`InitializeParams.connectionMode` / `SwitchCommunityParams.connectionMode`),
-   * used by the native SDK to build the magic-link confirmation redirect
-   * (`OctopusDeepLinks.octopusAppNavDeepLinks`). The single value maps onto the native
-   * `List<String>` parameter as its sole entry; `emptyList()` when absent, matching the native
-   * default.
-   */
-  fun parseDeepLinksBasePaths(options: ReadableMap): List<String> {
-    val connectionModeMap = options.getMap("connectionMode") ?: return emptyList()
-    if (connectionModeMap.getString("type") != "octopus") return emptyList()
-    val deepLink = if (connectionModeMap.hasKey("deepLink")) {
-      connectionModeMap.getString("deepLink")
-    } else {
-      null
-    }
-    return listOfNotNull(deepLink)
+    return ConnectionMode.SSO(
+      appManagedFields = ProfileFieldMapper.fromReactNativeArray(
+        connectionModeMap?.takeIf { it.hasKey("appManagedFields") }?.getArray("appManagedFields")
+      )
+    )
   }
 
   /**

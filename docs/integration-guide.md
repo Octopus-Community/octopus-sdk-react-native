@@ -29,22 +29,19 @@ modes, theming and versioning. For the full TypeScript surface, see the
 - **Batch follow/unfollow** — Sync many group follow actions in one round-trip ([`syncFollowGroups`](./api/functions/syncFollowGroups.md)). See [sync follow groups guide](./sync-follow-groups.md).
 - **Groups & entitlements** — List groups and follow/unfollow one at a time ([`fetchGroups`](./api/functions/fetchGroups.md), [`followGroup`](./api/functions/followGroup.md)/[`unfollowGroup`](./api/functions/unfollowGroup.md)); react to a gated group being tapped ([`setGroupAccessDeniedCallback`](./api/functions/setGroupAccessDeniedCallback.md)); force a refresh of the connected user's entitlements after your own purchase flow ([`refreshEntitlements`](./api/functions/refreshEntitlements.md)).
 
+### Native parity exceptions
+
+The React Native 1.15 API does not expose the lookup of members who reacted to content.
+Android provides `reactionsRepository.getReactions`, but the iOS SDK has no counterpart yet;
+this API is deferred until both native platforms support it.
+
 ## Initialization
 
 Initialize the SDK with your API key with [`initialize`](./api/functions/initialize.md).
 
-Choose whether your app or Octopus handles user authentication:
-
-### Octopus-handled authentication
-
-```ts
-import { initialize } from '@octopus-community/react-native';
-
-await initialize({
-  apiKey: 'YOUR_API_KEY',
-  connectionMode: { type: 'octopus' }
-});
-```
+Your app owns authentication through SSO. The required `connectionMode` object accepts only
+`{ type: 'sso', appManagedFields: [...] }`. Octopus-owned email authentication and its redirect
+option were removed; see [the migration guide](../MIGRATING.md#1150).
 
 ### Single Sign-On (SSO)
 
@@ -191,7 +188,7 @@ import { Image } from 'react-native';
 
 await initialize({
   apiKey: 'YOUR_API_KEY',
-  connectionMode: { type: 'octopus' },
+  connectionMode: { type: 'sso', appManagedFields: [] },
   theme: {
     colors: {
       primary: '#FF6B35',

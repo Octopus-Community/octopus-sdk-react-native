@@ -52,3 +52,21 @@ describe('fetchCommunityData', () => {
     expect(mockFetchCommunityData).not.toHaveBeenCalled();
   });
 });
+
+it.each([{ profileId: 'p1' }, { clientUserId: 'c1' }])(
+  'resolves null only for an unknown member (%o)',
+  async (memberId) => {
+    await expect(fetchCommunityData(memberId)).resolves.toBeNull();
+  }
+);
+
+it.each([{ profileId: 'p1' }, { clientUserId: 'c1' }])(
+  'preserves native lookup failures (%o)',
+  async (memberId) => {
+    const error = Object.assign(new Error('No network'), {
+      code: 'SERVER_ERROR',
+    });
+    mockFetchCommunityData.mockRejectedValue(error);
+    await expect(fetchCommunityData(memberId)).rejects.toBe(error);
+  }
+);
