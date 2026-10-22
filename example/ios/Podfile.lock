@@ -47,7 +47,7 @@ PODS:
   - OctopusCommunityUI (1.15.0):
     - OctopusCommunity (= 1.15.0)
     - OctopusCommunityCore (= 1.15.0)
-  - OctopusReactNativeSdk (1.14.0):
+  - OctopusReactNativeSdk (1.15.1):
     - boost
     - DoubleConversion
     - fast_float
@@ -2901,7 +2901,7 @@ SPEC CHECKSUMS:
   OctopusCommunityGrpcModels: 425c4fcabf61f14f41cef6ba13b4775005e22652
   OctopusCommunityRemoteClient: 0f345267d8efbd700010de2d4fec049fc03548e3
   OctopusCommunityUI: 5ec5bb5b728f36164553bba32a2f394120a0333e
-  OctopusReactNativeSdk: edd56d58d47189545458836e8cabaf384419b914
+  OctopusReactNativeSdk: 89d533df1b7fe7bc6bdf8b2100602b50243b0031
   RCT-Folly: 846fda9475e61ec7bcbf8a3fe81edfcaeb090669
   RCTDeprecation: c0ed3249a97243002615517dff789bf4666cf585
   RCTRequired: 58719f5124f9267b5f9649c08bf23d9aea845b23

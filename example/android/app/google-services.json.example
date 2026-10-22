@@ -1,1 +1,2 @@
-# Replace with your Firebase config — see docs/push-notifications-with-firebase.md
+# google-services.json is optional for local Android builds and required for push.
+# Download your Firebase config into this directory — see docs/push-notifications.md at the repo root.

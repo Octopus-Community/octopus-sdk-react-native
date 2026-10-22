@@ -21,7 +21,7 @@ export const OCTOPUS_BRAND = {
   darkBorderStrong: '#4A5F80',
   darkTrack: '#8093AB',
   darkSegmentTrack: '#22324C',
-  darkPressed: '#22324C',
+  darkPressed: '#2E405C',
   darkText: '#F2F5F9',
   darkBody: '#F2F5F9',
   darkSecondary: '#A3B0C2',
@@ -206,6 +206,7 @@ const LIGHT: ChromeColors = {
   onAccent: '#FFFFFF',
   control: OCTOPUS_BRAND.accent,
   onControl: OCTOPUS_BRAND.accentInk,
+  // Switch track needs a 3:1 boundary; the segment track is a lighter pill bed.
   track: '#747E8C',
   segmentTrack: OCTOPUS_BRAND.lightSegmentTrack,
   appBar: OCTOPUS_BRAND.lightBackground,
@@ -259,7 +260,7 @@ const DARK: ChromeColors = {
   onBadge: OCTOPUS_BRAND.darkBackground,
   text: OCTOPUS_BRAND.darkText,
   textSecondary: OCTOPUS_BRAND.darkSecondary,
-  textPlaceholder: OCTOPUS_BRAND.darkSecondary,
+  textPlaceholder: '#96A3B5',
   accent: '#1570D9',
   accentPressed: '#095FBF',
   onAccent: '#FFFFFF',
@@ -285,7 +286,7 @@ const DARK: ChromeColors = {
   warnBorder: '#8093AB',
   success: '#8FE0A8',
   successSurface: '#14301F',
-  hairline: 'rgba(255,255,255,0.08)',
+  hairline: OCTOPUS_BRAND.darkBorder,
   guestAccent: '#E2BD78',
   codeSurface: '#03060C',
   onCodeSurface: '#D7E3F2',
@@ -294,6 +295,7 @@ const DARK: ChromeColors = {
   snackbarAction: OCTOPUS_BRAND.accentDark,
 };
 
+// Return the module-level palettes so consumers share stable, memoized token objects.
 export function chromeColors(isDark: boolean): ChromeColors {
   return isDark ? DARK : LIGHT;
 }

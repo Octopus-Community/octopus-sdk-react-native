@@ -20,16 +20,9 @@ export default defineConfig([
     plugins: { prettier },
     rules: {
       'react/react-in-jsx-scope': 'off',
-      'prettier/prettier': [
-        'error',
-        {
-          quoteProps: 'consistent',
-          singleQuote: true,
-          tabWidth: 2,
-          trailingComma: 'es5',
-          useTabs: false,
-        },
-      ],
+      // Options come from the "prettier" block of package.json, which the
+      // plugin reads like Prettier itself does: one source for ESLint and editors.
+      'prettier/prettier': 'error',
     },
   },
   {

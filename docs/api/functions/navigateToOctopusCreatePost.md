@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.15.0**](../README.md)
+[**@octopus-community/react-native v1.15.1**](../README.md)
 
 ---
 
@@ -9,6 +9,12 @@
 > **navigateToOctopusCreatePost**(`prefilledPost?`): `Promise`\<`void`\>
 
 Opens the Octopus UI directly on the post-creation editor, optionally prefilled.
+The editor is the navigation root: cancelling (after confirming any discard) or
+publishing successfully closes the fullscreen UI instead of revealing the feed.
+
+To configure profile-tap interception, use
+`openUI({ initialScreen: { type: 'createPost', prefilledPost }, interceptProfileTaps: true })`.
+This shorthand accepts prefill fields only.
 
 ## Parameters
 

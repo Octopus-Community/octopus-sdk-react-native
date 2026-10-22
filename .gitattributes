@@ -1,3 +1,5 @@
 *.pbxproj -text
 # specific for windows script files
 *.bat text eol=crlf
+# typedoc output, regenerated and freshness-checked by CI (pr.yml)
+docs/api/** linguist-generated=true

@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.15.0**](../README.md)
+[**@octopus-community/react-native v1.15.1**](../README.md)
 
 ---
 
@@ -205,6 +205,11 @@ The fullscreen entry point has the same callback as an option —
 [OpenUIOptions.onBackRequested](OpenUIOptions.md#onbackrequested) — with one difference: there the SDK
 owns the container and closes it for you, so the callback is a
 notification rather than a request to dismiss.
+
+On Android, when the initial screen is the post editor
+(`{ type: 'createPost' }`), the editor is the root screen:
+cancelling, system back and a successful publish also call this callback,
+and your app should then dismiss the view.
 
 #### Returns
 

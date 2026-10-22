@@ -1,3 +1,4 @@
+import type { ScrollViewProps } from 'react-native';
 import {
   sampleRadius,
   sampleTypography,
@@ -495,6 +496,7 @@ export interface ScenariosScreenProps {
   onResetSdk: () => Promise<void>;
   onOpenPresentation: (mode: CommunityPresentationMode) => void;
   onUnifiedProfileChange: (enabled: boolean) => Promise<void>;
+  onScroll?: ScrollViewProps['onScroll'];
   onTopBarChange?: (owner: ScenarioTopBarOwner) => void;
   onOpenDebug: () => void;
   isDark: boolean;
@@ -629,6 +631,7 @@ export function ScenariosScreen({
   onOpenPresentation,
   onUnifiedProfileChange,
   onTopBarChange,
+  onScroll,
   onOpenDebug,
   isDark,
   primaryColor,
@@ -1974,6 +1977,8 @@ export function ScenariosScreen({
         </View>
         <ScrollView
           ref={listScrollRef}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
           style={[styles.container, { backgroundColor: chrome.screen }]}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator
@@ -2028,7 +2033,7 @@ export function ScenariosScreen({
                     }}
                     accessibilityLabel={[
                       section.title,
-                      `${matches.length} scenarios`,
+                      `${matches.length} ${matches.length === 1 ? 'scenario' : 'scenarios'}`,
                       forceLoginSubtitle,
                     ]
                       .filter(Boolean)

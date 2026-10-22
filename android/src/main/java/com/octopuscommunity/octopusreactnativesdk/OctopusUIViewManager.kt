@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.systemGestures
 import androidx.compose.foundation.layout.tappableElement
 import androidx.compose.foundation.layout.waterfall
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -35,12 +36,8 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.view.ViewCompat
 import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.ViewModelStoreOwner
-import androidx.lifecycle.findViewTreeViewModelStoreOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.lifecycle.setViewTreeLifecycleOwner
-import androidx.savedstate.SavedStateRegistryOwner
-import androidx.savedstate.findViewTreeSavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.ReactApplicationContext
@@ -66,6 +63,8 @@ class OctopusViewWrapper(context: Context) : FrameLayout(context) {
         // RN detach retains navigation state, but the view-owned lifecycle stops back
         // handlers while hidden. It is destroyed on RN drop or Activity destruction.
         setViewTreeLifecycleOwner(compositionLifecycleOwner)
+        setViewTreeViewModelStoreOwner(compositionLifecycleOwner)
+        setViewTreeSavedStateRegistryOwner(compositionLifecycleOwner)
         setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
     }
 
@@ -90,6 +89,10 @@ class OctopusViewWrapper(context: Context) : FrameLayout(context) {
     // wins. Kept as per-view state because two mounted <OctopusUIView>s can sit at different
     // mount points and therefore resolve to different values.
     val mountPointBottomInsetPx = mutableIntStateOf(0)
+
+    // Window-relative system insets are not automatically reduced by a React host header.
+    // Reserve only the top bar area this particular mount point still overlaps.
+    val mountPointTopInsetPx = mutableIntStateOf(0)
 
     // Portion of `imePadding()`'s keyboard-avoidance padding that over-counts for this specific
     // mount point — see OctopusBottomInsetResolver.resolveImeExcessPx and issue #167. Recomputed
@@ -122,11 +125,13 @@ class OctopusViewWrapper(context: Context) : FrameLayout(context) {
         // navigation-mode change (gesture <-> 3-button), neither of which necessarily changes
         // this view's own bounds on its own.
         ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
+            mountPointTopInsetPx.intValue = OctopusTopInsetResolver.resolveOverlapPx(view)
             mountPointBottomInsetPx.intValue = OctopusBottomInsetResolver.resolveOverlapPx(view)
             mountPointImeExcessPx.intValue = OctopusBottomInsetResolver.resolveImeExcessPx(view)
             insets
         }
         addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
+            mountPointTopInsetPx.intValue = OctopusTopInsetResolver.resolveOverlapPx(view)
             mountPointBottomInsetPx.intValue = OctopusBottomInsetResolver.resolveOverlapPx(view)
             mountPointImeExcessPx.intValue = OctopusBottomInsetResolver.resolveImeExcessPx(view)
         }
@@ -147,20 +152,8 @@ class OctopusViewWrapper(context: Context) : FrameLayout(context) {
         super.onAttachedToWindow()
         if (!isDropped) {
             val host = hostActivity()
-            // RN Modal uses a separate ComponentDialog tree without a ViewModelStoreOwner.
-            // Install owners before dispatch attaches ComposeView and starts its NavHost.
-            // Prefer the embedding tree (e.g. a fragment or dialog) when it supplies one;
-            // only missing owners fall back to the Activity. Keep our view-owned lifecycle.
-            composeView.setViewTreeViewModelStoreOwner(
-                findViewTreeViewModelStoreOwner() ?: checkNotNull(host as? ViewModelStoreOwner) {
-                    "OctopusUIView requires a host Activity with a ViewModelStoreOwner"
-                }
-            )
-            composeView.setViewTreeSavedStateRegistryOwner(
-                findViewTreeSavedStateRegistryOwner() ?: checkNotNull(host as? SavedStateRegistryOwner) {
-                    "OctopusUIView requires a host Activity with a SavedStateRegistryOwner"
-                }
-            )
+            // All composition owners belong to the React view, including in RN Modal's
+            // ComponentDialog tree. Only visibility/lifecycle transitions follow the Activity.
             compositionLifecycleOwner.attach(checkNotNull(host as? LifecycleOwner) {
                 "OctopusUIView requires a host Activity with a LifecycleOwner"
             }.lifecycle)
@@ -178,6 +171,8 @@ class OctopusViewWrapper(context: Context) : FrameLayout(context) {
                 MeasureSpec.makeMeasureSpec(measuredHeight, MeasureSpec.EXACTLY)
             )
             composeView.layout(0, 0, measuredWidth, measuredHeight)
+            ViewCompat.requestApplyInsets(this)
+            mountPointTopInsetPx.intValue = OctopusTopInsetResolver.resolveOverlapPx(this)
             mountPointBottomInsetPx.intValue = OctopusBottomInsetResolver.resolveOverlapPx(this)
             mountPointImeExcessPx.intValue = OctopusBottomInsetResolver.resolveImeExcessPx(this)
         }
@@ -190,6 +185,7 @@ class OctopusViewWrapper(context: Context) : FrameLayout(context) {
     }
 
     internal fun dropComposition() {
+        if (isDropped) return
         isDropped = true
         compositionLifecycleOwner.destroy()
         composeView.setViewCompositionStrategy(ViewCompositionStrategy.Default)
@@ -291,7 +287,10 @@ class OctopusUIViewManager(private val reactContext: ReactApplicationContext) :
                         )
                     }
                 }
-                // Consuming the system insets here is what makes the host's
+                // Apply the actual top overlap before consuming system insets: consuming
+                // statusBars alone suppresses the SDK's padding and leaves its bar under
+                // the status bar. Geometric overlap is zero below a host safe area/header.
+                // Keep bottom consumption separate: it makes the host's
                 // `ui.bottomSafeAreaInset` a *total* bottom padding on the embedded path:
                 // the SDK's own scaffold then sees no bottom inset, so the value it gets as
                 // `contentPadding` is the only bottom padding applied. The iOS bridge has to
@@ -309,6 +308,7 @@ class OctopusUIViewManager(private val reactContext: ReactApplicationContext) :
                 // the keyboard is hidden or this view already reaches that edge.
                 OctopusContent(
                     modifier = Modifier.fillMaxSize()
+                        .windowInsetsPadding(WindowInsets(top = wrapper.mountPointTopInsetPx.intValue))
                         .consumeWindowInsets(WindowInsets.statusBars)
                         .consumeWindowInsets(WindowInsets.navigationBars)
                         .consumeWindowInsets(WindowInsets.systemBars)

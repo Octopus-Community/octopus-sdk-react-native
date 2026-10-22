@@ -2,7 +2,10 @@ import { act, create } from 'react-test-renderer';
 import type { ReactTestRenderer } from 'react-test-renderer';
 import * as Octopus from '@octopus-community/react-native';
 import { Modal } from 'react-native';
-import { useHostScreens } from '../navigation/useHostScreens';
+import {
+  HOST_PRESENTATION_GRACE_MS,
+  useHostScreens,
+} from '../navigation/useHostScreens';
 import { HostScreenModal } from '../components/HostScreenModal';
 import { debugLog } from '../debug/debugLog';
 
@@ -58,11 +61,15 @@ function Harness({
 }
 
 beforeEach(() => {
+  jest.useFakeTimers();
   jest.clearAllMocks();
   jest.mocked(Octopus.closeUI).mockResolvedValue();
   debugLog.clear();
 });
-afterEach(() => act(() => tree.unmount()));
+afterEach(() => {
+  act(() => tree.unmount());
+  jest.useRealTimers();
+});
 
 it.each(['username', 'biography', 'profilePicture', null] as const)(
   'retains the requested edit field from the SDK (%s)',
@@ -330,11 +337,12 @@ it('retries a dropped iOS Modal presentation when no host is showing or closing'
   const login = jest.mocked(Octopus.addLoginRequiredListener).mock.calls[0]![0];
   await act(async () => login());
   const firstPresentation = route.presentationId;
-  // Native never delivered onShow: retry must remount the Modal despite the pending screen.
+  // Wait longer than the native animation before treating a missing onShow as dropped.
+  act(() => jest.advanceTimersByTime(HOST_PRESENTATION_GRACE_MS));
   await act(async () => login());
   expect(route.screen?.kind).toBe('signIn');
   expect(route.presentationId).toBeGreaterThan(firstPresentation);
-  expect(Octopus.closeUI).toHaveBeenCalledTimes(1);
+  expect(Octopus.closeUI).toHaveBeenCalledTimes(2);
   act(() => route.onShow());
   const shownPresentation = route.presentationId;
   await act(async () => login());
@@ -400,3 +408,62 @@ it('push waits for host dismissal and suppresses resume of the replaced SDK prev
   expect(finished).toBe(true);
   expect(resumeFullscreen).not.toHaveBeenCalled();
 });
+
+it('ignores duplicate callbacks during the Modal animation without changing its key or route', async () => {
+  act(() => {
+    tree = create(<Harness />);
+  });
+  const login = jest.mocked(Octopus.addLoginRequiredListener).mock.calls[0]![0];
+  await act(async () => login());
+  const firstPresentation = route.presentationId;
+  act(() => jest.advanceTimersByTime(HOST_PRESENTATION_GRACE_MS - 1));
+  await act(async () => {
+    login();
+    jest
+      .mocked(Octopus.addEditUserListener)
+      .mock.calls[0]![0]({ fieldToEdit: null });
+  });
+  expect(route.presentationId).toBe(firstPresentation);
+  expect(route.screen).toEqual({ kind: 'signIn' });
+  expect(Octopus.closeUI).toHaveBeenCalledTimes(1);
+  act(() => route.onShow());
+  act(() => route.close());
+  act(() => route.onDismiss());
+  await act(async () => login());
+  expect(route.presentationId).toBeGreaterThan(firstPresentation);
+});
+
+it.each([false, true])(
+  'retains fullscreen resume after either close attempt succeeds (retry succeeds=%s)',
+  async (retrySucceeds) => {
+    const closeUI = jest.mocked(Octopus.closeUI);
+    if (retrySucceeds)
+      closeUI.mockRejectedValueOnce(new Error('No UI is currently presented'));
+    else
+      closeUI
+        .mockResolvedValueOnce()
+        .mockRejectedValueOnce(new Error('No UI is currently presented'));
+    act(() => {
+      tree = create(<Harness />);
+    });
+    const login = jest.mocked(Octopus.addLoginRequiredListener).mock
+      .calls[0]![0];
+    await act(async () => login());
+    act(() => jest.advanceTimersByTime(HOST_PRESENTATION_GRACE_MS));
+    await act(async () => login());
+    expect(closeUI).toHaveBeenCalledTimes(2);
+    act(() => route.onShow());
+    act(() => route.close());
+    act(() => route.onDismiss());
+    // A rejected retry can mean the first close already dismissed the SDK fullscreen.
+    expect(resumeFullscreen).toHaveBeenCalledTimes(1);
+
+    // Dismissal consumes the intent; a later rejected close must not resume again.
+    closeUI.mockRejectedValueOnce(new Error('No UI is currently presented'));
+    await act(async () => login());
+    act(() => route.onShow());
+    act(() => route.close());
+    act(() => route.onDismiss());
+    expect(resumeFullscreen).toHaveBeenCalledTimes(1);
+  }
+);

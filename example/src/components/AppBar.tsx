@@ -10,6 +10,7 @@ export interface AppBarProps {
   onBack?: () => void;
   backTestID?: string;
   showPlatformBadge?: boolean;
+  collapsed?: boolean;
 }
 /** Explicit Android title roles, with a compact accessible platform badge. */
 export function AppBar({
@@ -20,8 +21,10 @@ export function AppBar({
   onBack,
   backTestID = 'app-bar-back',
   showPlatformBadge = true,
+  collapsed = false,
 }: AppBarProps) {
   const c = chromeColors(isDark);
+  const compact = size === 'small' || collapsed;
   return (
     <View testID="sample-app-bar" style={{ backgroundColor: c.header }}>
       <View style={styles.toolbar}>
@@ -36,7 +39,7 @@ export function AppBar({
             <MaterialIcons name="arrow-back" size={24} color={c.onAppBar} />
           </TouchableOpacity>
         )}
-        {size === 'small' ? (
+        {compact ? (
           <Text
             numberOfLines={3}
             style={[styles.smallTitle, { color: c.onAppBar }]}
@@ -70,7 +73,7 @@ export function AppBar({
           </View>
         )}
       </View>
-      {size !== 'small' && (
+      {!compact && (
         <View
           style={[styles.expanded, size === 'large' && styles.largeExpanded]}
         >

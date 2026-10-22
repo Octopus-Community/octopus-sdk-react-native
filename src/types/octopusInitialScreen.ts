@@ -110,6 +110,11 @@ export interface OctopusInitialScreenProfile {
  * The post editor as the initial screen, optionally prefilled with content
  * supplied by the host app.
  *
+ * The editor is the navigation root. Cancelling (after confirming any discard)
+ * or publishing successfully closes the fullscreen UI. In an Android embedded
+ * view, these actions fire `onBackRequested`; the host must dismiss its view.
+ * Android system back follows the same path as cancelling.
+ *
  * {@link navigateToOctopusCreatePost} is the ergonomic shorthand for this
  * case; both reject with the same {@link NavigateToOctopusCreatePostError}
  * codes when the prefill fails native validation.

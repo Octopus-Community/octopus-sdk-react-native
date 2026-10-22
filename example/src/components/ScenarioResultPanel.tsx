@@ -1,4 +1,4 @@
-import { ActivityIndicator, View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { chromeColors } from '../theme/branding';
 import { sampleTypography } from '../theme/tokens';
 import type { ScenarioRunState } from '../debug/useScenarioRun';
@@ -49,9 +49,8 @@ export function ScenarioResultPanel({
         <Text style={[sampleTypography.caption, { color: c.textSecondary }]}>
           Not run yet
         </Text>
-      ) : state.status === 'running' ? (
-        <ActivityIndicator size="small" color={c.textSecondary} />
-      ) : state.status === 'success' && isPresentation ? (
+      ) : state.status === 'running' ? null : state.status === 'success' &&
+        isPresentation ? (
         <Text style={[sampleTypography.caption, { color: c.text }]}>
           {state.message}
         </Text>

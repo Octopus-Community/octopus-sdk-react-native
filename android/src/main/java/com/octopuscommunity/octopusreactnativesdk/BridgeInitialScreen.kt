@@ -1,6 +1,27 @@
 package com.octopuscommunity.octopusreactnativesdk
 
 import android.util.Log
+import androidx.navigation.NavGraph
+import com.octopuscommunity.sdk.domain.model.CreatePostScreenInfo
+import com.octopuscommunity.sdk.ui.OctopusDestination
+
+internal const val BRIDGE_HOME_ROUTE = "OctopusHome"
+
+/** Selects the editor as the graph root, preserving the native SDK's prefill route arguments. */
+internal fun NavGraph.setBridgeInitialDestination(createPostInfo: CreatePostScreenInfo?) {
+  val post = createPostInfo?.prefilledPost
+  if (createPostInfo != null) {
+    setStartDestination(
+      OctopusDestination.CreatePost(
+        groupId = post?.topicId,
+        prefilledText = post?.text,
+        prefilledImageUri = post?.image?.toString(),
+        prefilledCustomActionLabel = post?.cta?.label,
+        prefilledCustomActionUrl = post?.cta?.url?.toString(),
+      )
+    )
+  }
+}
 
 /**
  * The decoded `initialScreen` payload carried from [OctopusUIController.openUI] to

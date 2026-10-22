@@ -153,6 +153,11 @@ export interface OctopusUIViewProps {
    * owns the container and closes it for you, so the callback is a
    * notification rather than a request to dismiss.
    *
+   * On Android, when the initial screen is the post editor
+   * (`{ type: 'createPost' }`), the editor is the root screen:
+   * cancelling, system back and a successful publish also call this callback,
+   * and your app should then dismiss the view.
+   *
    * @example
    * ```tsx
    * <OctopusUIView

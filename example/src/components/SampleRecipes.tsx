@@ -322,8 +322,8 @@ export function StatusBadge({
   const labels = {
     ready: 'Ready',
     running: 'Running…',
-    passed: '✓ Success',
-    failed: '✕ Error',
+    passed: 'Success',
+    failed: 'Error',
     blocked: 'Blocked',
     unavailable: 'Not available',
   };

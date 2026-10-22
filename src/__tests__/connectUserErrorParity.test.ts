@@ -598,6 +598,73 @@ const reaches = (
   return false;
 };
 
+/** Follow the task and request arguments through timer-storage helpers, allowing inlining. */
+const storesTimeoutTask = (
+  source: string,
+  body: string,
+  task: string,
+  request: string,
+  depth = 2
+): boolean => {
+  if (
+    new RegExp(
+      `\\bpendingTokenRequests\\s*\\[\\s*${request}\\s*\\]\\s*\\?\\s*\\.\\s*timeoutTask\\s*=\\s*${task}\\b`
+    ).test(body)
+  ) {
+    return true;
+  }
+  if (depth === 0) return false;
+  // These helpers receive the task and its request ID. Bind actual arguments to parameters
+  // rather than requiring the helper to use the caller's local names.
+  const calls =
+    /\b([a-z]\w*)\s*\(\s*(?:\w+\s*:\s*)?(\w+)\s*,\s*(?:\w+\s*:\s*)?(\w+)\s*\)/g;
+  for (const [, name, value, key] of body.matchAll(calls)) {
+    if (!name || value !== task || key !== request) continue;
+    const helper = findUniqueFunctionBody(source, name);
+    const signature = extractCallArgument(
+      lex(source, { blankLiterals: true }),
+      new RegExp(`\\bfunc\\s+${name}\\s*\\(`)
+    );
+    const parameters = [
+      ...(signature ?? '').matchAll(/(?:^|,)\s*(?:\w+\s+)?(\w+)\s*:/g),
+    ].map((match) => match[1]);
+    if (
+      helper !== null &&
+      parameters.length === 2 &&
+      storesTimeoutTask(
+        source,
+        helper,
+        parameters[0] as string,
+        parameters[1] as string,
+        depth - 1
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
+/** The bounded suspension must register its own continuation, not just mention its API. */
+const registersBoundedContinuation = (request: string): boolean => {
+  const bounded = extractTrailingBlock(
+    request,
+    HEADERS.androidTimeoutCall.pattern
+  );
+  if (bounded === null) return false;
+  const suspension = extractBody(
+    bounded,
+    /\bsuspendCancellableCoroutine\s*(?:<[^{}]+>)?\s*(?:\(\s*\))?\s*\{/
+  );
+  const continuation = suspension?.match(/^\s*(\w+)\s*->/)?.[1];
+  return (
+    continuation !== undefined &&
+    new RegExp(
+      `\\bpendingTokenRequests\\s*\\[[^\\]]+\\]\\s*=\\s*${continuation}\\b`
+    ).test(suspension as string)
+  );
+};
+
 const androidSource = readFile(ANDROID_AUTHENTICATOR);
 const iosSource = readFile(IOS_AUTHENTICATOR);
 const androidCodes = extractKotlinCodes(androidSource);
@@ -827,17 +894,21 @@ describe('the timeout is applied, not merely declared', () => {
     // `withTimeout(TOKEN_REQUEST_TIMEOUT_MS) { }` around an empty block, with the real
     // `suspendCancellableCoroutine` moved out after it, keeps every value assertion green while
     // the wait it was supposed to bound runs unbounded.
-    const bounded = extractTrailingBlock(
-      androidRequest ?? '',
-      HEADERS.androidTimeoutCall.pattern
-    );
-    expect(bounded).not.toBeNull();
-    expect(bounded).toContain('suspendCancellableCoroutine');
+    expect(registersBoundedContinuation(androidRequest ?? '')).toBe(true);
   });
 
   it('arms the iOS timer from the request that needs bounding', () => {
     // `failTokenRequestOnTimeout` can exist, reference the constant, and never be called.
     expect(iosRequest).toContain('failTokenRequestOnTimeout');
+  });
+
+  it('stores the armed iOS task on the request so answering it can cancel the timer', () => {
+    const timer = extractBody(iosSource, HEADERS.iosTimer.pattern);
+    const task = timer?.match(/\blet\s+(\w+)\s*=\s*Task\s*\{/)?.[1];
+    expect(task).toBeDefined();
+    expect(
+      storesTimeoutTask(iosSource, timer ?? '', task as string, 'requestId')
+    ).toBe(true);
   });
 
   it('makes the armed iOS timer actually elapse and claim its request', () => {
@@ -901,6 +972,82 @@ describe('the timeout is applied, not merely declared', () => {
   it('settles the requests still pending when the user disconnects', () => {
     expect(androidDisconnect).toContain('pendingTokenRequests');
     expect(iosDisconnect).toContain('takeAllPendingTokenRequests');
+  });
+});
+
+describe('timeout value flow extraction', () => {
+  it('follows a renamed iOS helper and its arguments, or an inlined assignment', () => {
+    const source = `
+      func record(_ timer: Task<Void, Never>, for key: String) -> Bool {
+        pendingTokenRequests[key]?.timeoutTask = timer
+        return true
+      }
+    `;
+    expect(storesTimeoutTask(source, 'record(job, for: id)', 'job', 'id')).toBe(
+      true
+    );
+    expect(
+      storesTimeoutTask(
+        '',
+        'pendingTokenRequests[id]?.timeoutTask = job',
+        'job',
+        'id'
+      )
+    ).toBe(true);
+  });
+
+  it('rejects an unattached iOS task, an unused helper, or the wrong argument', () => {
+    const source = `
+      func record(_ timer: Task<Void, Never>, for key: String) -> Bool {
+        pendingTokenRequests[key]?.timeoutTask = timer
+        return true
+      }
+    `;
+    for (const body of [
+      '',
+      'record(other, for: id)',
+      'record(job, for: other)',
+    ]) {
+      expect(storesTimeoutTask(source, body, 'job', 'id')).toBe(false);
+    }
+    expect(
+      storesTimeoutTask(
+        source.replace('timeoutTask = timer', 'timeoutTask = nil'),
+        'record(job, for: id)',
+        'job',
+        'id'
+      )
+    ).toBe(false);
+  });
+
+  it('accepts a renamed Android continuation registered inside the bound', () => {
+    expect(
+      registersBoundedContinuation(`
+        return withTimeout(TOKEN_REQUEST_TIMEOUT_MS) {
+          suspendCancellableCoroutine<String> { waiting ->
+            pendingTokenRequests[requestId] = waiting
+          }
+        }
+      `)
+    ).toBe(true);
+  });
+
+  it('rejects a decoy bounded suspension while the request is registered outside', () => {
+    for (const decoy of [
+      'waiting.resume(Unit)',
+      'pendingTokenRequests[id] = other',
+    ]) {
+      expect(
+        registersBoundedContinuation(`
+          withTimeout(TOKEN_REQUEST_TIMEOUT_MS) {
+            suspendCancellableCoroutine<Unit> { waiting -> ${decoy} }
+          }
+          return suspendCancellableCoroutine { continuation ->
+            pendingTokenRequests[id] = continuation
+          }
+        `)
+      ).toBe(false);
+    }
   });
 });
 

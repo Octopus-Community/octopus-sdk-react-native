@@ -3,6 +3,12 @@ import type { OctopusPrefilledPost } from './types/octopusPrefilledPost';
 
 /**
  * Opens the Octopus UI directly on the post-creation editor, optionally prefilled.
+ * The editor is the navigation root: cancelling (after confirming any discard) or
+ * publishing successfully closes the fullscreen UI instead of revealing the feed.
+ *
+ * To configure profile-tap interception, use
+ * `openUI({ initialScreen: { type: 'createPost', prefilledPost }, interceptProfileTaps: true })`.
+ * This shorthand accepts prefill fields only.
  *
  * @param prefilledPost - Fields to prefill the editor with. Omit for a blank draft.
  * @returns A promise that resolves once the UI has been opened.

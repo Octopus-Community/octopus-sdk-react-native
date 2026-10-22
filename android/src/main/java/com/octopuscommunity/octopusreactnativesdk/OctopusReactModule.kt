@@ -609,6 +609,10 @@ class OctopusReactModule(reactContext: ReactApplicationContext) :
     try {
       val intent = Intent(reactApplicationContext, OctopusActivity::class.java)
       intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      val interceptProfileTaps = options?.hasKey("interceptProfileTaps") == true &&
+        options.getBoolean("interceptProfileTaps")
+      intent.putExtra(OctopusActivity.EXTRA_INTERCEPT_PROFILE_TAPS, interceptProfileTaps)
+      intent.putExtra(OctopusActivity.EXTRA_INITIAL_SCREEN_TYPE, "createPost")
       text?.let { intent.putExtra(OctopusActivity.EXTRA_CREATE_POST_TEXT, it) }
       imageUri?.let { intent.putExtra(OctopusActivity.EXTRA_CREATE_POST_IMAGE_URI, it) }
       topicId?.let { intent.putExtra(OctopusActivity.EXTRA_CREATE_POST_TOPIC_ID, it) }

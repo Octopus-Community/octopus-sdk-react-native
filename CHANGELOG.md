@@ -1,5 +1,22 @@
 # @octopus-community/react-native
 
+## 1.15.1
+
+### Patch Changes
+
+- 9f6ec35: Document how to intercept profile taps when the post editor is the first screen: `openUI({ initialScreen: { type: 'createPost' }, interceptProfileTaps: true })`. The `navigateToOctopusCreatePost()` shorthand takes no interception option.
+- 9f6ec35: Make an initial Android post editor the navigation root in fullscreen and embedded views. Cancelling, pressing system back, or publishing successfully now leaves through the root back callback instead of revealing the feed. Also open a blank editor when `navigateToOctopusCreatePost()` is called without prefill.
+- 38ac695: Fix Android embedded content overlapping the status bar, keeping its close button accessible without host padding. Apply only the top system-bar area that overlaps the view, so existing host safe-area padding is not added twice.
+- 38ac695: Fix an Android embedded view crash when returning from a host screen. Keep embedded navigation and ViewModels alive across temporary detachment, and release them when React removes the view.
+- b56eeee: Read the Prettier options in ESLint from `package.json` instead of a duplicated copy in `eslint.config.mjs`. Development tooling only.
+- 258bbed: Enable the Gradle build cache in the example's Android build, so unchanged tasks are restored instead of re-run. Sample only.
+- 1dc8004: Remove two unused example components (`ConfigSummaryCard`, `ServerStateCard`) and the example's unused `jest.config.js`; the root Jest config already runs the example's tests. Sample only.
+- 56cf453: Improve example navigation, presentation recovery, accessibility, and dark theme controls. Sample only.
+- 85fb0d5: Mark the generated `docs/api/` reference as `linguist-generated` so GitHub collapses it in diffs. Development tooling only.
+- 4f4f98f: Add `scripts/bumpNativePins.mjs`, which moves the native SDK pins (Gradle property, podspec, Swift package manifest, README badges and table) in one step and refuses a malformed version or a broken `MAJOR.MINOR` lockstep without writing anything. Development tooling only.
+- e353afb: Development tooling only.
+- 72036ca: Let CI skip an unchanged native build of the example: write `google-services.json` before the turbo cache probe so it stays a hashed build input, and leave the runner-specific `.xcode.env.local` out of the iOS hash. CI only.
+
 ## 1.15.0
 
 ### Minor Changes

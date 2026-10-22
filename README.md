@@ -120,6 +120,13 @@ Initialization also accepts optional `theme`, `ui`, `topAppBar`, `apiServer`, an
 to your app during community video playback. Community switches, including after `stop()`,
 retain the value from the last successful `initialize()` call.
 
+To open the post editor with profile-tap interception, use
+`openUI({ initialScreen: { type: 'createPost' }, interceptProfileTaps: true })`.
+`navigateToOctopusCreatePost(prefilledPost?)` accepts prefill fields only. An initial editor
+is the navigation root: cancelling (after confirming any discard) or publishing successfully
+closes the fullscreen UI. On Android, system back follows the cancel path; in an embedded
+`OctopusUIView`, these actions fire `onBackRequested` so the host can dismiss its own view.
+
 ## Retaining an embedded view in a tab
 
 On Android, pass `isVisible={false}` to an `OctopusUIView` while its tab is inactive

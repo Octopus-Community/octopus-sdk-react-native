@@ -23,6 +23,9 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.findViewTreeViewModelStoreOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.findViewTreeSavedStateRegistryOwner
@@ -41,6 +44,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -58,6 +62,12 @@ import org.robolectric.annotation.LooperMode
 @LooperMode(LooperMode.Mode.PAUSED)
 @OptIn(InternalComposeUiApi::class)
 class OctopusUIViewLifecycleTest {
+    class ScopedViewModel : ViewModel() {
+        var clearCount = 0
+        override fun onCleared() { clearCount += 1 }
+    }
+    class SavedStateViewModel(val handle: SavedStateHandle) : ViewModel()
+
     private val frameClock = BroadcastFrameClock()
     private var frameTimeNanos = 0L
     private lateinit var activityController: ActivityController<ComponentActivity>
@@ -390,6 +400,86 @@ class OctopusUIViewLifecycleTest {
     }
 
     @Test
+    fun `clearing a detached host store preserves embedded viewmodels and navigation`() {
+        val host = object : ViewModelStoreOwner {
+            override val viewModelStore = ViewModelStore()
+        }
+        parent.setViewTreeViewModelStoreOwner(host)
+        attach()
+        navController.navigate("detail")
+        settleComposition()
+        val originalController = navController
+        val entry = navController.getBackStackEntry("detail")
+        val model = ViewModelProvider(entry)[ScopedViewModel::class.java]
+        val savedState = entry.savedStateHandle
+        savedState["draft"] = "retained"
+
+        repeat(2) {
+            parent.removeView(wrapper)
+            host.viewModelStore.clear()
+            assertEquals(0, model.clearCount)
+            attach()
+            settleComposition()
+            assertSame(originalController, navController)
+            assertSame(model, ViewModelProvider(navController.getBackStackEntry("detail"))[ScopedViewModel::class.java])
+            assertEquals("retained", navController.getBackStackEntry("detail").savedStateHandle.get<String>("draft"))
+        }
+        manager.onDropViewInstance(wrapper)
+        assertEquals(1, model.clearCount)
+        manager.onDropViewInstance(wrapper)
+        assertEquals(1, model.clearCount)
+    }
+
+    @Test
+    fun `embedded owners are per view and release only the dropped views store`() {
+        attach()
+        val owner = wrapper.composeView.findViewTreeViewModelStoreOwner()!!
+        val model = ViewModelProvider(owner)[ScopedViewModel::class.java]
+        val other = OctopusViewWrapper(wrapper.context)
+        try {
+            val otherOwner = other.composeView.findViewTreeViewModelStoreOwner()!!
+            val otherModel = ViewModelProvider(otherOwner)[ScopedViewModel::class.java]
+            assertNotSame(owner, otherOwner)
+            assertSame(owner, wrapper.composeView.findViewTreeLifecycleOwner())
+            assertSame(owner, wrapper.composeView.findViewTreeSavedStateRegistryOwner())
+            manager.setIsVisible(wrapper, false)
+            parent.removeView(wrapper)
+            assertEquals(0, model.clearCount)
+            manager.onDropViewInstance(wrapper)
+            assertEquals(1, model.clearCount)
+            assertEquals(0, otherModel.clearCount)
+        } finally {
+            manager.onDropViewInstance(other)
+        }
+    }
+
+    @Test
+    fun `view owned saved state handles survive host registry replacement`() {
+        attach()
+        val owner = wrapper.composeView.findViewTreeViewModelStoreOwner()!!
+        val stateOwner = wrapper.composeView.findViewTreeSavedStateRegistryOwner()!!
+        val model = ViewModelProvider(owner)[SavedStateViewModel::class.java]
+        model.handle["draft"] = "retained"
+        parent.removeView(wrapper)
+        parent.setViewTreeSavedStateRegistryOwner(null)
+        attach()
+        assertSame(stateOwner, wrapper.composeView.findViewTreeSavedStateRegistryOwner())
+        assertSame(model, ViewModelProvider(owner)[SavedStateViewModel::class.java])
+        assertEquals("retained", model.handle.get<String>("draft"))
+    }
+
+    @Test
+    fun `activity destruction followed by React drop clears the view store once`() {
+        attach()
+        val model = ViewModelProvider(wrapper.composeView.findViewTreeViewModelStoreOwner()!!)[ScopedViewModel::class.java]
+        parent.removeView(wrapper)
+        activityController.pause().stop().destroy()
+        assertEquals(1, model.clearCount)
+        manager.onDropViewInstance(wrapper)
+        assertEquals(1, model.clearCount)
+    }
+
+    @Test
     fun `RN modal dialog supplies no viewmodel owner but embedded navigation still works`() {
         val activity = activityController.get()
         val modal = ComponentDialog(activity)
@@ -405,8 +495,8 @@ class OctopusUIViewLifecycleTest {
 
         attach()
         settleComposition()
-        assertSame(activity, wrapper.composeView.findViewTreeViewModelStoreOwner())
-        assertSame(modal, wrapper.composeView.findViewTreeSavedStateRegistryOwner())
+        assertSame(wrapper.composeView.findViewTreeLifecycleOwner(), wrapper.composeView.findViewTreeViewModelStoreOwner())
+        assertSame(wrapper.composeView.findViewTreeLifecycleOwner(), wrapper.composeView.findViewTreeSavedStateRegistryOwner())
         val originalController = navController
         navController.navigate("detail")
         settleComposition()
@@ -421,7 +511,7 @@ class OctopusUIViewLifecycleTest {
     }
 
     @Test
-    fun `dialog with only a lifecycle owner falls back to host saved state and viewmodel owners`() {
+    fun `dialog with only a lifecycle owner uses view owned saved state and viewmodels`() {
         val activity = activityController.get()
         val modal = Dialog(activity)
         dialog = modal
@@ -434,13 +524,13 @@ class OctopusUIViewLifecycleTest {
         assertNull(parent.findViewTreeSavedStateRegistryOwner())
         attach()
         settleComposition()
-        assertSame(activity, wrapper.composeView.findViewTreeViewModelStoreOwner())
-        assertSame(activity, wrapper.composeView.findViewTreeSavedStateRegistryOwner())
+        assertSame(wrapper.composeView.findViewTreeLifecycleOwner(), wrapper.composeView.findViewTreeViewModelStoreOwner())
+        assertSame(wrapper.composeView.findViewTreeLifecycleOwner(), wrapper.composeView.findViewTreeSavedStateRegistryOwner())
         assertEquals("feed", navController.currentDestination?.route)
     }
 
     @Test
-    fun `embedded view keeps owners supplied by its host tree`() {
+    fun `embedded view uses its own owners instead of borrowing its host tree`() {
         val owner = object : ViewModelStoreOwner {
             override val viewModelStore = ViewModelStore()
         }
@@ -448,8 +538,8 @@ class OctopusUIViewLifecycleTest {
         parent.setViewTreeSavedStateRegistryOwner(activityController.get())
         attach()
         settleComposition()
-        assertSame(owner, wrapper.composeView.findViewTreeViewModelStoreOwner())
-        assertSame(activityController.get(), wrapper.composeView.findViewTreeSavedStateRegistryOwner())
+        assertNotSame(owner, wrapper.composeView.findViewTreeViewModelStoreOwner())
+        assertNotSame(activityController.get(), wrapper.composeView.findViewTreeSavedStateRegistryOwner())
         assertEquals("feed", navController.currentDestination?.route)
         manager.onDropViewInstance(wrapper)
         owner.viewModelStore.clear()

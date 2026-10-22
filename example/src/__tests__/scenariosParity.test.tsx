@@ -944,3 +944,27 @@ it('runs all eight consent presets mode-first, including blanks and mismatches, 
     jest.useRealTimers();
   }
 });
+
+it('announces one search match as a singular scenario', async () => {
+  let tree!: ReactTestRenderer;
+  await act(async () => {
+    tree = create(<ScenariosScreen {...sectionScreenProps} />);
+  });
+  try {
+    act(() =>
+      tree.root
+        .findByProps({ testID: 'scenarios-search-input' })
+        .props.onChangeText('debugOverrideConsentTexts')
+    );
+    const headers = tree.root
+      .findAllByType(TouchableOpacity)
+      .filter((node) =>
+        String(node.props.testID).startsWith('scenarios-section-')
+      );
+    expect(headers).toHaveLength(1);
+    expect(headers[0]!.props.accessibilityLabel).toContain('1 scenario');
+    expect(headers[0]!.props.accessibilityLabel).not.toContain('1 scenarios');
+  } finally {
+    act(() => tree.unmount());
+  }
+});

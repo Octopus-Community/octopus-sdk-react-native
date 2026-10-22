@@ -111,6 +111,10 @@ This example uses [Notifee](https://notifee.app) to render it.
 
 ### Setup
 
+The example builds and runs locally without `example/android/app/google-services.json`.
+The file is optional for a local Android build and required for Android push:
+without it, Gradle and the app each log one warning and skip push setup.
+
 1. Add your Android app in the Firebase Console and download
    `google-services.json` into `android/app/`.
 2. `android/build.gradle`: `classpath "com.google.gms:google-services:4.4.2"`.

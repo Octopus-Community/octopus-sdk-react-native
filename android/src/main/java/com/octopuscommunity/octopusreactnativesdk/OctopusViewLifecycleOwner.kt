@@ -4,12 +4,38 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.HasDefaultViewModelProviderFactory
+import androidx.lifecycle.SavedStateViewModelFactory
+import androidx.lifecycle.SAVED_STATE_REGISTRY_OWNER_KEY
+import androidx.lifecycle.VIEW_MODEL_STORE_OWNER_KEY
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.enableSavedStateHandles
+import androidx.lifecycle.viewmodel.MutableCreationExtras
+import androidx.savedstate.SavedStateRegistryController
+import androidx.savedstate.SavedStateRegistryOwner
+import androidx.lifecycle.ViewModelStoreOwner
 
 // Keep composition state while detached or hidden, but stop lifecycle-aware callbacks and work.
 // The host is the Activity, independent of any transient fragment owner in the view tree.
-internal class OctopusViewLifecycleOwner : LifecycleOwner {
-    override val lifecycle = LifecycleRegistry(this).apply {
-        currentState = Lifecycle.State.CREATED
+internal class OctopusViewLifecycleOwner : LifecycleOwner, ViewModelStoreOwner,
+    SavedStateRegistryOwner, HasDefaultViewModelProviderFactory {
+    override val lifecycle = LifecycleRegistry(this)
+    override val viewModelStore = ViewModelStore()
+    private val savedStateController = SavedStateRegistryController.create(this)
+    override val savedStateRegistry get() = savedStateController.savedStateRegistry
+    override val defaultViewModelProviderFactory = SavedStateViewModelFactory(null, this)
+    override val defaultViewModelCreationExtras get() = MutableCreationExtras().apply {
+        set(SAVED_STATE_REGISTRY_OWNER_KEY, this@OctopusViewLifecycleOwner)
+        set(VIEW_MODEL_STORE_OWNER_KEY, this@OctopusViewLifecycleOwner)
+    }
+
+    init {
+        // A React view survives temporary host-fragment destruction. Its registry and store
+        // must share that lifetime instead of binding navigation to the fragment's scope.
+        savedStateController.performAttach()
+        savedStateController.performRestore(null)
+        enableSavedStateHandles()
+        lifecycle.currentState = Lifecycle.State.CREATED
     }
 
     private var hostLifecycle: Lifecycle? = null
@@ -39,10 +65,13 @@ internal class OctopusViewLifecycleOwner : LifecycleOwner {
     }
 
     fun destroy() {
+        if (lifecycle.currentState == Lifecycle.State.DESTROYED) return
         attached = false
         hostLifecycle?.removeObserver(hostObserver)
         hostLifecycle = null
         lifecycle.currentState = Lifecycle.State.DESTROYED
+        // Dispose lifecycle-bound composition first, then close its ViewModel scopes once.
+        viewModelStore.clear()
     }
 
     private fun updateState() {

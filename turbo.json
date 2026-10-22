@@ -10,14 +10,21 @@
     // `scripts/__tests__/turboNativeInputs.test.ts` asserts what turbo really
     // resolves here, because neither mistake is visible in a diff.
     //
-    // Two things deliberately absent: `yarn.lock`, because turbo already folds
-    // the resolved dependency set into the task hash on its own
-    // (`hashOfExternalDependencies`); and every `!…/build/**`, `!…/Pods/**`,
-    // `!…/.gradle/**` below is belt-and-braces — those paths are gitignored and
-    // turbo never hashes them anyway. Only the two `!…/src/__tests__/**` lines
-    // subtract something real: unit tests live inside both hashed source trees
-    // (the SDK's and the example app's), and a test-only edit must not
-    // invalidate a native build.
+    // `yarn.lock` is deliberately absent: turbo already folds the resolved
+    // dependency set into the task hash on its own (`hashOfExternalDependencies`).
+    //
+    // Every `!…` line below is load-bearing. With `inputs`, turbo 1.13 hashes
+    // every file on disk the globs match, gitignored or not (measured
+    // 2026-10-19). So build outputs, `Pods/` and `.gradle/` have to be
+    // subtracted, and so does `ios/.xcode.env.local`: `pod install` writes it
+    // between the cache probe and the build, with the runner's node path,
+    // which differs between runners. Hashed, it made the build's hash differ
+    // from the probe's. `android/app/google-services.json` is the opposite
+    // case: the google-services plugin reads it, so it is a real build input,
+    // stays hashed, and CI writes it before the probe. The two
+    // `!…/src/__tests__/**` lines keep the unit tests, which live inside both
+    // hashed source trees, out: a test-only edit must not invalidate a native
+    // build.
     //
     // On a turbo 2.x upgrade, `../x/**` becomes `$TURBO_ROOT$/x/**`: parent
     // traversal works and is asserted at 1.13.x, but the supported spelling for
@@ -65,6 +72,7 @@
         "ios/**",
         "!ios/build/**",
         "!ios/Pods/**",
+        "!ios/.xcode.env.local",
         "src/**",
         "!src/__tests__/**"
       ],

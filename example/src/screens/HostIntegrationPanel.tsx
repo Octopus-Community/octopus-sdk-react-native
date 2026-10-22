@@ -57,8 +57,8 @@ export function HostIntegrationPanel({
         accessibilityLabel={title}
         value={value}
         onValueChange={onValueChange}
-        trackColor={{ false: chrome.outline, true: '#1D88FE' }}
-        thumbColor={value ? '#FFFFFF' : chrome.surfaceRaised}
+        trackColor={{ false: chrome.track, true: chrome.control }}
+        thumbColor={value ? chrome.onControl : chrome.surfaceRaised}
         disabled={!onValueChange}
       />
     </View>

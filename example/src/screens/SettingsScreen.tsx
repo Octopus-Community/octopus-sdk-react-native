@@ -1,3 +1,4 @@
+import type { ScrollViewProps } from 'react-native';
 import { sampleRadius, sampleTypography, sampleSpacing } from '../theme/tokens';
 import { useEffect, useState } from 'react';
 import {
@@ -75,6 +76,7 @@ const APPEARANCE_SUMMARIES: Record<ThemeMode, string> = {
 };
 
 export interface SettingsScreenProps {
+  onScroll?: ScrollViewProps['onScroll'];
   onTopBarChange?: (isRoot: boolean) => void;
   overview?: React.ReactNode;
   integration?: React.ReactNode;
@@ -213,6 +215,7 @@ function SubPage({
         isDark={chrome === chromeColors(true)}
         onBack={onBack}
         backTestID="settings-back-button"
+        showPlatformBadge={false}
         onOpenDebug={onOpenDebug}
       />
       <ScrollView
@@ -238,6 +241,7 @@ function SubPage({
  */
 export function SettingsScreen({
   onTopBarChange,
+  onScroll,
   overview,
   integration,
   serverLabel = `${octopusServerLabel} — ${octopusHostLabel}`,
@@ -702,6 +706,8 @@ export function SettingsScreen({
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator
       >
         <View style={styles.overview}>{overview}</View>
@@ -907,6 +913,7 @@ const styles = StyleSheet.create({
   },
   footerLine: {
     ...sampleTypography.caption,
+    marginHorizontal: 20,
 
     textAlign: 'center',
     marginTop: 8,

@@ -132,3 +132,27 @@ it('renders nothing and does not subscribe where in-app updates are absent', () 
   expect(mockAnnouncementListeners).toHaveLength(0);
   expect(tree.toJSON()).toBeNull();
 });
+
+it('unsubscribes and clears the dismissal timer on unmount', () => {
+  const tree = render();
+  announce(42);
+  expect(mockAnnouncementListeners).toHaveLength(1);
+  expect(jest.getTimerCount()).toBe(1);
+  act(() => tree.unmount());
+  expect(mockAnnouncementListeners).toHaveLength(0);
+  expect(jest.getTimerCount()).toBe(0);
+  announce(43);
+  expect(mockStartAppUpdateFlow).not.toHaveBeenCalled();
+});
+
+it('does not restart the timer when the same build is announced while showing', () => {
+  const tree = render();
+  announce(42);
+  act(() => jest.advanceTimersByTime(DURATION_MS - 1000));
+  announce(42);
+  act(() => jest.advanceTimersByTime(999));
+  expect(snackbar(tree)).toBeDefined();
+  act(() => jest.advanceTimersByTime(1));
+  expect(snackbar(tree)).toBeUndefined();
+  act(() => tree.unmount());
+});

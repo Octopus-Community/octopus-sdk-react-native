@@ -312,9 +312,6 @@ describe('sample backgrounds', () => {
       );
       expect(chrome.navIndicator).toBe(chrome.accentContainer);
     }
-    expect(
-      readFileSync(join(__dirname, '..', 'App.tsx'), 'utf8')
-    ).not.toContain('<DarkHalo');
   });
 });
 
@@ -458,3 +455,27 @@ describe('launcher icon', () => {
     expect(png[25]).toBe(2);
   });
 });
+
+it('distinguishes dark placeholders and pressed fields', () => {
+  const c = chromeColors(true);
+  expect(c.textPlaceholder).not.toBe(c.textSecondary);
+  expect(c.surfacePressed).not.toBe(c.surfaceRaised);
+  expect(contrast(c.surfacePressed, c.surfaceRaised)).toBeGreaterThanOrEqual(
+    1.2
+  );
+});
+
+it.each(['segmentTrack', 'codeSurface', 'elevated', 'surface'] as const)(
+  'keeps dark hairline contrast at least 1.3:1 on %s',
+  (surface) => {
+    const c = chromeColors(true);
+    expect(contrast(c.hairline, c[surface])).toBeGreaterThanOrEqual(1.3);
+  }
+);
+
+it.each(PALETTES)(
+  '%s danger borders retain a visible UI boundary',
+  (_name, c) => {
+    expect(contrast(c.dangerBorder, c.dangerSurface)).toBeGreaterThanOrEqual(3);
+  }
+);

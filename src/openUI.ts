@@ -159,12 +159,12 @@ export interface OpenUIOptions {
    * the community until it fires".
    *
    * **Android**: the leading icon is always painted on the root screen, so
-   * that path is always reachable. The OS-level gesture (system back,
-   * predictive back) is not routed through the callback: on the SDK's
-   * sub-screens — including one opened through {@link initialScreen}, which
-   * this bridge pushes on top of the community feed rather than making it the
-   * root of the stack — it pops the SDK's own stack back towards the feed,
-   * and on the feed itself it finishes the SDK's Activity without firing.
+   * that path is always reachable. With `initialScreen: { type: 'createPost' }`,
+   * the editor is the root: cancelling, system back (after confirming any
+   * discard), and successful publication fire this callback and close the UI.
+   * Other initial screens retain a feed underneath them; system back pops
+   * those screens towards the feed. System back on the feed itself finishes
+   * the SDK's Activity without firing this callback.
    * iOS's full-screen modal offers no system dismissal gesture at all.
    *
    * @example

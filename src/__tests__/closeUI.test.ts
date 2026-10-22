@@ -55,8 +55,9 @@ describe('closeUI', () => {
 });
 
 // Jest can exercise the JS promise contract above, but cannot run UIKit or the
-// Activity lifecycle. Keep scoped native callback-placement guards for those parts;
-// allow formatting, optional `self`, semicolons and extra diagnostics in the bodies.
+// Activity lifecycle. Android behavior is covered by OctopusUIControllerCloseUITest;
+// keep scoped native callback-placement guards for UIKit here. Allow formatting,
+// optional `self`, semicolons and extra diagnostics in the bodies.
 // Comments and strings are masked so they cannot satisfy these checks.
 const nativeBody = (file: string, signature: RegExp): string =>
   functionBody(
@@ -65,8 +66,6 @@ const nativeBody = (file: string, signature: RegExp): string =>
     ),
     signature
   );
-const ANDROID =
-  'android/src/main/java/com/octopuscommunity/octopusreactnativesdk/';
 
 function expectIosCompletion(bridge: string): void {
   const main = blockBody(bridge, /DispatchQueue\s*\.\s*main\s*\.\s*async/);
@@ -311,46 +310,5 @@ describe('iOS closeUI native completion', () => {
     expect(manager.indexOf(absent)).toBeLessThan(
       manager.search(/closeUICompletions\s*\[\s*controllerID\s*\]\s*=/)
     );
-  });
-});
-
-describe('Android closeUI native completion', () => {
-  const bridge = nativeBody(
-    `${ANDROID}OctopusUIController.kt`,
-    /fun\s+closeUI\s*\(/
-  );
-  const activity = `${ANDROID}OctopusActivity.kt`;
-
-  it('resolves immediately after broadcasting the close request', () => {
-    const request = blockBody(bridge, /try/);
-    expect(request).toMatch(
-      /val\s+intent\s*=\s*Intent\s*\(\s*CLOSE_UI_ACTION\s*\)/
-    );
-    expect(request).toMatch(
-      /intent\s*\.\s*setPackage\s*\(\s*reactContext\s*\.\s*packageName\s*\)/
-    );
-    expect(request).toMatch(
-      /reactContext\s*\.\s*sendBroadcast\s*\(\s*intent\s*\)/
-    );
-    expect(request).toMatch(/promise\s*\.\s*resolve\s*\(\s*null\s*\)/);
-    expect(request.search(/\bsendBroadcast\s*\(/)).toBeLessThan(
-      request.search(/\bresolve\s*\(/)
-    );
-    expect(bridge.match(/promise\s*\.\s*resolve\s*\(/g)).toHaveLength(1);
-    expect(bridge).not.toMatch(/UiThreadUtil|OctopusActivity\.closeUI/);
-    expect(blockBody(bridge, /catch/)).toMatch(/promise\s*\.\s*reject\s*\(/);
-  });
-
-  it('keeps the receiver that finishes the Activity without waiting for destruction', () => {
-    const source = maskCommentsAndStrings(
-      readFileSync(join(__dirname, '..', '..', activity), 'utf8')
-    );
-    expect(functionBody(source, /override\s+fun\s+onReceive\s*\(/)).toMatch(
-      /\bfinish\s*\(\s*\)/
-    );
-    expect(functionBody(source, /fun\s+registerCloseUIReceiver\s*\(/)).toMatch(
-      /IntentFilter\s*\(\s*OctopusUIController\s*\.\s*CLOSE_UI_ACTION\s*\)/
-    );
-    expect(source).not.toMatch(/closeUICompletions|fun\s+closeUI\s*\(/);
   });
 });

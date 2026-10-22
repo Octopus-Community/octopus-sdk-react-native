@@ -36,6 +36,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { useAppBarScroll } from './navigation/useAppBarScroll';
 import { AppBar } from './components/AppBar';
 import { TabBar, START_TAB, type TabId } from './components/TabBar';
 import { AppUpdateSnackbar } from './components/AppUpdateSnackbar';
@@ -61,10 +62,8 @@ import {
   CommunityPresentation,
   type CommunityPresentationMode,
 } from './components/CommunityPresentation';
-import {
-  resolveShellBack,
-  resolveWebViewBack,
-} from './navigation/backDispatcher';
+import { resolveShellBack } from './navigation/backDispatcher';
+import { useWebViewBack } from './navigation/useWebViewBack';
 import {
   useHardwareBack,
   useHardwareBackListener,
@@ -416,6 +415,8 @@ export default function App() {
   );
   const [scenarioTopBar, setScenarioTopBar] =
     useState<ScenarioTopBarOwner>('shell');
+  const scenariosBar = useAppBarScroll();
+  const settingsBar = useAppBarScroll();
   const [activeTab, setActiveTab] = useState<TabId>(START_TAB);
   const communityReturnTab = useRef<TabId>(START_TAB);
   useEffect(() => {
@@ -532,11 +533,15 @@ export default function App() {
   }, []);
   const [communityLocaleOverride, setCommunityLocaleOverride] =
     useState<CommunityLocaleOverride>('system');
-  const [webViewUrl, setWebViewUrl] = useState<string | null>(null);
-  const webViewRef = useRef<WebView>(null);
-  // Last `canGoBack` the WebView reported. A ref, not state: only hardware Back reads it,
-  // and every page load would otherwise re-render the whole App.
-  const webViewCanGoBackRef = useRef(false);
+  const {
+    url: webViewUrl,
+    presentationId: webPresentationId,
+    webViewRef,
+    open: openWebView,
+    close: closeWebView,
+    onNavigationStateChange: onWebViewNavigationStateChange,
+    onHardwareBack: onWebViewHardwareBack,
+  } = useWebViewBack();
   const [userCallbackMessage, setUserCallbackMessage] = useState<string | null>(
     null
   );
@@ -733,28 +738,11 @@ export default function App() {
       } catch {
         // Embed mode: nothing to close, continue to open WebView.
       }
-      webViewCanGoBackRef.current = false;
-      setWebViewUrl(url);
+      openWebView(url);
       return UrlOpeningStrategy.handledByApp;
     });
     return () => subscription.remove();
-  }, [urlOpeningMode]);
-
-  const closeWebView = useCallback(() => {
-    webViewCanGoBackRef.current = false;
-    setWebViewUrl(null);
-  }, []);
-
-  // Hardware Back in the WebView modal behaves like a browser tab: one page back while there
-  // is history, close only once it is empty. The Modal receives the press through
-  // `onRequestClose` (its own Android window), so this is wired there, not on the dispatcher.
-  const onWebViewHardwareBack = useCallback(() => {
-    if (resolveWebViewBack(webViewCanGoBackRef.current) === 'goBackInHistory') {
-      webViewRef.current?.goBack();
-      return;
-    }
-    closeWebView();
-  }, [closeWebView]);
+  }, [urlOpeningMode, openWebView]);
 
   // Registered at mount, deliberately before anything can call `initialize()`: the bridge's
   // event emitter is unbuffered, so a state listener added after initialization can miss the
@@ -1789,6 +1777,7 @@ export default function App() {
               isDark={isDark}
               onBack={() => setIsDebugVisible(false)}
               backTestID="debug-close-button"
+              showPlatformBadge={false}
             />
           </View>
           {/* Repeated here: a modal renders in its own window, above the banner the
@@ -1864,6 +1853,7 @@ export default function App() {
               isDark={isDark}
               onBack={closeWebView}
               backTestID="webview-close-button"
+              showPlatformBadge={false}
             />
           </View>
           <View
@@ -1880,12 +1870,10 @@ export default function App() {
           {webViewUrl !== null && (
             <WebView
               // A new URL is a new tab: remount so no history leaks from the previous one.
-              key={webViewUrl}
+              key={webPresentationId}
               ref={webViewRef}
               source={{ uri: webViewUrl }}
-              onNavigationStateChange={(navState) => {
-                webViewCanGoBackRef.current = navState.canGoBack;
-              }}
+              onNavigationStateChange={onWebViewNavigationStateChange}
               style={{
                 flex: 1,
                 marginBottom: Platform.OS === 'ios' ? insets.bottom : 0,
@@ -1925,6 +1913,11 @@ export default function App() {
         >
           <AppBar
             title={appBarTitle}
+            collapsed={
+              activeTab === 'settings'
+                ? settingsBar.collapsed
+                : activeTab === 'scenarios' && scenariosBar.collapsed
+            }
             onOpenDebug={() => openDebug('console')}
             size={
               showTabBar
@@ -2010,6 +2003,7 @@ export default function App() {
             settings={
               <SettingsScreen
                 onTopBarChange={setSettingsAtRoot}
+                onScroll={settingsBar.onScroll}
                 serverLabel={`${settingsServerLabel(resolveConfigServer(activeConfig).host)} — ${resolveConfigServer(activeConfig).host}`}
                 onAppearanceChange={handleThemeModeChange}
                 onThemeSetChange={setSelectedThemeSet}
@@ -2084,6 +2078,7 @@ export default function App() {
             scenarios={
               <ScenariosScreen
                 onTopBarChange={setScenarioTopBar}
+                onScroll={scenariosBar.onScroll}
                 onOpenDebug={() => openDebug('console')}
                 launchActions={
                   <CommunityLaunchActions
@@ -2290,6 +2285,7 @@ export default function App() {
                     }
                     isDark={isDark}
                     onBack={dismissHostScreen}
+                    showPlatformBadge={false}
                     backTestID={
                       hostScreen.kind === 'profile'
                         ? 'clientProfile-back'

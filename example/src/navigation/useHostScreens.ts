@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Octopus from '@octopus-community/react-native';
 import { debugLog } from '../debug/debugLog';
 
+// Longer than the native slide animation: an early duplicate must not re-key a Modal.
+export const HOST_PRESENTATION_GRACE_MS = 1000;
+
 export type HostScreen =
   | { kind: 'signIn' }
   | { kind: 'editProfile'; fieldToEdit: Octopus.UserProfileField | null }
@@ -31,6 +34,7 @@ export function useHostScreens({
   const [presentationId, setPresentationId] = useState(0);
   const active = useRef(false);
   const showing = useRef(false);
+  const presentationStartedAt = useRef<number | null>(null);
   const requestId = useRef(0);
   const closeRequest = useRef<Promise<boolean> | null>(null);
   const closing = useRef(false);
@@ -42,21 +46,33 @@ export function useHostScreens({
     let disposed = false;
     const open = async (next: HostScreen) => {
       if (showing.current || closing.current) return;
-      // Share the close request when callbacks arrive before the host screen appears.
+      // Ignore duplicates during close or the Modal animation. A later callback can
+      // recover a presentation for which native never delivered onShow.
+      if (
+        closeRequest.current !== null ||
+        (active.current &&
+          presentationStartedAt.current !== null &&
+          Date.now() - presentationStartedAt.current <
+            HOST_PRESENTATION_GRACE_MS)
+      )
+        return;
       active.current = true;
       const request = ++requestId.current;
-      const pendingClose =
-        closeRequest.current ??
-        (retainedCommunity ? Promise.resolve() : Octopus.closeUI()).then(
-          () => true,
-          () => false
-        );
+      const pendingClose = (
+        retainedCommunity ? Promise.resolve() : Octopus.closeUI()
+      ).then(
+        () => true,
+        () => false
+      );
       closeRequest.current = pendingClose;
       const wasPresented = await pendingClose;
+      if (closeRequest.current === pendingClose) closeRequest.current = null;
       if (disposed || request !== requestId.current) return;
-      // Android closeUI resolves even for an embedded view; app state must also allow resume.
-      resume.current =
+      // A retry can reject on iOS because an earlier close already dismissed fullscreen.
+      // Keep that resume intent until host dismissal; embedded views still never resume.
+      resume.current ||=
         !retainedCommunity && fullscreen && !isScenariosPreview && wasPresented;
+      presentationStartedAt.current = Date.now();
       setPresentationId(request);
       setScreen(next);
     };

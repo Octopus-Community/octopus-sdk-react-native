@@ -30,6 +30,7 @@ jest.mock('../components/AppSection', () => ({ AppSection: 'AppSection' }));
 import { act, create } from 'react-test-renderer';
 import type { ReactTestRenderer } from 'react-test-renderer';
 import { Text, Modal, Platform, Linking, TouchableOpacity } from 'react-native';
+import { AppBar } from '../components/AppBar';
 import { useState } from 'react';
 import { DebugConsoleSheet } from '../components/DebugConsoleSheet';
 import { useModalDismissal } from '../navigation/useModalDismissal';
@@ -369,3 +370,27 @@ it.each(['', 'https://example.com/design'])(
     }
   }
 );
+
+it('hides the platform badge on a pushed Settings page and keeps the footer gutter', () => {
+  let tree!: ReactTestRenderer;
+  act(() => {
+    tree = create(<SettingsScreen {...settingsProps} />);
+  });
+  const flatten = (style: unknown): Record<string, unknown> =>
+    Array.isArray(style)
+      ? Object.assign({}, ...style.map(flatten))
+      : (style as Record<string, unknown>);
+  try {
+    for (const testID of ['settings-server-label', 'settings-version-label']) {
+      expect(
+        flatten(tree.root.findByProps({ testID }).props.style).marginHorizontal
+      ).toBe(20);
+    }
+    act(() =>
+      tree.root.findByProps({ testID: 'settings-about-row' }).props.onPress()
+    );
+    expect(tree.root.findByType(AppBar).props.showPlatformBadge).toBe(false);
+  } finally {
+    act(() => tree.unmount());
+  }
+});

@@ -36,6 +36,10 @@ import androidx.core.graphics.toColorInt
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.NavGraphBuilder
+import androidx.navigation.createGraph
+import com.octopuscommunity.sdk.InternalOctopusApi
+import com.octopuscommunity.sdk.OctopusSDK
 import com.octopuscommunity.sdk.domain.model.CreatePostScreenInfo
 import com.octopuscommunity.sdk.ui.OctopusImagesDefaults
 import com.octopuscommunity.sdk.ui.OctopusTheme
@@ -51,7 +55,6 @@ import com.octopuscommunity.sdk.ui.home.OctopusHomeDefaults
 import com.octopuscommunity.sdk.ui.home.OctopusHomeScreen
 import com.octopuscommunity.sdk.ui.navigateToOctopusActivity
 import com.octopuscommunity.sdk.ui.navigateToOctopusActivityByClientUserId
-import com.octopuscommunity.sdk.ui.navigateToOctopusCreatePost
 import com.octopuscommunity.sdk.ui.navigateToOctopusGroup
 import com.octopuscommunity.sdk.ui.navigateToOctopusPost
 import com.octopuscommunity.sdk.ui.navigateToOctopusProfileByClientUserId
@@ -91,7 +94,7 @@ private fun openUrlInCustomTab(context: Context, url: String) {
 }
 
 /** Shared composable for both fullscreen Activity and embedded ViewManager. */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, InternalOctopusApi::class)
 @Composable
 internal fun OctopusContent(
   modifier: Modifier = Modifier,
@@ -352,12 +355,8 @@ internal fun OctopusContent(
   ) {
     val navController = rememberNavController()
 
-    NavHost(
-      modifier = modifier,
-      navController = navController,
-      startDestination = "OctopusHome"
-    ) {
-      composable(route = "OctopusHome") {
+    val graphBuilder: NavGraphBuilder.() -> Unit = {
+      composable(route = BRIDGE_HOME_ROUTE) {
         val contentPadding = if (bottomContentPadding != null) {
           OctopusHomeDefaults.contentPadding(bottom = bottomContentPadding)
         } else {
@@ -458,6 +457,15 @@ internal fun OctopusContent(
       )
     }
 
+    // Set the real start destination before attaching the graph: there must be no feed entry
+    // underneath an initial editor. The native editor delegates cancel, confirmed discard,
+    // system back and successful publication to `onBack` when its back stack has no parent.
+    val graph = remember(navController, createPostInfo, graphBuilder) {
+      navController.createGraph(startDestination = BRIDGE_HOME_ROUTE, builder = graphBuilder)
+        .apply { setBridgeInitialDestination(createPostInfo) }
+    }
+    NavHost(modifier = modifier, navController = navController, graph = graph)
+
     linkPath?.takeIf { it.isNotBlank() }?.let { link ->
       LaunchedEffect(link) {
         try {
@@ -470,17 +478,13 @@ internal fun OctopusContent(
 
     createPostInfo?.let { info ->
       LaunchedEffect(info) {
-        try {
-          navController.navigateToOctopusCreatePost(info)
-        } catch (e: Exception) {
-          Log.w("OctopusContent", "navigateToOctopusCreatePost failed", e)
-        }
+        // The signer cannot ride serialized route arguments. Keep the SDK helper's session
+        // registration even though starting on the editor no longer calls navigateTo… .
+        OctopusSDK.setBridgeShareTokenProvider(info.bridgeShareTokenProvider)
       }
     }
 
-    // Bridge-mode initial screens navigate on top of the home destination, so the system back
-    // from the initial screen reaches the main feed — consistent with the shipped createPost
-    // and notification deep-link behavior above.
+    // Other bridge-mode initial screens retain their existing stack above the home feed.
     initialScreen?.let { screen ->
       LaunchedEffect(screen) {
         try {

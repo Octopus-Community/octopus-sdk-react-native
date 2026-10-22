@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { View, ScrollView, StyleSheet } from 'react-native';
+import { useAppBarScroll } from '../navigation/useAppBarScroll';
 import { AppBar } from './AppBar';
 import { chromeColors } from '../theme/branding';
 import { sampleSpacing } from '../theme/tokens';
@@ -21,12 +22,14 @@ export function ScenarioDetailFrame({
   forceLogin?: boolean;
 }) {
   const chrome = chromeColors(isDark);
+  const { collapsed, onScroll } = useAppBarScroll();
   return (
     <View style={styles.container}>
       <AppBar
         title={title}
         isDark={isDark}
         size="medium"
+        collapsed={collapsed}
         showPlatformBadge={false}
         onBack={onBack}
         onOpenDebug={onOpenDebug}
@@ -36,6 +39,8 @@ export function ScenarioDetailFrame({
         style={[styles.container, { backgroundColor: chrome.screen }]}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
+        onScroll={onScroll}
+        scrollEventThrottle={16}
       >
         {forceLogin !== undefined && (
           <Banner

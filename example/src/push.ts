@@ -5,6 +5,7 @@
 //
 // On iOS, Metro resolves `push.ios.ts` instead (native APNs, no Firebase/Notifee),
 // so this file is never bundled on iOS.
+import { getApps } from '@react-native-firebase/app';
 import messaging from '@react-native-firebase/messaging';
 import type { FirebaseMessagingTypes } from '@react-native-firebase/messaging';
 import notifee, { AndroidImportance, EventType } from '@notifee/react-native';
@@ -22,6 +23,16 @@ export interface SetupOctopusPushOptions {
 }
 
 const CHANNEL_ID = 'octopus-sdk';
+let warnedMissingFirebase = false;
+
+function isFirebaseConfigured(): boolean {
+  if (getApps().some((app) => app.name === '[DEFAULT]')) return true;
+  if (!warnedMissingFirebase) {
+    warnedMissingFirebase = true;
+    console.warn('Octopus push disabled: no default Firebase app configured.');
+  }
+  return false;
+}
 
 async function ensureChannel(): Promise<void> {
   await notifee.createChannel({
@@ -92,6 +103,7 @@ async function routeTap(
  * runs when the app is launched from a background/quit push.
  */
 export function registerOctopusFcmBackground(): void {
+  if (!isFirebaseConfigured()) return;
   messaging().setBackgroundMessageHandler(async (message) => {
     await displayOctopusNotification(toPayload(message));
   });
@@ -105,6 +117,7 @@ export function registerOctopusFcmBackground(): void {
 export async function setupOctopusPush(
   options?: SetupOctopusPushOptions
 ): Promise<() => void> {
+  if (!isFirebaseConfigured()) return () => {};
   const subscriptions = [
     messaging().onTokenRefresh((token) => options?.onToken?.(token)),
     messaging().onMessage((message) =>

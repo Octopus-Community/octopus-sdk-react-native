@@ -893,3 +893,71 @@ it.each(['light', 'dark'] as const)(
     act(() => tree.unmount());
   }
 );
+
+it('wires root scrolling to separate retained Settings and Scenarios app bars', async () => {
+  const tree = await mountApp();
+  const bar = () =>
+    tree.root
+      .findAllByType(AppBar)
+      .find(
+        (node) =>
+          node.props.title ===
+          (tree.root.findByType(TabBar).props.activeTab === 'settings'
+            ? 'Settings'
+            : 'Scenarios')
+      )!;
+  try {
+    for (const [tab, screen] of [
+      ['scenarios', ScenariosScreen],
+      ['settings', SettingsScreen],
+    ] as const) {
+      act(() => tree.root.findByType(TabBar).props.onTabChange(tab));
+      expect(bar().props.collapsed).toBe(false);
+      act(() =>
+        tree.root
+          .findByType(screen)
+          .props.onScroll({ nativeEvent: { contentOffset: { y: 100 } } })
+      );
+      expect(bar().props.collapsed).toBe(true);
+    }
+    act(() => tree.root.findByType(TabBar).props.onTabChange('scenarios'));
+    expect(bar().props.collapsed).toBe(true);
+  } finally {
+    act(() => tree.unmount());
+  }
+});
+
+it.each(['ios', 'android'] as const)(
+  'keeps a single native modal close control and no host header over the Community tab on %s',
+  async (platform) => {
+    const previousPlatform = Platform.OS;
+    Platform.OS = platform;
+    const tree = await mountApp();
+    try {
+      act(() =>
+        tree.root.findByType(ScenariosScreen).props.onOpenPresentation('modal')
+      );
+      const modal = tree.root.findByType(CommunityPresentation);
+      const nativeView = modal.findByType(Octopus.OctopusUIView);
+      // Hidden auxiliary Modals also carry headers; only inspect the presented surface.
+      expect(nativeView.parent!.findAllByType(AppBar)).toHaveLength(0);
+      expect(
+        nativeView.parent!.findAll((node) => node.props.onPress)
+      ).toHaveLength(0);
+      expect(nativeView.props.showBackButton).toBe(true);
+      expect(nativeView.props.navBarLeadingAction).toBe('close');
+      act(() => nativeView.props.onBackRequested());
+      expect(tree.root.findByType(CommunityPresentation).props.mode).toBeNull();
+      act(() => tree.root.findByType(TabBar).props.onTabChange('community'));
+      // Community owns its navigation bar; the shell must not draw another title over it.
+      expect(
+        tree.root
+          .findAllByType(AppBar)
+          .filter((node) => node.props.title === 'Community')
+      ).toHaveLength(0);
+    } finally {
+      act(() => tree.unmount());
+      Platform.OS = previousPlatform;
+    }
+  }
+);

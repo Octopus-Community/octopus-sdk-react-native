@@ -255,7 +255,7 @@ it.each([false, true])(
         state={{ status: 'error', message: 'Request refused', durationMs: 12 }}
       />
     );
-    expect(texts()).toContain('✕ Error');
+    expect(texts().split('\n')).toContain('Error');
     expect(texts()).toContain('Request refused');
     const message = tree.root
       .findAllByType(Text)
@@ -373,3 +373,31 @@ it.each([false, true])(
     ).toBe(false);
   }
 );
+
+it.each(['success', 'error'] as const)(
+  'uses a plain result label for %s beside its status icon',
+  (status) => {
+    render(
+      <ScenarioResultPanel
+        testID="demo-result"
+        isDark={false}
+        state={{ status, message: 'Done' }}
+      />
+    );
+    expect(texts().split('\n')).toContain(
+      status === 'success' ? 'Success' : 'Error'
+    );
+    expect(texts()).not.toMatch(/[✓✕]/);
+  }
+);
+
+it('shows exactly one loading spinner in a running result', () => {
+  render(
+    <ScenarioResultPanel
+      testID="demo-result"
+      isDark
+      state={{ status: 'running' }}
+    />
+  );
+  expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(1);
+});
