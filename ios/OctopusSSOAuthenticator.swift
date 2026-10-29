@@ -1,6 +1,5 @@
 import Foundation
 import Octopus
-import OSLog
 
 class OctopusSSOAuthenticator {
   /// How long a `userTokenRequest` may stay unanswered before `connectUser` gives up.
@@ -243,9 +242,6 @@ class OctopusSSOAuthenticator {
         // The loader requires HTTP 2xx and decodable image bytes before creating the SDK profile.
         profilePictureData = try await ProfilePictureInput.load(picture, loadRemote: { url in
           try await URLSession.shared.data(from: url)
-        }, logFailure: {
-          Logger(subsystem: "\(Bundle.main.bundleIdentifier ?? "").octopusSDK", category: "Connection")
-            .error("Failed to load profile picture; rejecting connection.")
         })
       } catch {
         throw AuthenticationError.profilePictureLoadError

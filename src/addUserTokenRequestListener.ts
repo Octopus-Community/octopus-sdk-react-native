@@ -1,6 +1,7 @@
 import { eventEmitter } from './internals/eventEmitter';
 import { OctopusReactNativeSdk } from './internals/nativeModule';
 import { log } from './internals/logger';
+import { errorSummary } from './internals/errorSummary';
 import { LogLevel } from './enums/LogLevel.enum';
 
 export type UserTokenRequestListenerCallback = () => Promise<string>;
@@ -23,7 +24,11 @@ export function addUserTokenRequestListener(
         token
       );
     } catch (error) {
-      log(LogLevel.ERROR, 'Failed to provide user token to Octopus', error);
+      log(
+        LogLevel.ERROR,
+        'Failed to provide user token to Octopus',
+        errorSummary(error)
+      );
       await OctopusReactNativeSdk.cancelUserTokenRequest(event.requestId);
     }
   };

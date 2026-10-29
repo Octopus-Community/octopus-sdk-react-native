@@ -381,11 +381,15 @@ class OctopusUIManager {
       return container.bottomInsetStore
     }()
 
-    let hostingController = UIHostingController(
+    let hostingController = OctopusEmbeddedHostingController(
       rootView: OctopusThemedRoot {
         makeHomeScreenView(octopus: octopus, theme: initialTheme, bottomSafeAreaInset: bottomSafeAreaInset, bottomInsetStore: bottomInsetStore, notificationUserInfo: notificationUserInfo, topAppBar: topAppBar, initialScreen: initialScreen, navigationMode: navigationMode, navBarLeadingAction: navBarLeadingAction)
       }
     )
+    // Set before the view joins the hierarchy: SwiftUI reads the presentation context as soon
+    // as the tree is evaluated. A host-supplied leading action (`showBackButton` or
+    // `navBarLeadingAction`) is the only exit the host wants — see the class doc.
+    hostingController.isolatesHostPresentation = navBarLeadingAction != nil
     hostingController.overrideUserInterfaceStyle = forcedInterfaceStyle
     embeddedHostingControllers.add(hostingController)
     hostingController.view.backgroundColor = .clear
@@ -735,5 +739,44 @@ extension UIUserInterfaceStyle {
     case .dark: return .dark
     default: return nil
     }
+  }
+}
+
+/// Hosting controller of an embedded `OctopusUIView`.
+///
+/// The native SDK decides whether it may close itself from SwiftUI's
+/// `presentationMode.isPresented`, and closes through `presentationMode.dismiss()`:
+/// - the root feed adds a text "Close" button (`MainRootFeedView`) and the root screens get
+///   `canClose: true`;
+/// - the post editor calls `dismiss()` after a successful publish (`CreatePostView`).
+///
+/// A plain `UIHostingController` added as a child of a host screen inherits that screen's
+/// context. Inside a host modal, `isPresented` is true and `dismiss()` dismisses the host's own
+/// modal — without `onBackRequested`, and a dismissed `fullScreenModal` route leaves the host's
+/// navigator out of sync. Inside a host navigation stack, `dismiss()` pops the host screen.
+///
+/// When the host supplied its own exit (`showBackButton` or `navBarLeadingAction`, both routed
+/// to `onBackRequested`), this controller reports no presenting controller and no navigation
+/// controller. SwiftUI then sees a root that is neither presented nor pushed: `isPresented` is
+/// false, the SDK shows no "Close" of its own, and a root `dismiss()` is a no-op, so the host
+/// controller is never dismissed or popped behind the host's back. Measured on iOS 18.6, 26.4
+/// and 27.0 with the host screen presented full screen, as a page sheet and pushed. The SDK's own
+/// presentations (sheets, alerts) and pushes keep working: they are presented from, or
+/// contained in, this controller, not its host. A post published from a root editor is routed
+/// to `onBackRequested` by `OctopusEmbeddedContainerView` instead.
+///
+/// Without a host exit nothing changes: the SDK keeps its own "Close" button, which is then
+/// the only way out of a host modal.
+final class OctopusEmbeddedHostingController<Content: View>: UIHostingController<Content> {
+  /// Hides the host's presentation and navigation context from SwiftUI. Set once, before the
+  /// view joins the hierarchy.
+  var isolatesHostPresentation = false
+
+  override var presentingViewController: UIViewController? {
+    isolatesHostPresentation ? nil : super.presentingViewController
+  }
+
+  override var navigationController: UINavigationController? {
+    isolatesHostPresentation ? nil : super.navigationController
   }
 }

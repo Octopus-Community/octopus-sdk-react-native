@@ -14,6 +14,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
+import androidx.core.content.ContextCompat
 import com.octopuscommunity.sdk.OctopusSDK
 import com.octopuscommunity.sdk.domain.model.CreatePostScreenInfo
 import com.octopuscommunity.sdk.domain.model.OctopusPrefilledPost
@@ -209,12 +210,9 @@ class OctopusActivity : ComponentActivity() {
 
   private fun registerCloseUIReceiver() {
     val intentFilter = IntentFilter(OctopusUIController.CLOSE_UI_ACTION)
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-      registerReceiver(closeUIReceiver, intentFilter, Context.RECEIVER_NOT_EXPORTED)
-    } else {
-      @Suppress("UnspecifiedRegisterReceiverFlag")
-      registerReceiver(closeUIReceiver, intentFilter)
-    }
+    ContextCompat.registerReceiver(
+      this, closeUIReceiver, intentFilter, ContextCompat.RECEIVER_NOT_EXPORTED
+    )
     isCloseUIReceiverRegistered = true
   }
 }

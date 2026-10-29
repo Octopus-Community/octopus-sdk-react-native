@@ -20,3 +20,15 @@ it('accepts visibility on iOS without sending an Android-only native prop', () =
   expect(nativeProps({})).not.toHaveProperty('isVisible');
   expect(nativeProps({ isVisible: false })).not.toHaveProperty('isVisible');
 });
+
+it('tells Android whether onBackRequested is bound, and iOS nothing', () => {
+  jest.replaceProperty(Platform, 'OS', 'android');
+  expect(nativeProps({}).hasOnBackRequested).toBe(false);
+  expect(nativeProps({ onBackRequested: () => {} }).hasOnBackRequested).toBe(
+    true
+  );
+  jest.replaceProperty(Platform, 'OS', 'ios');
+  expect(nativeProps({ onBackRequested: () => {} })).not.toHaveProperty(
+    'hasOnBackRequested'
+  );
+});

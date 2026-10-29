@@ -109,6 +109,11 @@ class OctopusViewWrapper(context: Context) : FrameLayout(context) {
     val titleCentered = mutableStateOf<Boolean?>(null)
     val navBarLeadingAction = mutableStateOf<NavigationIconType?>(null)
 
+    // Whether JS bound `onBackRequested` for this view (Android-only wire prop, see
+    // setHasOnBackRequested). Gates the root feed's system back and whether an initial screen
+    // is the root, so an unheard event never swallows the host's own back handling.
+    val hasOnBackRequested = mutableStateOf(false)
+
     // Decoded `initialScreen` prop. A `createPost` screen lands in [createPostInfo] instead —
     // exactly the split OctopusContent takes — and both are null for the main feed.
     // Internal, not public: `BridgeInitialScreen` is an internal bridge type, and the wrapper
@@ -332,7 +337,9 @@ class OctopusUIViewManager(private val reactContext: ReactApplicationContext) :
                     // OctopusContent only invokes this on the SDK's ROOT screen — its
                     // internal NavHost pops sub-screens itself — so the event fires exactly
                     // when the host is the only party left able to react (issue #36).
-                    onBack = { dispatchBackRequested(wrapper) }
+                    onBack = { dispatchBackRequested(wrapper) },
+                    hostHandlesBack = wrapper.hasOnBackRequested.value,
+                    initialScreenAsRoot = wrapper.hasOnBackRequested.value
                 )
             }
         }
@@ -370,7 +377,7 @@ class OctopusUIViewManager(private val reactContext: ReactApplicationContext) :
     /**
      * Decodes the flat `initialScreen` wire payload (produced by JS `normalizeInitialScreen`,
      * the same producer `openUI` uses) into the pair [OctopusContent] consumes: a
-     * [BridgeInitialScreen] for the screens that navigate on top of the home NavHost, or a
+     * [BridgeInitialScreen] for the other screens the NavHost starts on, or a
      * [CreatePostScreenInfo] for the post editor.
      *
      * A prop cannot reject a promise, so an invalid `createPost` prefill cannot surface a
@@ -472,6 +479,19 @@ class OctopusUIViewManager(private val reactContext: ReactApplicationContext) :
             "back" -> NavigationIconType.Back
             else -> null
         }
+    }
+
+    /**
+     * Android-only: `true` when JS bound `onBackRequested` on this view. The root feed then
+     * forwards system back to that callback whenever its leading back/close icon is shown —
+     * the same action as tapping the icon — instead of leaving it to the host's JS
+     * `hardwareBackPress` chain, and a non-editor initial screen is the root (OctopusContent's
+     * `hostHandlesBack` and `initialScreenAsRoot`). Without it, an initial screen keeps the main
+     * feed underneath so system back still reaches the host.
+     */
+    @ReactProp(name = "hasOnBackRequested", defaultBoolean = false)
+    fun setHasOnBackRequested(view: OctopusViewWrapper, hasOnBackRequested: Boolean) {
+        view.hasOnBackRequested.value = hasOnBackRequested
     }
 
     /**

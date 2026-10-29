@@ -1,6 +1,8 @@
 package com.octopuscommunity.octopusreactnativesdk
 
 import android.content.BroadcastReceiver
+import android.content.Context
+import android.os.Build
 import android.os.Looper
 import com.facebook.react.bridge.BridgeReactContext
 import com.facebook.react.bridge.Promise
@@ -44,8 +46,12 @@ class OctopusUIControllerCloseUITest {
     // buildActivity attaches the real Activity. Avoid onCreate's SDK initialization guard
     // and Compose content: register only its production receiver, without a key or SDK setup.
     val activity = Robolectric.buildActivity(OctopusActivity::class.java).get()
+    // Below API 33, ContextCompat guards a non-exported receiver with this signature
+    // permission. The app manifest grants it through androidx.core; Config.NONE does not.
+    broadcasts.grantPermissions(notExportedPermission(application))
     ReflectionHelpers.callInstanceMethod<Void>(activity, "registerCloseUIReceiver")
     try {
+      assertCloseReceiverNotExported(application)
       assertFalse(activity.isFinishing)
       var resolutions = 0
       controller.closeUI(promise { value ->
@@ -72,6 +78,20 @@ class OctopusUIControllerCloseUITest {
       activity.unregisterReceiver(
         ReflectionHelpers.getField<BroadcastReceiver>(activity, "closeUIReceiver")
       )
+    }
+  }
+
+  private fun notExportedPermission(context: Context) =
+    "${context.packageName}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+
+  // Going back to an exported registerReceiver call must fail here at both API levels.
+  private fun assertCloseReceiverNotExported(context: Context) {
+    val registration = shadowOf(RuntimeEnvironment.getApplication()).registeredReceivers
+      .single { it.intentFilter.hasAction(OctopusUIController.CLOSE_UI_ACTION) }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      assertTrue(registration.flags and Context.RECEIVER_NOT_EXPORTED != 0)
+    } else {
+      assertEquals(notExportedPermission(context), registration.broadcastPermission)
     }
   }
 

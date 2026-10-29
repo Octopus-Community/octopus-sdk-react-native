@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.15.1**](../README.md)
+[**@octopus-community/react-native v1.15.2**](../README.md)
 
 ---
 
@@ -195,12 +195,12 @@ notification of the leading-icon path — never as "the user is still in
 the community until it fires".
 
 **Android**: the leading icon is always painted on the root screen, so
-that path is always reachable. With `initialScreen: { type: 'createPost' }`,
-the editor is the root: cancelling, system back (after confirming any
-discard), and successful publication fire this callback and close the UI.
-Other initial screens retain a feed underneath them; system back pops
-those screens towards the feed. System back on the feed itself finishes
-the SDK's Activity without firing this callback.
+that path is always reachable. Every [initialScreen](#initialscreen) is the root,
+with no feed underneath (as on iOS): system back on it fires this callback
+and closes the UI. With `initialScreen: { type: 'createPost' }`, cancelling
+(after confirming any discard) and successful publication do too. System
+back on the main feed itself finishes the SDK's Activity without firing
+this callback.
 iOS's full-screen modal offers no system dismissal gesture at all.
 
 #### Returns

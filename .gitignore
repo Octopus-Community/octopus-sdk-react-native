@@ -115,3 +115,6 @@ FEATURES_*.md
 # Staging file scripts/changeset.mjs renames over package.json; only ever left
 # behind if the process dies between the write and the rename.
 package.json.changeset-tmp
+
+# native-dev tool fetched by .github/actions/native-dev
+.native-dev-tool/

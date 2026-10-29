@@ -325,9 +325,10 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
   /// Same decode as `decodeNavBarLeadingAction`, plus the `showBackButton` backfill
   /// `OctopusUIView` needs and `openUI` does not: `OctopusHomeScreen` only shows its native
   /// default leading icon when `presentationMode.wrappedValue.isPresented` — true for
-  /// `openUI`'s modally-presented `UIHostingController`, but always false for the embedded
-  /// view's `addChild`-based hosting, which is never a SwiftUI presentation. Without this
-  /// backfill, `showBackButton: true` would render no icon at all on the embedded view.
+  /// `openUI`'s modally-presented `UIHostingController`, but false for an embedded view that
+  /// has a host exit: `OctopusEmbeddedHostingController` hides the host's presentation from
+  /// SwiftUI then. Without this backfill, `showBackButton: true` would render no icon at all
+  /// on the embedded view.
   /// Matches the Flutter iOS bridge's own backfill for the same reason.
   ///
   /// The tap closure forwards to the view's `onBackRequested` direct event (issue #36) — the
@@ -504,6 +505,24 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
       )
     }
 
+    let leadingAction = embeddedNavBarLeadingAction(
+      raw: navBarLeadingAction, showBackButton: showBackButton, onTap: { onBackTap?() }
+    )
+    // A root post editor with a host exit closes through the host on publish, like on
+    // Android: the native editor's own close after a publish is neutralized by
+    // `OctopusEmbeddedHostingController` (it would dismiss or pop the host's controller).
+    if leadingAction != nil, case .home(.createPost) = initialScreen,
+       let container = containerView as? OctopusEmbeddedContainerView {
+      container.routePublishToBackRequested(
+        octopus.eventPublisher
+          .compactMap { event -> Void? in
+            if case .postCreated = event { return () }
+            return nil
+          }
+          .eraseToAnyPublisher()
+      )
+    }
+
     uiManager.addEmbeddedView(
       to: containerView,
       octopus: octopus,
@@ -521,9 +540,7 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
       ),
       initialScreen: initialScreen,
       navigationMode: decodeNavigationMode(navigationMode),
-      navBarLeadingAction: embeddedNavBarLeadingAction(
-        raw: navBarLeadingAction, showBackButton: showBackButton, onTap: { onBackTap?() }
-      )
+      navBarLeadingAction: leadingAction
     )
   }
 

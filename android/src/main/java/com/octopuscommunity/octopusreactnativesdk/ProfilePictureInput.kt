@@ -4,7 +4,10 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import java.net.URI
 
-internal class ProfilePictureLoadException(cause: Throwable? = null) :
+internal class ProfilePictureLoadException(
+  cause: Throwable? = null,
+  val reason: String = "Image processing failed",
+) :
   Exception("Failed to load profile picture", cause)
 
 internal sealed class ProfilePictureInput {

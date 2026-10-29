@@ -36,9 +36,14 @@
     // entirely, which an empty outputs list already provides. Declaring the
     // built .app/.apk as outputs would push hundreds of MB per hash into
     // .turbo/ and through actions/cache for artifacts nobody reads.
+    //
+    // The native-dev window (`native-dev-sources.json` and the OCTOPUS_* variables
+    // `scripts/native-dev.sh prepare` exports) decides which native SDK commit both
+    // builds resolve. Moving the window with unchanged pins must miss the cache.
     "build:android": {
-      "env": ["ORG_GRADLE_PROJECT_newArchEnabled"],
+      "env": ["ORG_GRADLE_PROJECT_newArchEnabled", "OCTOPUS_ANDROID_DEV_REPO", "OCTOPUS_IOS_DEV_PACKAGE_URL", "OCTOPUS_IOS_DEV_REVISION"],
       "inputs": [
+        "../native-dev-sources.json",
         "../package.json",
         "../android/**",
         "!../android/build/**",
@@ -56,8 +61,9 @@
       "outputs": []
     },
     "build:ios": {
-      "env": ["RCT_NEW_ARCH_ENABLED"],
+      "env": ["RCT_NEW_ARCH_ENABLED", "OCTOPUS_ANDROID_DEV_REPO", "OCTOPUS_IOS_DEV_PACKAGE_URL", "OCTOPUS_IOS_DEV_REVISION"],
       "inputs": [
+        "../native-dev-sources.json",
         "../package.json",
         "../*.podspec",
         "../ios/**",

@@ -419,9 +419,11 @@ export default function App() {
   const settingsBar = useAppBarScroll();
   const [activeTab, setActiveTab] = useState<TabId>(START_TAB);
   const communityReturnTab = useRef<TabId>(START_TAB);
-  useEffect(() => {
-    if (activeTab !== 'community') communityReturnTab.current = activeTab;
-  }, [activeTab]);
+  // A Scenarios launch button ("Tab", "Full screen") picks the container for that one visit.
+  // It never rewrites the Settings display mode, so the bottom-bar Community tab keeps
+  // opening the way Settings says, whichever button was pressed last.
+  const [communityVisitMode, setCommunityVisitMode] =
+    useState<DisplayMode | null>(null);
   // Anchors: where a link inside the app asked to land. Each screen applies its request on
   // mount and on every new nonce; the tab bar clears them, so a plain tab visit opens the
   // screen at its top instead of replaying the last link.
@@ -496,6 +498,26 @@ export default function App() {
     }
   );
   const displayMode: DisplayMode = communityNavigation.mode;
+  const communityMode: DisplayMode = communityVisitMode ?? displayMode;
+  // Like a Settings mode change, a different visit mode remounts the embedded view
+  // (`generation`): its leading action is read at mount.
+  const visitCommunity = useCallback(
+    (mode: DisplayMode) => {
+      if (mode !== communityMode)
+        dispatchCommunityNavigation({ type: 'refreshPresentation' });
+      setCommunityVisitMode(mode);
+      setActiveTab('community');
+    },
+    [communityMode]
+  );
+  useEffect(() => {
+    if (activeTab === 'community') return;
+    communityReturnTab.current = activeTab;
+    if (communityVisitMode === null) return;
+    if (communityVisitMode !== displayMode)
+      dispatchCommunityNavigation({ type: 'refreshPresentation' });
+    setCommunityVisitMode(null);
+  }, [activeTab, communityVisitMode, displayMode]);
   const sessionGeneration = useRef(0);
   const invalidateCommunitySession = useCallback(() => {
     const session = ++sessionGeneration.current;
@@ -1583,7 +1605,7 @@ export default function App() {
     dismissForPush: dismissHostForPush,
   } = useHostScreens({
     enabled: config !== null && isInitializationTriggered,
-    fullscreen: displayMode === 'fullscreen',
+    fullscreen: communityMode === 'fullscreen',
     isScenariosPreview: activeTab === 'scenarios',
     authEnabled: isAuthRequiredCallbackEnabled,
     editEnabled: isEditCallbackEnabled,
@@ -1613,14 +1635,14 @@ export default function App() {
   /**
    * Shows the community embedded in the app, from Scenarios.
    *
-   * Forces the display mode as well as switching tabs: the Community tab honours whichever
-   * mode is selected, so from a fullscreen-mode build this button would otherwise present
-   * fullscreen and contradict its own label.
+   * Forces embed for this visit only, as well as switching tabs: the Community tab honours
+   * the Settings mode, so with fullscreen selected this button would otherwise present
+   * fullscreen and contradict its own label. The Settings mode itself is left unchanged.
    */
-  const openCommunityEmbedded = useCallback(() => {
-    setDisplayMode('embed');
-    setActiveTab('community');
-  }, [setDisplayMode]);
+  const openCommunityEmbedded = useCallback(
+    () => visitCommunity('embed'),
+    [visitCommunity]
+  );
 
   const openScenarioPresentation = useCallback(
     (mode: CommunityPresentationMode) => {
@@ -1629,10 +1651,9 @@ export default function App() {
         return;
       }
       communityReturnTab.current = 'scenarios';
-      setDisplayMode(mode === 'tab' ? 'embed' : 'fullscreen');
-      setActiveTab('community');
+      visitCommunity(mode === 'tab' ? 'embed' : 'fullscreen');
     },
-    [setDisplayMode]
+    [visitCommunity]
   );
 
   const handleTabChange = useCallback(
@@ -1672,7 +1693,7 @@ export default function App() {
     },
   });
   const isCommunityFullscreen =
-    showTabBar && activeTab === 'community' && displayMode === 'fullscreen';
+    showTabBar && activeTab === 'community' && communityMode === 'fullscreen';
 
   const updateStatus = useSyncExternalStore(
     subscribeToAppUpdate,
@@ -2196,7 +2217,7 @@ export default function App() {
                 onConnectUser={() => openSettingsPage('account')}
                 communitySessionNonce={communityNavigation.generation}
                 notification={communityNavigation.target}
-                mode={displayMode}
+                mode={communityMode}
                 onBackRequested={() => setActiveTab(communityReturnTab.current)}
               />
             }

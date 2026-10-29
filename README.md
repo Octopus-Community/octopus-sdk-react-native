@@ -2,7 +2,7 @@
 
 [![npm package](https://img.shields.io/npm/v/@octopus-community/react-native.svg)](https://www.npmjs.com/package/@octopus-community/react-native)
 [![Platforms](https://img.shields.io/badge/platforms-Android_7.0%2B_%7C_iOS_15.1%2B-lightgrey)](#requirements)
-[![Android SDK](https://img.shields.io/badge/Android_SDK-1.15.0-34a853?logo=android&logoColor=white)](https://github.com/Octopus-Community/octopus-sdk-android)
+[![Android SDK](https://img.shields.io/badge/Android_SDK-1.15.2-34a853?logo=android&logoColor=white)](https://github.com/Octopus-Community/octopus-sdk-android)
 [![iOS SDK](https://img.shields.io/badge/iOS_SDK-1.15.0-f05138?logo=apple&logoColor=white)](https://github.com/Octopus-Community/octopus-sdk-swift)
 [![License](https://img.shields.io/badge/license-Octopus_SDK_License-lightgrey)](LICENSE.md)
 
@@ -31,7 +31,7 @@ and [iOS](https://github.com/Octopus-Community/octopus-sdk-swift) SDKs behind on
 
 | React Native version(s) | Android       | iOS   | Old arch | New arch      | Octopus native SDK          |
 | ----------------------- | ------------- | ----- | -------- | ------------- | --------------------------- |
-| v0.81.x (tested 0.81.4) | 7.0+ (API 24) | 15.1+ | ✅       | Interop layer | Android 1.15.0 · iOS 1.15.0 |
+| v0.81.x (tested 0.81.4) | 7.0+ (API 24) | 15.1+ | ✅       | Interop layer | Android 1.15.2 · iOS 1.15.0 |
 
 * Older React Native versions (e.g. v0.78+) may work but are untested
 * New architecture is supported via the React Native interoperability layer
@@ -122,10 +122,19 @@ retain the value from the last successful `initialize()` call.
 
 To open the post editor with profile-tap interception, use
 `openUI({ initialScreen: { type: 'createPost' }, interceptProfileTaps: true })`.
-`navigateToOctopusCreatePost(prefilledPost?)` accepts prefill fields only. An initial editor
-is the navigation root: cancelling (after confirming any discard) or publishing successfully
-closes the fullscreen UI. On Android, system back follows the cancel path; in an embedded
-`OctopusUIView`, these actions fire `onBackRequested` so the host can dismiss its own view.
+`navigateToOctopusCreatePost(prefilledPost?)` accepts prefill fields only. Every initial
+screen (post, group, activity, profile or editor) is the navigation root, with no main feed
+underneath, on Android as on iOS. Its back icon closes the fullscreen UI; on Android, so does
+system back. An initial editor also closes it when cancelled (after confirming any discard) or
+after a successful publish. In an embedded `OctopusUIView`, these actions fire
+`onBackRequested` so the host can dismiss its own view. On Android, an embedded view without
+`onBackRequested` keeps the main feed under a non-editor initial screen, so system back still
+reaches the host.
+
+On Android, an embedded `OctopusUIView` whose main feed shows a leading icon (`showBackButton`
+or `navBarLeadingAction`) and that has an `onBackRequested` handler forwards system back on
+that feed to `onBackRequested`, exactly like tapping the icon. This holds whether the host
+screen is pushed or presented as a modal.
 
 ## Retaining an embedded view in a tab
 

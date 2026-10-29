@@ -142,7 +142,7 @@ class OctopusSSOAuthenticator(
           throw e
         }
       } catch (e: ProfilePictureLoadException) {
-        Log.w("OctopusSDK", "Failed to load profile picture; rejecting connection.")
+        Log.w("OctopusReactNativeSdk", "Failed to load profile picture; rejecting connection: ${e.reason}")
         promise.reject(CODE_CONNECT_USER_ERROR, e.message, e)
       } catch (e: Exception) {
         promise.reject(CODE_CONNECT_USER_ERROR, "Failed to connect user: ${e.message}", e)
@@ -311,6 +311,8 @@ class OctopusSSOAuthenticator(
         }
       }
     } catch (error: CancellationException) {
+      throw error
+    } catch (error: ProfilePictureLoadException) {
       throw error
     } catch (error: Exception) {
       throw ProfilePictureLoadException(error)

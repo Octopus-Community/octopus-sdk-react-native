@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.15.1**](../README.md)
+[**@octopus-community/react-native v1.15.2**](../README.md)
 
 ---
 
@@ -10,9 +10,11 @@ The post editor as the initial screen, optionally prefilled with content
 supplied by the host app.
 
 The editor is the navigation root. Cancelling (after confirming any discard)
-or publishing successfully closes the fullscreen UI. In an Android embedded
-view, these actions fire `onBackRequested`; the host must dismiss its view.
-Android system back follows the same path as cancelling.
+or publishing successfully closes the fullscreen UI. In an embedded view,
+these actions fire `onBackRequested` and the host must dismiss its view: on
+Android always, on iOS when the view has a leading icon (`showBackButton` or
+`navBarLeadingAction`). Android system back follows the same path as
+cancelling.
 
 [navigateToOctopusCreatePost](../functions/navigateToOctopusCreatePost.md) is the ergonomic shorthand for this
 case; both reject with the same [NavigateToOctopusCreatePostError](NavigateToOctopusCreatePostError.md)

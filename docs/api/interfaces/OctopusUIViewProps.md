@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.15.1**](../README.md)
+[**@octopus-community/react-native v1.15.2**](../README.md)
 
 ---
 
@@ -206,10 +206,30 @@ The fullscreen entry point has the same callback as an option —
 owns the container and closes it for you, so the callback is a
 notification rather than a request to dismiss.
 
-On Android, when the initial screen is the post editor
-(`{ type: 'createPost' }`), the editor is the root screen:
-cancelling, system back and a successful publish also call this callback,
-and your app should then dismiss the view.
+With this callback set, the initial screen (see [initialScreen](#initialscreen)) is
+the root screen, with no main feed underneath — on Android as on iOS. On
+Android, system back on that root calls this callback too. Without it,
+Android keeps the main feed under a non-editor initial screen, so system
+back pops to the feed and then reaches your app. On the main feed, Android
+system back calls this callback whenever the top app bar shows its leading
+icon ([showBackButton](#showbackbutton) or [navBarLeadingAction](#navbarleadingaction)).
+
+When the initial screen is the post editor (`{ type: 'createPost' }`),
+the editor is the root screen: cancelling and a successful publish also
+call this callback, and your app should then dismiss the view. On Android
+this always applies, system back included. On iOS it applies when the view
+has a leading icon ([showBackButton](#showbackbutton) or [navBarLeadingAction](#navbarleadingaction));
+the `postCreated` event is emitted either way. iOS limitation: such an
+editor reacts to any post published while it is on screen, so a post
+published from another Octopus view shown above it in a sheet, which
+leaves the editor on screen, also calls its callback.
+
+On iOS, a leading icon also makes this callback the SDK's only way out of
+the view: the SDK then shows no "Close" button of its own on its root
+screen and never dismisses or pops the screen that hosts the view — for
+example a React Navigation modal — by itself. Without a leading icon, an
+iOS view hosted in a modal keeps the SDK's own "Close" button, which
+dismisses that modal natively without calling this callback.
 
 #### Returns
 

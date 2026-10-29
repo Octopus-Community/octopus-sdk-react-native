@@ -1,5 +1,18 @@
 # @octopus-community/react-native
 
+## 1.15.2
+
+### Patch Changes
+
+- b18dd7f: Android: every `initialScreen` (post, group, activity, profile) is now the navigation root, as on iOS, both in `openUI` and in an embedded `OctopusUIView` that sets `onBackRequested`. The back icon and system back on that screen call `onBackRequested` (embedded) or close the UI (`openUI`), instead of revealing the main feed underneath. An embedded view without `onBackRequested` keeps the previous behaviour. The root screen also no longer goes blank while the host dismisses it.
+- e01014c: Bump the wrapped Android SDK from 1.15.0 to 1.15.2: reopening the community after closing it no longer crashes, and the "Illegal activities or products" report reason now reaches moderation instead of being filed as spam (Android). iOS stays on 1.15.0.
+- eb50e50: Remove unused private Android helpers (`parseColor`, `parseFontsConfig`, `parsePreProcessedFontsConfig`, `extractResourceNameFromUri`). Internal cleanup, no behavior change.
+- b18dd7f: Android: on the main feed of an embedded `OctopusUIView` that shows a back or close icon (`showBackButton` or `navBarLeadingAction`) and has an `onBackRequested` handler, system back now calls `onBackRequested`, just like tapping the icon. Before, system back did nothing there when the host screen was presented as a full-screen modal.
+- ee38fe0: Redact sensitive bridge logs, protect Android close broadcasts, clarify profile-picture failures and improve system-bar contrast.
+- 592386e: Example: the Scenarios "Tab" and "Full screen" launch buttons no longer change the Settings display mode, so the Community tab keeps opening the way Settings says. Sample only.
+- f07d754: iOS: an `OctopusUIView` with `showBackButton` or `navBarLeadingAction` now closes only through `onBackRequested`. Publishing from a root post editor (`initialScreen: { type: 'createPost' }`) calls `onBackRequested`, as on Android, and the `postCreated` event is still emitted. The SDK no longer adds its own "Close" button to the root screen, and never dismisses or pops the screen hosting the view, such as a React Navigation modal.
+- 14baeba: The npm package no longer ships TypeScript declarations for the repository's own maintenance scripts (`lib/typescript/scripts/`). Nothing imported them; the package's public types are unchanged.
+
 ## 1.15.1
 
 ### Patch Changes

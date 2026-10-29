@@ -19,6 +19,9 @@ export interface ConnectUserParams {
      * Android local files, drawable names (including vectors) and assets must
      * exist and be readable; their decoding stays with the native SDK. Android
      * passes remote URLs directly to the native SDK without a bridge download.
+     * Relative paths resolve against the process working directory on iOS when
+     * the file exists; Android treats them as drawable names or asset paths.
+     * Use an absolute path or `file://` URL for a local file on both platforms.
      * iOS downloads remote bytes before connecting, requires an HTTP 2xx response,
      * and checks both remote and local bytes with its image decoder.
      * Invalid syntax, undecodable base64 or missing/unreadable local inputs reject

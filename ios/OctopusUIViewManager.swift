@@ -1,3 +1,4 @@
+import Combine
 import React
 import UIKit
 
@@ -32,6 +33,34 @@ import UIKit
   @objc var onBackRequested: RCTDirectEventBlock? = nil
 
   private var hasEmbedded = false
+
+  /// Routes a successful publish from a root post editor to `onBackRequested`; see
+  /// `routePublishToBackRequested(_:)`. Lives as long as the container.
+  private var publishSubscription: AnyCancellable?
+
+  /// Fires `onBackRequested` each time `published` emits while this view is in a window.
+  ///
+  /// Used when the embedded view opens on the post editor (`initialScreen: createPost`) and
+  /// the host owns the exit (`showBackButton` or `navBarLeadingAction`). The editor is then
+  /// the root screen: the native SDK closes it after a publish through
+  /// `presentationMode.dismiss()`, which `OctopusEmbeddedHostingController` turns into a no-op
+  /// so it cannot dismiss or pop the host's controller. The host closes the screen instead,
+  /// as it does for the back arrow — the same contract as the Android bridge. The SDK's
+  /// `postCreated` event is still emitted to JS.
+  ///
+  /// The window check keeps a container that is mounted but off screen (a screen hidden
+  /// under a full-screen modal) from reacting to a post published elsewhere. The SDK event
+  /// carries no source, so a post published from another Octopus view in a sheet above this
+  /// one, which leaves this container in the window, still fires; the TSDoc of
+  /// `onBackRequested` states that limitation.
+  func routePublishToBackRequested(_ published: AnyPublisher<Void, Never>) {
+    publishSubscription = published
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] in
+        guard let self, self.window != nil else { return }
+        self.onBackRequested?([:])
+      }
+  }
 
   /// Total bottom padding (points) the host asked for through
   /// `initialize({ ui: { bottomSafeAreaInset } })`, once it is known to be positive.

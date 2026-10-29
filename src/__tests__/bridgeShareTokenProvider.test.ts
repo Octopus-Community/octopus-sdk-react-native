@@ -149,7 +149,11 @@ describe('addBridgeShareTokenRequestListener', () => {
 
   it('never logs the token or the fingerprint', async () => {
     addBridgeShareTokenRequestListener(async () => {
-      throw new Error('backend unreachable');
+      throw Object.assign(new Error('backend unreachable'), {
+        config: { headers: { Authorization: 'test-token' } },
+        response: { bridgeFingerprint: 'secret-fingerprint' },
+        cause: { token: 'test-token' },
+      });
     });
 
     await registeredHandler()({
@@ -159,7 +163,48 @@ describe('addBridgeShareTokenRequestListener', () => {
 
     const logged = JSON.stringify(mockLog.mock.calls);
     expect(logged).not.toContain('secret-fingerprint');
+    expect(logged).not.toContain('test-token');
+    expect(mockLog.mock.calls[0]?.[2]).toEqual({
+      name: 'Error',
+      message: 'backend unreachable',
+    });
   });
+
+  it.each(['complete', 'register', 'unregister'] as const)(
+    'logs only name/message when the native %s operation rejects',
+    async (operation) => {
+      const nativeMock = {
+        complete: mockComplete,
+        register: mockRegister,
+        unregister: mockUnregister,
+      }[operation];
+      nativeMock?.mockRejectedValue(
+        Object.assign(new Error('bridge gone'), {
+          token: 'test-token',
+          cause: { bridgeFingerprint: 'test-fingerprint' },
+        })
+      );
+      const subscription = addBridgeShareTokenRequestListener(
+        async () => 'test-token'
+      );
+      if (operation === 'complete') {
+        await registeredHandler()({
+          requestId: 'req-1',
+          bridgeFingerprint: 'test-fingerprint',
+        });
+      } else if (operation === 'unregister') {
+        subscription.remove();
+      }
+      // Registration and removal report their promise rejections asynchronously.
+      await Promise.resolve();
+
+      expect(mockLog).toHaveBeenCalledTimes(1);
+      expect(mockLog.mock.calls[0]?.[2]).toEqual({
+        name: 'Error',
+        message: 'bridge gone',
+      });
+    }
+  );
 
   it('swallows a failure of the native reply rather than surfacing an unhandled rejection', async () => {
     mockComplete.mockRejectedValue(new Error('bridge gone'));

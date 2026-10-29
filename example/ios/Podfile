@@ -107,6 +107,18 @@ end
 target 'OctopusReactNativeSdkExample' do
   config = use_native_modules!
 
+  # Internal tooling (native-dev): inert unless both variables are set. During a
+  # native dev-source window the six native pods resolve from one commit instead
+  # of trunk; they share one version, so they move together.
+  octopus_dev_url = ENV['OCTOPUS_IOS_DEV_PACKAGE_URL'].to_s
+  octopus_dev_revision = ENV['OCTOPUS_IOS_DEV_REVISION'].to_s
+  unless octopus_dev_url.empty? || octopus_dev_revision.empty?
+    %w[
+      OctopusCommunity OctopusCommunityUI OctopusCommunityCore
+      OctopusCommunityRemoteClient OctopusCommunityGrpcModels OctopusCommunityDependencyInjection
+    ].each { |name| pod name, :git => octopus_dev_url, :commit => octopus_dev_revision }
+  end
+
   use_react_native!(
     :path => config[:reactNativePath],
     # An absolute path to your application root.

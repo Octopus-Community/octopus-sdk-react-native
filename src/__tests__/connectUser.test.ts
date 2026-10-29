@@ -56,6 +56,26 @@ describe('connectUser', () => {
       code: 'MISSING_TOKEN',
     });
   });
+
+  it('propagates an invalid profile-picture rejection with its native code and message', async () => {
+    const rejection = nativeRejection(
+      'CONNECT_USER_ERROR',
+      'Failed to load profile picture'
+    );
+    mockConnectUser.mockRejectedValue(rejection);
+    const params = {
+      userId: 'user-1',
+      profile: { profilePicture: 'file:///missing-avatar.png' },
+    };
+
+    await expect(connectUser(params)).rejects.toBe(rejection);
+    expect(isConnectUserError(rejection)).toBe(true);
+    expect(rejection).toMatchObject({
+      code: 'CONNECT_USER_ERROR',
+      message: 'Failed to load profile picture',
+    });
+    expect(mockConnectUser).toHaveBeenCalledWith(params);
+  });
 });
 
 describe('isConnectUserError', () => {

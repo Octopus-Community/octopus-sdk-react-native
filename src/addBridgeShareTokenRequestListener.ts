@@ -1,6 +1,7 @@
 import { eventEmitter } from './internals/eventEmitter';
 import { OctopusReactNativeSdk } from './internals/nativeModule';
 import { log } from './internals/logger';
+import { errorSummary } from './internals/errorSummary';
 import { LogLevel } from './enums/LogLevel.enum';
 
 /**
@@ -47,7 +48,7 @@ export function addBridgeShareTokenRequestListener(
       log(
         LogLevel.ERROR,
         'Failed to provide a bridge share token to Octopus',
-        error
+        errorSummary(error)
       );
       token = null;
     }
@@ -60,7 +61,7 @@ export function addBridgeShareTokenRequestListener(
       log(
         LogLevel.ERROR,
         'Failed to hand the bridge share token back to Octopus',
-        error
+        errorSummary(error)
       );
     }
   };
@@ -81,7 +82,7 @@ export function addBridgeShareTokenRequestListener(
     log(
       LogLevel.ERROR,
       'Failed to register the bridge share token provider',
-      error
+      errorSummary(error)
     );
   });
 
@@ -94,7 +95,7 @@ export function addBridgeShareTokenRequestListener(
         log(
           LogLevel.ERROR,
           'Failed to unregister the bridge share token provider',
-          error
+          errorSummary(error)
         );
       });
     },

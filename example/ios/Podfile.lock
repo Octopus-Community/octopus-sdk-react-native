@@ -47,7 +47,7 @@ PODS:
   - OctopusCommunityUI (1.15.0):
     - OctopusCommunity (= 1.15.0)
     - OctopusCommunityCore (= 1.15.0)
-  - OctopusReactNativeSdk (1.15.1):
+  - OctopusReactNativeSdk (1.15.2):
     - boost
     - DoubleConversion
     - fast_float
@@ -2901,7 +2901,7 @@ SPEC CHECKSUMS:
   OctopusCommunityGrpcModels: 425c4fcabf61f14f41cef6ba13b4775005e22652
   OctopusCommunityRemoteClient: 0f345267d8efbd700010de2d4fec049fc03548e3
   OctopusCommunityUI: 5ec5bb5b728f36164553bba32a2f394120a0333e
-  OctopusReactNativeSdk: 89d533df1b7fe7bc6bdf8b2100602b50243b0031
+  OctopusReactNativeSdk: 9952b2944e70f0e052e5ca264d84308df18407ac
   RCT-Folly: 846fda9475e61ec7bcbf8a3fe81edfcaeb090669
   RCTDeprecation: c0ed3249a97243002615517dff789bf4666cf585
   RCTRequired: 58719f5124f9267b5f9649c08bf23d9aea845b23
@@ -2986,6 +2986,6 @@ SPEC CHECKSUMS:
   SwiftProtobuf: eb2c3c26d43afb22247593e60e3163cdab2a0b4a
   Yoga: 9b30b783a17681321b52ac507a37219d7d795ace
 
-PODFILE CHECKSUM: 3e175c33bd0d2b6c23a803e23817ba369b2a2a12
+PODFILE CHECKSUM: 466435fa65ca8c8a2483134b3c83cf3d4ea17e60
 
 COCOAPODS: 1.16.2

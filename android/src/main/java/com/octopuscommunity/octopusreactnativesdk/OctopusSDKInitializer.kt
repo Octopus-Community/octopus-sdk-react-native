@@ -280,18 +280,6 @@ class OctopusSDKInitializer {
     return null
   }
 
-
-  private fun extractResourceNameFromUri(uri: String): String? {
-    // Extract resource name from React Native image URI
-    // Examples: "logo.png" -> "logo", "images/logo.png" -> "logo"
-    return try {
-      val fileName = uri.substringAfterLast("/")
-      fileName.substringBeforeLast(".")
-    } catch (e: Exception) {
-      null
-    }
-  }
-
   /**
    * Reads `theme.iconOverrides`, the flat `slot path -> uri` map the TypeScript layer builds
    * from `theme.icons` (already validated there). Non-string values are skipped. Null when

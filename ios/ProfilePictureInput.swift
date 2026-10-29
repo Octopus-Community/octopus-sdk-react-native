@@ -77,24 +77,31 @@ enum ProfilePictureInput {
   static func load(
     _ input: String,
     loadRemote: (URL) async throws -> (Data, URLResponse),
-    logFailure: () -> Void
+    logFailure: () -> Void = {}
   ) async throws -> Data? {
+    // Fixed diagnostics only: Foundation errors may carry the full URL or local path.
+    var rejectionReason = "Invalid picture syntax or image data"
     do {
       switch try parse(input) {
       case nil: return nil
       case .remote(let url):
+        rejectionReason = "Remote image download failed"
         let (data, response) = try await loadRemote(url)
+        rejectionReason = "Remote image returned a non-HTTP or non-2xx response"
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
           throw ParseError.invalidPicture
         }
+        rejectionReason = "Undecodable remote image"
         return try decodedImageData(data)
       case .bytes(let data): return data
       case .local(let url):
+        rejectionReason = "Unreadable or undecodable local image"
         return try await Task.detached(priority: .userInitiated) {
           try decodedImageData(Data(contentsOf: url))
         }.value
       }
     } catch {
+      NSLog("[OctopusReactNativeSdk] Failed to load profile picture; rejecting connection: %@", rejectionReason)
       logFailure()
       throw error
     }

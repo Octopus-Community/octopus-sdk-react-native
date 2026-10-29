@@ -1,25 +1,81 @@
 package com.octopuscommunity.octopusreactnativesdk
 
 import android.util.Log
+import androidx.navigation.NavController
 import androidx.navigation.NavGraph
 import com.octopuscommunity.sdk.domain.model.CreatePostScreenInfo
 import com.octopuscommunity.sdk.ui.OctopusDestination
 
 internal const val BRIDGE_HOME_ROUTE = "OctopusHome"
 
-/** Selects the editor as the graph root, preserving the native SDK's prefill route arguments. */
-internal fun NavGraph.setBridgeInitialDestination(createPostInfo: CreatePostScreenInfo?) {
-  val post = createPostInfo?.prefilledPost
+/**
+ * The NavHost's start route for the bridge: the editor for [createPostInfo] (with the native
+ * SDK's prefill route arguments), else the destination for [initialScreen] (the same routes as
+ * the SDK's `navigateToOctopus…` helpers), else [BRIDGE_HOME_ROUTE], the main feed.
+ * [createPostInfo] wins: the two are exclusive on the wire (see [BridgeInitialScreen]).
+ */
+internal fun bridgeStartRoute(
+  createPostInfo: CreatePostScreenInfo?,
+  initialScreen: BridgeInitialScreen?,
+): Any {
   if (createPostInfo != null) {
-    setStartDestination(
-      OctopusDestination.CreatePost(
-        groupId = post?.topicId,
-        prefilledText = post?.text,
-        prefilledImageUri = post?.image?.toString(),
-        prefilledCustomActionLabel = post?.cta?.label,
-        prefilledCustomActionUrl = post?.cta?.url?.toString(),
-      )
+    val post = createPostInfo.prefilledPost
+    return OctopusDestination.CreatePost(
+      groupId = post?.topicId,
+      prefilledText = post?.text,
+      prefilledImageUri = post?.image?.toString(),
+      prefilledCustomActionLabel = post?.cta?.label,
+      prefilledCustomActionUrl = post?.cta?.url?.toString(),
     )
+  }
+  return when (initialScreen) {
+    null -> BRIDGE_HOME_ROUTE
+    is BridgeInitialScreen.Post -> OctopusDestination.PostDetails(
+      postId = initialScreen.postId,
+      origin = OctopusDestination.Origin.CLIENT_APP,
+    )
+    is BridgeInitialScreen.Group -> OctopusDestination.GroupDetails(
+      groupId = initialScreen.groupId,
+      origin = OctopusDestination.Origin.CLIENT_APP,
+    )
+    is BridgeInitialScreen.MemberActivity -> initialScreen.clientUserId
+      ?.let { OctopusDestination.Activity(clientUserId = it) }
+      ?: OctopusDestination.Activity(userId = initialScreen.profileId)
+    is BridgeInitialScreen.Profile -> initialScreen.clientUserId
+      ?.let { OctopusDestination.ProfileSummary(clientUserId = it) }
+      // No id: the connected user's own, editable profile (a nested graph).
+      ?: OctopusDestination.CurrentUserProfileGraph
+  }
+}
+
+/**
+ * Selects the bridge's initial screen as the graph root, so no main feed sits underneath it —
+ * iso with the iOS bridge, which hands every initial screen to the native SDK as its root.
+ *
+ * At that root the native SDK routes its top-bar back icon and system back to the host `onBack`
+ * (the per-view `onBackRequested` event, or closing the fullscreen activity) instead of
+ * revealing a feed. See [bridgeStartRoute] for the routes.
+ */
+internal fun NavGraph.setBridgeInitialDestination(
+  createPostInfo: CreatePostScreenInfo?,
+  initialScreen: BridgeInitialScreen? = null,
+) {
+  val route = bridgeStartRoute(createPostInfo, initialScreen)
+  if (route !is String) setStartDestination(route)
+}
+
+/**
+ * Puts [startRoute] back when the back stack is empty. At its start destination the native SDK's
+ * `NavigateUp` pops the last entry (`popBackStack()` empties the stack and returns `false`)
+ * before it delegates to the host `onBack`, which would leave a blank view — for good if the
+ * host keeps the view mounted, or for the length of its dismissal animation otherwise.
+ */
+internal fun NavController.restoreBridgeRoot(startRoute: Any) {
+  if (currentBackStackEntry != null) return
+  try {
+    if (startRoute is String) navigate(startRoute) else navigate(startRoute)
+  } catch (e: Exception) {
+    Log.w("OctopusContent", "Could not restore the root screen (${e.javaClass.simpleName})")
   }
 }
 
@@ -28,7 +84,7 @@ internal fun NavGraph.setBridgeInitialDestination(createPostInfo: CreatePostScre
  * [OctopusContent] through [OctopusActivity]'s Intent extras — and, on the embedded path, from
  * the `initialScreen` prop of [OctopusUIViewManager] straight into [OctopusContent].
  *
- * Only the screens that navigate on top of the home NavHost are modeled here; `mainFeed` is the
+ * Each case becomes the NavHost's root through [setBridgeInitialDestination]; `mainFeed` is the
  * absence of an initial screen (`null`), and `createPost` rides the existing
  * `EXTRA_CREATE_POST_*` extras into [OctopusContent]'s `createPostInfo` parameter, so neither
  * needs a case. Ids arrive already trimmed and validated by the JS producer

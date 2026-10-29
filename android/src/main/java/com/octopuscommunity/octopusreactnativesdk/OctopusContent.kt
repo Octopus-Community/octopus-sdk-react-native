@@ -6,6 +6,7 @@ import android.content.res.Configuration
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Log
+import androidx.activity.compose.BackHandler
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
@@ -17,6 +18,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -35,6 +37,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.graphics.toColorInt
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.createGraph
@@ -65,6 +68,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.net.URI
 import java.util.concurrent.ConcurrentHashMap
 
 // Cache for loaded images to avoid reloading on recomposition
@@ -72,6 +76,28 @@ private val imageCache = ConcurrentHashMap<String, Painter>()
 
 // Cache for drawable resources list to avoid repeated reflection
 private var cachedDrawableResources: List<String>? = null
+
+/** Never log credentials, paths, query parameters or fragments from a host URL. */
+private fun redactedUrlForLog(value: String): String = try {
+  val uri = URI(value)
+  val scheme = uri.scheme
+  val host = uri.host
+  when {
+    scheme == null -> "[redacted]"
+    host == null -> "$scheme:[redacted]"
+    else -> "$scheme://$host"
+  }
+} catch (_: Exception) {
+  "[redacted]"
+}
+
+/**
+ * A valid Android resource name (lowercase letters, digits and underscores) is safe to log
+ * and helps the integrator spot a typo; anything else — a URL, a path, a file name — is
+ * never echoed back.
+ */
+internal fun fontNameForLog(name: String): String =
+  if (name.matches(Regex("[a-z][a-z0-9_]*"))) "'$name'" else "[redacted]"
 
 /**
  * Ouvre une URL externe par défaut, en Custom Tab (parité avec l'ouvreur natif du SDK).
@@ -88,10 +114,23 @@ private fun openUrlInCustomTab(context: Context, url: String) {
         Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
       )
     } catch (e2: Exception) {
-      Log.w("OctopusContent", "No app can open URL: $url", e2)
+      Log.w("OctopusContent", "No app can open URL: ${redactedUrlForLog(url)} (${e2.javaClass.simpleName})")
     }
   }
 }
+
+/**
+ * Whether system back on the embedded root feed goes to the host's `onBack`: only when the host
+ * listens ([hostHandlesBack]) and the feed paints a leading icon wired to `onBack` — a back arrow
+ * ([backButton]) or an explicit [navBarLeadingAction], and only with a top app bar
+ * ([showNavBar]). Otherwise system back stays with the host's own handling.
+ */
+internal fun forwardsRootFeedBack(
+  hostHandlesBack: Boolean,
+  showNavBar: Boolean,
+  backButton: Boolean,
+  navBarLeadingAction: NavigationIconType?,
+): Boolean = hostHandlesBack && showNavBar && (backButton || navBarLeadingAction != null)
 
 /** Shared composable for both fullscreen Activity and embedded ViewManager. */
 @OptIn(ExperimentalMaterial3Api::class, InternalOctopusApi::class)
@@ -138,6 +177,26 @@ internal fun OctopusContent(
    * [showNavBar] is `false` — [OctopusHomeContent] renders no top app bar to put an icon on.
    */
   navBarLeadingAction: NavigationIconType? = null,
+  /**
+   * Embedded path only: the host listens for [onBack] (`onBackRequested` is bound in JS). When
+   * it is, and the root feed shows a leading back/close icon, system back on that root feed does
+   * what the icon does — it calls [onBack] — instead of depending on the host's JS
+   * `hardwareBackPress` chain, which a host modal can leave unanswered. Sub-screens and initial
+   * screens already get this from the native SDK's own root back handling. `false` keeps system
+   * back untouched, which the fullscreen path relies on (its activity finishes by itself).
+   */
+  hostHandlesBack: Boolean = false,
+  /**
+   * Whether a non-editor [initialScreen] is the NavHost root (no main feed underneath, iso iOS),
+   * so its back icon and system back call [onBack]. The fullscreen path always wants this. The
+   * embedded path wants it only when the host listens for [onBack]: otherwise the screen is
+   * pushed over the main feed, so system back pops to the feed and then reaches the host's own
+   * handling instead of firing an unheard event. Read once per [initialScreen]. The editor
+   * ([createPostInfo]) is always the root. Its live value also says whether anything consumes
+   * [onBack], which gates restoring the root the native SDK pops at its root (see
+   * `restoreBridgeRoot`).
+   */
+  initialScreenAsRoot: Boolean = true,
   // Only the fullscreen owner may style a window; embedded content belongs to its host.
   onSystemBarColors: ((Color, Color) -> Unit)? = null,
 ) {
@@ -355,8 +414,36 @@ internal fun OctopusContent(
   ) {
     val navController = rememberNavController()
 
+    // Latched per initial screen, so a later `onBackRequested` change never rebuilds the graph.
+    val initialScreenIsRoot = remember(initialScreen) { initialScreenAsRoot }
+    val rootInitialScreen = initialScreen.takeIf { initialScreenIsRoot }
+    val pushedInitialScreen = initialScreen.takeUnless { initialScreenIsRoot }
+    val startRoute = remember(createPostInfo, rootInitialScreen) {
+      bridgeStartRoute(createPostInfo, rootInitialScreen)
+    }
+    // The native SDK empties the back stack at its root before calling `onBack` (see
+    // restoreBridgeRoot): put the root back so the view never goes blank. Only when something
+    // consumes `onBack` — without a listener the restored root would swallow system back for
+    // good, and bring a just-published editor back prefilled.
+    val onBackIsConsumed by rememberUpdatedState(initialScreenAsRoot)
+    val delegateBack: () -> Unit = {
+      if (onBackIsConsumed) navController.restoreBridgeRoot(startRoute)
+      onBack()
+    }
+
     val graphBuilder: NavGraphBuilder.() -> Unit = {
-      composable(route = BRIDGE_HOME_ROUTE) {
+      composable(route = BRIDGE_HOME_ROUTE) { homeEntry ->
+        // OctopusHomeScreen has no system-back handling of its own at the root (the SDK's
+        // detail screens do, see OctopusSystemBackHandler), so the embedded root feed mirrors it
+        // here: only while the feed is the visible root and a leading icon wired to `onBack` is
+        // shown. Lifecycle-scoped through the entry, so a hidden (`isVisible = false`) or
+        // detached view never takes back from the host.
+        if (forwardsRootFeedBack(hostHandlesBack, showNavBar, backButton, navBarLeadingAction)) {
+          val currentEntry by navController.currentBackStackEntryAsState()
+          val isVisibleRoot = currentEntry?.id == homeEntry.id &&
+            navController.previousBackStackEntry == null
+          BackHandler(enabled = isVisibleRoot, onBack = delegateBack)
+        }
         val contentPadding = if (bottomContentPadding != null) {
           OctopusHomeDefaults.contentPadding(bottom = bottomContentPadding)
         } else {
@@ -381,7 +468,7 @@ internal fun OctopusContent(
             contentPadding = contentPadding,
             backIcon = backButton,
             leadingNavigationIcon = navBarLeadingAction,
-            onBack = onBack,
+            onBack = delegateBack,
             onNavigateToLogin = {
               OctopusEventEmitter.instance?.emitLoginRequired()
             },
@@ -436,7 +523,7 @@ internal fun OctopusContent(
             }
           }
         },
-        onBack = onBack,
+        onBack = delegateBack,
         onNavigateToLogin = {
           OctopusEventEmitter.instance?.emitLoginRequired()
         },
@@ -458,11 +545,12 @@ internal fun OctopusContent(
     }
 
     // Set the real start destination before attaching the graph: there must be no feed entry
-    // underneath an initial editor. The native editor delegates cancel, confirmed discard,
-    // system back and successful publication to `onBack` when its back stack has no parent.
-    val graph = remember(navController, createPostInfo, graphBuilder) {
+    // underneath an initial screen (iso iOS, where every initial screen is the SDK's root). At
+    // that root the native SDK delegates its top-bar back icon and system back — and, for the
+    // editor, cancel, confirmed discard and successful publication — to `onBack`.
+    val graph = remember(navController, createPostInfo, rootInitialScreen, graphBuilder) {
       navController.createGraph(startDestination = BRIDGE_HOME_ROUTE, builder = graphBuilder)
-        .apply { setBridgeInitialDestination(createPostInfo) }
+        .apply { setBridgeInitialDestination(createPostInfo, rootInitialScreen) }
     }
     NavHost(modifier = modifier, navController = navController, graph = graph)
 
@@ -471,7 +559,7 @@ internal fun OctopusContent(
         try {
           navController.navigate(Uri.parse("octopus-sdk://$link"))
         } catch (e: Exception) {
-          Log.w("OctopusContent", "Deep link navigation failed: $link", e)
+          Log.w("OctopusContent", "Deep link navigation failed: ${redactedUrlForLog("octopus-sdk://$link")} (${e.javaClass.simpleName})")
         }
       }
     }
@@ -484,8 +572,9 @@ internal fun OctopusContent(
       }
     }
 
-    // Other bridge-mode initial screens retain their existing stack above the home feed.
-    initialScreen?.let { screen ->
+    // Embedded view without `onBackRequested` (see `initialScreenAsRoot`): the initial screen
+    // keeps the main feed underneath it.
+    pushedInitialScreen?.let { screen ->
       LaunchedEffect(screen) {
         try {
           when (screen) {
@@ -504,7 +593,7 @@ internal fun OctopusContent(
                 ?: navController.navigate(OctopusDestination.CurrentUserProfileGraph)
           }
         } catch (e: Exception) {
-          Log.w("OctopusContent", "Initial screen navigation failed: $screen", e)
+          Log.w("OctopusContent", "Initial screen navigation failed: ${screen.javaClass.simpleName} (${e.javaClass.simpleName})")
         }
       }
     }
@@ -529,14 +618,14 @@ private fun resolveFontFamily(name: String?, context: Context): FontFamily? {
     } else {
       Log.w(
         "OctopusContent",
-        "theme.fonts.fontFamily '$name' was not found under res/font/ in the host app; " +
+        "theme.fonts.fontFamily ${fontNameForLog(name)} was not found under res/font/ in the host app; " +
           "keeping the default SDK font. Resource names are lowercase with underscores " +
           "only, and carry no file extension."
       )
       null
     }
   } catch (e: Exception) {
-    Log.w("OctopusContent", "theme.fonts.fontFamily '$name' could not be resolved", e)
+    Log.w("OctopusContent", "theme.fonts.fontFamily ${fontNameForLog(name)} could not be resolved (${e.javaClass.simpleName})")
     null
   }
 }
@@ -635,7 +724,7 @@ private suspend fun loadImageFromUri(uri: String, context: Context): Painter? {
 
       result?.also { imageCache[uri] = it }
     } catch (e: Exception) {
-      Log.w("OctopusActivity", "Failed to load image from URI: $uri", e)
+      Log.w("OctopusActivity", "Failed to load image from URI: ${redactedUrlForLog(uri)} (${e.javaClass.simpleName})")
       null
     }
   }
@@ -646,7 +735,7 @@ private suspend fun loadFromNetwork(url: String): Painter? {
   val painter = fetchRemote(url) { inputStream ->
     BitmapFactory.decodeStream(inputStream)?.let { BitmapPainter(it.asImageBitmap()) }
   }
-  if (painter == null) Log.w("OctopusActivity", "Failed to load image from network: $url")
+  if (painter == null) Log.w("OctopusActivity", "Failed to load image from network: ${redactedUrlForLog(url)}")
   return painter
 }
 
@@ -661,7 +750,7 @@ private fun loadReactNativeAsset(assetName: String, context: Context): Painter? 
     // Second try: Assets folder with strategic path checking
     loadFromAssetsFolder(assetName, context)
   } catch (e: Exception) {
-    Log.w("OctopusActivity", "Failed to load asset: $assetName", e)
+    Log.w("OctopusActivity", "Failed to load asset: ${redactedUrlForLog(assetName)} (${e.javaClass.simpleName})")
     null
   }
 }

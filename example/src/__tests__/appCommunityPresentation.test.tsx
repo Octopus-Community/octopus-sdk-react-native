@@ -228,6 +228,34 @@ it('dispatches Community retaps from the tab bar, preserving the push target on 
   }
 });
 
+it('keeps a Scenarios launch to that visit: the Community tab still opens the Settings mode', async () => {
+  const tree = await mountApp();
+  try {
+    const community = () => tree.root.findByType(CommunityScreen);
+    const tabs = () => tree.root.findAllByType(TabBar);
+    const scenarios = () => tree.root.findByType(ScenariosScreen);
+    expect(community().props.mode).toBe('embed');
+    const generation = community().props.communitySessionNonce;
+
+    act(() => scenarios().props.onOpenPresentation('fullscreen'));
+    expect(community().props.mode).toBe('fullscreen');
+    expect(community().props.communitySessionNonce).toBe(generation + 1);
+    expect(tabs()).toHaveLength(0);
+
+    act(() => community().props.onBackRequested());
+    expect(tabs()[0]!.props.activeTab).toBe('scenarios');
+    expect(community().props.mode).toBe('embed');
+    expect(community().props.communitySessionNonce).toBe(generation + 2);
+
+    act(() => tabs()[0]!.props.onTabChange('community'));
+    expect(community().props.mode).toBe('embed');
+    expect(community().props.communitySessionNonce).toBe(generation + 2);
+    expect(tabs()).toHaveLength(1);
+  } finally {
+    act(() => tree.unmount());
+  }
+});
+
 it.each([
   ['ios', false],
   ['ios', true],

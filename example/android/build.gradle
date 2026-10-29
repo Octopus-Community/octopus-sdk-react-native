@@ -24,3 +24,26 @@ buildscript {
 }
 
 apply plugin: "com.facebook.react.rootproject"
+
+// Internal tooling (native-dev): inert unless OCTOPUS_ANDROID_DEV_REPO is set.
+// Resolves com.octopuscommunity only from that repository during a native
+// dev-source window. Declared once, idempotently: two exclusive declarations
+// for the same group make it unresolvable.
+def octopusNativeDevRepo = System.getenv("OCTOPUS_ANDROID_DEV_REPO")
+if (octopusNativeDevRepo) {
+    allprojects {
+        repositories {
+            if (findByName("octopusNativeDev") == null) {
+                exclusiveContent {
+                    forRepository {
+                        maven {
+                            name = "octopusNativeDev"
+                            url = uri(octopusNativeDevRepo)
+                        }
+                    }
+                    filter { includeGroup("com.octopuscommunity") }
+                }
+            }
+        }
+    }
+}
