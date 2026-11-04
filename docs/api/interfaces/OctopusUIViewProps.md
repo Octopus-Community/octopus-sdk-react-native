@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.15.2**](../README.md)
+[**@octopus-community/react-native v1.15.3**](../README.md)
 
 ---
 
@@ -215,8 +215,9 @@ system back calls this callback whenever the top app bar shows its leading
 icon ([showBackButton](#showbackbutton) or [navBarLeadingAction](#navbarleadingaction)).
 
 When the initial screen is the post editor (`{ type: 'createPost' }`),
-the editor is the root screen: cancelling and a successful publish also
-call this callback, and your app should then dismiss the view. On Android
+the editor is the root screen: cancelling (after confirming any discard)
+and a successful publish also call this callback, and your app should then
+dismiss the view. On Android
 this always applies, system back included. On iOS it applies when the view
 has a leading icon ([showBackButton](#showbackbutton) or [navBarLeadingAction](#navbarleadingaction));
 the `postCreated` event is emitted either way. iOS limitation: such an

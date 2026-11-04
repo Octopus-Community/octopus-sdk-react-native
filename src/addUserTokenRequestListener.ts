@@ -12,6 +12,11 @@ export type UserTokenRequestListenerCallback = () => Promise<string>;
  * This listener is triggered when the Octopus SDK needs
  * a new user token.
  * You may use this listener directly if you prefer not to use the useUserTokenProvider hook.
+ *
+ * If the callback throws or rejects, the request is cancelled and the error is logged at
+ * `ERROR` level (to the console, or to the logger passed to `setLogger`). Only its `name`
+ * and `message` are logged, and the `message` is logged as is: keep tokens, credentials and
+ * request details out of it.
  */
 export function addUserTokenRequestListener(
   callback: UserTokenRequestListenerCallback

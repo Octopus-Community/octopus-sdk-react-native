@@ -164,8 +164,9 @@ export interface OctopusUIViewProps {
    * icon ({@link showBackButton} or {@link navBarLeadingAction}).
    *
    * When the initial screen is the post editor (`{ type: 'createPost' }`),
-   * the editor is the root screen: cancelling and a successful publish also
-   * call this callback, and your app should then dismiss the view. On Android
+   * the editor is the root screen: cancelling (after confirming any discard)
+   * and a successful publish also call this callback, and your app should then
+   * dismiss the view. On Android
    * this always applies, system back included. On iOS it applies when the view
    * has a leading icon ({@link showBackButton} or {@link navBarLeadingAction});
    * the `postCreated` event is emitted either way. iOS limitation: such an

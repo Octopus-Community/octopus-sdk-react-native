@@ -2,8 +2,8 @@
 
 [![npm package](https://img.shields.io/npm/v/@octopus-community/react-native.svg)](https://www.npmjs.com/package/@octopus-community/react-native)
 [![Platforms](https://img.shields.io/badge/platforms-Android_7.0%2B_%7C_iOS_15.1%2B-lightgrey)](#requirements)
-[![Android SDK](https://img.shields.io/badge/Android_SDK-1.15.2-34a853?logo=android&logoColor=white)](https://github.com/Octopus-Community/octopus-sdk-android)
-[![iOS SDK](https://img.shields.io/badge/iOS_SDK-1.15.0-f05138?logo=apple&logoColor=white)](https://github.com/Octopus-Community/octopus-sdk-swift)
+[![Android SDK](https://img.shields.io/badge/Android_SDK-1.15.3-34a853?logo=android&logoColor=white)](https://github.com/Octopus-Community/octopus-sdk-android)
+[![iOS SDK](https://img.shields.io/badge/iOS_SDK-1.15.1-f05138?logo=apple&logoColor=white)](https://github.com/Octopus-Community/octopus-sdk-swift)
 [![License](https://img.shields.io/badge/license-Octopus_SDK_License-lightgrey)](LICENSE.md)
 
 Add a branded community (feed, posts, comments, reactions, profiles, groups) to your React Native
@@ -31,7 +31,7 @@ and [iOS](https://github.com/Octopus-Community/octopus-sdk-swift) SDKs behind on
 
 | React Native version(s) | Android       | iOS   | Old arch | New arch      | Octopus native SDK          |
 | ----------------------- | ------------- | ----- | -------- | ------------- | --------------------------- |
-| v0.81.x (tested 0.81.4) | 7.0+ (API 24) | 15.1+ | ✅       | Interop layer | Android 1.15.2 · iOS 1.15.0 |
+| v0.81.x (tested 0.81.4) | 7.0+ (API 24) | 15.1+ | ✅       | Interop layer | Android 1.15.3 · iOS 1.15.1 |
 
 * Older React Native versions (e.g. v0.78+) may work but are untested
 * New architecture is supported via the React Native interoperability layer

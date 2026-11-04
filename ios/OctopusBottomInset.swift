@@ -21,12 +21,16 @@ final class OctopusBottomInsetStore: ObservableObject {
 /// embedded view keeps its position in the view tree, so its `@StateObject` managers
 /// survive an inset update: only its `bottomSafeAreaInset` argument changes.
 ///
-/// The screens rendered below it are only safe because the emitted value never reaches 0:
-/// the native SDK gates its inset on `bottomSafeAreaInset > 0`, and crossing that boundary
-/// swaps a `_ConditionalContent` case, which SwiftUI treats as a different child — it
-/// discards the `@State` beneath it, i.e. the displayed screen (feed scroll position, and
-/// the text and image already entered in the create-post editor). See
-/// `OctopusEmbeddedContainerView.gatePinningInset`.
+/// The emitted value never reaches 0 (`OctopusEmbeddedContainerView.gatePinningInset`).
+/// Up to native iOS SDK 1.15.0 that floor was what kept the screen rendered below safe: the
+/// native SDK applied its inset only when `bottomSafeAreaInset > 0`, and crossing that
+/// boundary swapped a `_ConditionalContent` case, which SwiftUI treats as a different child —
+/// it discarded the `@State` beneath it, i.e. the displayed screen (feed scroll position, and
+/// the text and image already entered in the create-post editor). From 1.15.1,
+/// `OctopusHomeScreen` — the only screen this host renders — always applies its inset
+/// modifier, so crossing 0 no longer changes its identity; the floor still keeps the
+/// modifier's spacing, which the native SDK only adds above a positive inset, from coming and
+/// going as the value moves.
 struct OctopusBottomInsetHost<Content: View>: View {
   @ObservedObject var store: OctopusBottomInsetStore
   let content: (CGFloat) -> Content

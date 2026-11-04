@@ -78,6 +78,23 @@ community switch, with the message:
 The example runs SSO only. Stored SSO configurations remain usable; a stored removed mode
 returns to Configuration. This change does not force a logout of a native stored session.
 
+### Behaviour change (Android) — `fetchCommunityData` rejects when the lookup fails
+
+When the native lookup fails (network, authentication, permission or server error),
+`fetchCommunityData` now rejects with code `SERVER_ERROR` on Android. Before 1.15.0 it
+resolved `null` there; iOS already rejected, so both platforms now behave the same. `null`
+still means the member is unknown. An Android-only host that awaited the call without a
+`catch` now gets an unhandled rejection: handle `SERVER_ERROR`.
+
+```ts
+try {
+  const data = await fetchCommunityData({ clientUserId });
+  // `data` is null when the member is unknown
+} catch (error) {
+  // `SERVER_ERROR`: keep the previous value or retry later
+}
+```
+
 ### Deprecated — `settings.account`, `settings.logout` and `settings.deleteAccountWarning` icons
 
 The native screens that drew these three `theme.icons.settings` slots are gone with

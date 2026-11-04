@@ -312,7 +312,17 @@ export interface OctopusUIOptions {
    * - In the fullscreen UI opened by `openUI()`, it is an **additional** inset applied on
    *   top of the system safe area (navigation bar on Android, home indicator on iOS).
    *
-   * Values of `0` or less reserve nothing on iOS, and on Android in the fullscreen UI.
+   * Values of `0` or less reserve nothing on Android in the fullscreen UI, and nothing on iOS
+   * except the native margin of a window with no bottom safe area (see below).
+   *
+   * **iOS — no bottom safe area.** When the community home screen reaches the bottom edge of a
+   * window that has no bottom safe area there (a device with a home button and no host chrome
+   * below the UI, a floating iPad window), the native iOS SDK adds 16 pt on top of whatever
+   * this option resolves to, `0` and an absent value included, so the profile bubble and
+   * create-post button do not touch the screen edge. Nothing is added above a home indicator or
+   * above host bottom chrome. This covers every initial screen except
+   * `initialScreen: { type: 'profile' }`, which mounts a separate native profile screen that
+   * gets no margin and ignores this option on iOS.
    *
    * **iOS caveat — hardware keyboards, embedded `<OctopusUIView>`, value above `0`.** While a
    * keyboard is up, the native SDK stops reserving the band once the keyboard height it is
@@ -340,9 +350,10 @@ export interface OctopusUIOptions {
    *   sits in — the same default the Flutter bridge applies in that state — so the profile
    *   bubble and create-post button never sit flush against the bottom edge of the view.
    *
-   * Pass an explicit `0` on either platform to opt back out and reserve nothing. Neither
+   * Pass an explicit `0` on either platform to opt back out and reserve nothing (on iOS, the
+   * native margin of a window with no bottom safe area aside, see above). Neither
    * default applies to the fullscreen UI, where an absent value has always meant "reserve
-   * nothing" and continues to.
+   * nothing" and continues to, apart from that same iOS native margin.
    */
   bottomSafeAreaInset?: number;
 }

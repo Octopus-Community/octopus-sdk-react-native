@@ -149,6 +149,7 @@ internal fun decodeBridgeInitialScreen(
     "profile" -> BridgeInitialScreen.Profile(
       clientUserId = string("clientUserId")?.takeUnless { it.isBlank() }
     )
-    else -> foldMalformed("unknown type \"$type\"")
+    // Never echo the received type: a direct native caller can put anything there, URLs included.
+    else -> foldMalformed("unknown type")
   }
 }

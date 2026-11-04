@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.captionBar
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.displayCutout
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.mandatorySystemGestures
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeContent
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.safeGestures
@@ -295,6 +297,11 @@ class OctopusUIViewManager(private val reactContext: ReactApplicationContext) :
                 // Apply the actual top overlap before consuming system insets: consuming
                 // statusBars alone suppresses the SDK's padding and leaves its bar under
                 // the status bar. Geometric overlap is zero below a host safe area/header.
+                // The cutout's top is consumed too: the SDK's Material3 top bars pad for
+                // `systemBars ∪ displayCutout`, so inside a RN Modal — whose dialog window can
+                // report a smaller system-bar top than its cutout — the unconsumed cutout came
+                // back as a second, empty band above the bar. Only its top: horizontal cutout
+                // padding is left to the SDK, as before.
                 // Keep bottom consumption separate: it makes the host's
                 // `ui.bottomSafeAreaInset` a *total* bottom padding on the embedded path:
                 // the SDK's own scaffold then sees no bottom inset, so the value it gets as
@@ -317,6 +324,7 @@ class OctopusUIViewManager(private val reactContext: ReactApplicationContext) :
                         .consumeWindowInsets(WindowInsets.statusBars)
                         .consumeWindowInsets(WindowInsets.navigationBars)
                         .consumeWindowInsets(WindowInsets.systemBars)
+                        .consumeWindowInsets(WindowInsets.displayCutout.only(WindowInsetsSides.Top))
                         .consumeWindowInsets(WindowInsets(bottom = wrapper.mountPointImeExcessPx.intValue)),
                     interceptUrls = wrapper.interceptUrls.value,
                     interceptProfileTaps = wrapper.interceptProfileTaps.value,

@@ -20,9 +20,11 @@ import {
  * catches any of them, and the visible symptom is a band of the wrong height on a device, or
  * state loss that looks like an unrelated bug:
  *
- * 1. the strictly-positive floor, which keeps the native SDK's `bottomSafeAreaInset > 0` gate
- *    on. Crossing that gate swaps a `_ConditionalContent` branch and discards the displayed
- *    screen's state, a half-written post included;
+ * 1. the strictly-positive floor. Up to native iOS SDK 1.15.0 it kept the native
+ *    `bottomSafeAreaInset > 0` gate on, whose crossing swapped a `_ConditionalContent` branch
+ *    and discarded the displayed screen's state, a half-written post included; from 1.15.1
+ *    `OctopusHomeScreen` no longer gates, and the floor keeps the native spacing above a
+ *    positive inset from coming and going;
  * 2. the subtraction itself, and the fact that a non-positive request never starts the
  *    normalization at all;
  * 3. that the container keeps tracking its **own** geometry (not the window's) on both layout

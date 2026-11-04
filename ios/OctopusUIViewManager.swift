@@ -65,9 +65,10 @@ import UIKit
   /// Total bottom padding (points) the host asked for through
   /// `initialize({ ui: { bottomSafeAreaInset } })`, once it is known to be positive.
   ///
-  /// `nil` when the host asked for none: the historical behaviour then applies untouched
-  /// (0 forwarded to the native SDK, its inset gate off) and no normalization runs at all,
-  /// so hosts that never used the option keep byte-identical layout.
+  /// `nil` when the host asked for none (no key, or a value of 0): the historical behaviour
+  /// then applies untouched (`OctopusUIManager` forwards its constant default or 0 as is) and
+  /// no normalization runs at all, so hosts that never used the option keep byte-identical
+  /// layout.
   private var requestedBottomSafeAreaInset: CGFloat?
 
   /// Normalized value handed to the embedded SwiftUI tree. Owned here because only the
@@ -77,15 +78,20 @@ import UIKit
   /// Floor applied to every host-provided inset so the value stays strictly positive for
   /// the view's whole lifetime.
   ///
-  /// The native SDK gates its inset on a `@ViewBuilder` condition
-  /// (`insetableMainNavigationView`: `if bottomSafeAreaInset > 0`). Crossing that boundary
-  /// swaps a `_ConditionalContent` case, and SwiftUI treats the result as a different
-  /// child: it discards the `@State` beneath it, which here is the displayed screen — feed
-  /// scroll position, and the text and image already entered in the create-post editor.
+  /// Up to native iOS SDK 1.15.0, the native SDK gated its inset on a `@ViewBuilder`
+  /// condition (`insetableMainNavigationView`: `if bottomSafeAreaInset > 0`). Crossing that
+  /// boundary swapped a `_ConditionalContent` case, and SwiftUI treated the result as a
+  /// different child: it discarded the `@State` beneath it, which here is the displayed
+  /// screen — feed scroll position, and the text and image already entered in the
+  /// create-post editor. From 1.15.1, `OctopusHomeScreen` — the only screen that reads this
+  /// value — always applies the modifier (so that its own screen-edge margin can come and go
+  /// without that identity change), and crossing 0 no longer loses state. The floor stays:
+  /// the native modifier keeps SwiftUI's default spacing above a positive inset and drops it
+  /// at 0, so a value moving across 0 would still make the content jump by that spacing.
   ///
   /// Normalization legitimately reaches exactly 0 whenever the system inset already covers
-  /// what the host asked for, which is the common case. Pinning the gate on instead of
-  /// freezing the value is what makes live tracking safe, and live tracking is necessary:
+  /// what the host asked for, which is the common case. Keeping the value above 0 instead of
+  /// freezing it is what makes live tracking safe, and live tracking is necessary:
   /// the container's own geometry can lag the window's, and no size-based "the layout looks
   /// settled now" test tells a stale frame apart from a settled one.
   ///
@@ -113,13 +119,15 @@ import UIKit
   /// native SDK expects, and keeps it up to date as the container's geometry changes.
   ///
   /// Call this **before** the SwiftUI tree is built: the first value must already be in the
-  /// store, otherwise the native `bottomSafeAreaInset > 0` gate flips after the first frame
-  /// and SwiftUI discards the displayed screen's state.
+  /// store, otherwise the first frame renders with the store's initial 0, and the value then
+  /// crosses 0 after it — which up to native iOS SDK 1.15.0 flipped the native
+  /// `bottomSafeAreaInset > 0` gate and made SwiftUI discard the displayed screen's state
+  /// (see `gatePinningInset`).
   ///
   /// That ordering trades one transient for the state loss: the container's safe area is not
   /// resolved yet, so the first stored value can be the total unchanged (`systemInset == 0`),
   /// and the first layout pass corrects it downwards. At worst the band is briefly too tall —
-  /// never too short, and the gate stays on throughout.
+  /// never too short, and the value stays above 0 throughout.
   func startNormalizingBottomInset(totalRequested: CGFloat) {
     requestedBottomSafeAreaInset = totalRequested
     updateNormalizedBottomInset()

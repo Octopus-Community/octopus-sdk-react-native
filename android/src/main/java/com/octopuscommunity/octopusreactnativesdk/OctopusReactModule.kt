@@ -659,6 +659,11 @@ class OctopusReactModule(reactContext: ReactApplicationContext) :
       promise.reject("SWITCH_COMMUNITY_ERROR", "apiKey is required", null)
       return
     }
+    if (sdkInitializer.connectionModeMap(options) == null) {
+      // Same wording as iOS's `switchCommunity` guard for a missing `connectionMode`.
+      promise.reject("SWITCH_COMMUNITY_ERROR", "connectionMode is required", null)
+      return
+    }
     coroutineScope.launch {
       try {
         val connectionMode = sdkInitializer.parseConnectionMode(options)

@@ -14,7 +14,7 @@ let octopusUsesDevRevision = !octopusDevURL.isEmpty && !octopusDevRevision.isEmp
 let octopusPackage: Package.Dependency = octopusUsesDevRevision
     ? .package(url: octopusDevURL, revision: octopusDevRevision)
     // Keep the exact pin equal to octopus_version in the podspec.
-    : .package(url: "https://github.com/Octopus-Community/octopus-sdk-swift.git", exact: "1.15.0")
+    : .package(url: "https://github.com/Octopus-Community/octopus-sdk-swift.git", exact: "1.15.1")
 let octopusPackageName = octopusUsesDevRevision
     ? (URL(string: octopusDevURL)?.deletingPathExtension().lastPathComponent ?? "")
     : "octopus-sdk-swift"

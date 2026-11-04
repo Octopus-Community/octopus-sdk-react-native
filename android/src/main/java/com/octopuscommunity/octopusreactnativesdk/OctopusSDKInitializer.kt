@@ -332,12 +332,19 @@ class OctopusSDKInitializer {
     }
   }
 
+  /** The `connectionMode` object, or `null` when it is absent, `null` or not an object. */
+  internal fun connectionModeMap(options: ReadableMap): ReadableMap? = options.takeIf {
+    it.hasKey("connectionMode") && !it.isNull("connectionMode") &&
+      it.getType("connectionMode") == ReadableType.Map
+  }?.getMap("connectionMode")
+
   fun parseConnectionMode(options: ReadableMap): ConnectionMode {
-    val connectionModeMap = options.takeIf {
-      it.hasKey("connectionMode") && !it.isNull("connectionMode") &&
-        it.getType("connectionMode") == ReadableType.Map
-    }?.getMap("connectionMode")
-    val mode = connectionModeMap?.takeIf {
+    // Same split as iOS: a missing object and an invalid `type` reject with different messages.
+    // The missing case carries the prefix iOS's `initialize` adds to every error but the
+    // invalid type; `switchCommunity` rejects a missing object before it gets here.
+    val connectionModeMap = connectionModeMap(options)
+      ?: throw InvalidConnectionModeException(MISSING_CONNECTION_MODE_MESSAGE)
+    val mode = connectionModeMap.takeIf {
       it.hasKey("type") && !it.isNull("type") && it.getType("type") == ReadableType.String
     }?.getString("type")
     if (mode != "sso") {
@@ -347,7 +354,7 @@ class OctopusSDKInitializer {
     }
     return ConnectionMode.SSO(
       appManagedFields = ProfileFieldMapper.fromReactNativeArray(
-        connectionModeMap?.takeIf { it.hasKey("appManagedFields") }?.getArray("appManagedFields")
+        connectionModeMap.takeIf { it.hasKey("appManagedFields") }?.getArray("appManagedFields")
       )
     )
   }
@@ -371,4 +378,10 @@ class OctopusSDKInitializer {
   }
 
   private class InvalidConnectionModeException(message: String) : Exception(message)
+
+  internal companion object {
+    /** What iOS's `initialize` rejects with when `connectionMode` is missing. */
+    const val MISSING_CONNECTION_MODE_MESSAGE =
+      "Failed to initialize Octopus SDK: Connection mode is required"
+  }
 }

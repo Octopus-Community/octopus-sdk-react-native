@@ -7,6 +7,7 @@ import com.octopuscommunity.sdk.domain.model.ConnectionMode
 import java.lang.reflect.Proxy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -38,6 +39,49 @@ class OctopusSDKInitializerTest {
       }
       assertEquals(removedMessage, error.message)
     }
+  }
+
+  @Test
+  fun `a missing connection mode throws the iOS initialize message`() {
+    for (options in listOf(
+      JavaOnlyMap(),
+      JavaOnlyMap.of("connectionMode", null),
+      JavaOnlyMap.of("connectionMode", "sso"),
+    )) {
+      assertNull(initializer.connectionModeMap(options))
+      val error = assertThrows(Exception::class.java) {
+        initializer.parseConnectionMode(options)
+      }
+      assertEquals(
+        "Failed to initialize Octopus SDK: Connection mode is required",
+        error.message
+      )
+    }
+  }
+
+  @Test
+  fun `initialization rejects a missing connection mode through the promise`() {
+    val calls = mutableListOf<Pair<String, List<Any?>>>()
+    val promise = Proxy.newProxyInstance(
+      Promise::class.java.classLoader,
+      arrayOf(Promise::class.java)
+    ) { _, method, args ->
+      calls += method.name to (args?.toList() ?: emptyList())
+      null
+    } as Promise
+    val initialized = initializer.initialize(
+      BridgeReactContext(RuntimeEnvironment.getApplication()),
+      JavaOnlyMap.of("apiKey", "test-key"),
+      promise
+    )
+    assertFalse(initialized)
+    assertEquals(1, calls.size)
+    assertEquals("reject", calls.single().first)
+    assertEquals("INITIALIZE_ERROR", calls.single().second[0])
+    assertEquals(
+      "Failed to initialize Octopus SDK: Connection mode is required",
+      calls.single().second[1]
+    )
   }
 
   @Test

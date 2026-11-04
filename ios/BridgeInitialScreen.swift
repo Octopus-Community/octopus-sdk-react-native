@@ -65,7 +65,8 @@ func decodeBridgeInitialScreen(_ map: [String: Any]) -> BridgeInitialScreen {
     // `OctopusProfileScreen(clientUserId: nil)`.
     return .profile(clientUserId: string("clientUserId"))
   default:
-    NSLog("[OctopusReactNativeSdk] initialScreen: unknown type=\(map["type"] ?? "nil") — falling back to mainFeed")
+    // Never echo the received type: a direct native caller can put anything there, URLs included.
+    NSLog("[OctopusReactNativeSdk] initialScreen: unknown type — falling back to mainFeed")
     return .home(.mainFeed)
   }
 }

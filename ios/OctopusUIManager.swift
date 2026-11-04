@@ -9,7 +9,8 @@ class OctopusUIManager {
   /// `ui.bottomSafeAreaInset` at all — the same historical 10 pt default the Flutter
   /// bridge applies in that state (`SafeHostingContainerView`), so the profile bubble
   /// and create-post button never sit flush against the bottom of the embedded view.
-  /// An explicit 0 from the host still means "reserve nothing" and bypasses it.
+  /// An explicit 0 from the host still means "reserve nothing" and bypasses it (the native
+  /// SDK's own screen-edge margin aside — see `addEmbeddedView`).
   static let embeddedDefaultBottomInset: CGFloat = 10
 
   private weak var presentedViewController: UIViewController?
@@ -361,12 +362,17 @@ class OctopusUIManager {
     //
     // Three host states, matching the Flutter bridge (`SafeHostingContainerView`):
     //  - a value > 0 is a *total*: the container normalizes it live below;
-    //  - an explicit 0 is the edge-to-edge opt-out: 0 forwarded, native gate off;
+    //  - an explicit 0 is the edge-to-edge opt-out: 0 forwarded, no inset of the host's;
     //  - no key at all means "the host expressed no preference": the embedded view
     //    then keeps the additive 10 pt default the Flutter bridge has always applied,
-    //    instead of forwarding 0 — which leaves the native `> 0` gate off and glues
-    //    the profile bubble and create-post button to the very bottom of the view.
+    //    instead of forwarding 0 — which adds no inset and glues the profile bubble and
+    //    create-post button to the very bottom of the view.
     //    The 10 pt is constant and additive (no normalization), exactly as on Flutter.
+    // From native iOS SDK 1.15.1, `OctopusHomeScreen` adds its own 16 pt on top of whatever
+    // is forwarded (0 included) when it reaches the bottom edge of a window with no bottom
+    // safe area — a device with a home button, a floating iPad window — so on such a device
+    // the three states above render 16 pt taller there. Nothing is added above a home
+    // indicator, or when the view ends above host chrome.
     // The `.profile` initial screen mounts `OctopusProfileScreen`, which pins its own bottom
     // inset to 0 and therefore ignores the store entirely — see `makeHomeScreenView`. The
     // normalization below still runs (harmlessly) so a host that later remounts on the home

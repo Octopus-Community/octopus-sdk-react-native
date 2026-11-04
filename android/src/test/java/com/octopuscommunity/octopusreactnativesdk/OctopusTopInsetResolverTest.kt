@@ -39,12 +39,13 @@ class OctopusTopInsetResolverTest {
     @After
     fun tearDown() { controller.pause().stop().destroy() }
 
-    private fun overlap(top: Int, statusBar: Int = 24, height: Int = 400): Int {
+    private fun overlap(top: Int, statusBar: Int = 24, height: Int = 400, cutout: Int = 0): Int {
         view.layout(0, top, 480, top + height)
         return OctopusTopInsetResolver.resolveOverlapPx(
             view,
             WindowInsetsCompat.Builder()
                 .setInsets(WindowInsetsCompat.Type.statusBars(), Insets.of(0, statusBar, 0, 0))
+                .setInsets(WindowInsetsCompat.Type.displayCutout(), Insets.of(0, cutout, 0, 0))
                 .build()
         )
     }
@@ -75,6 +76,18 @@ class OctopusTopInsetResolverTest {
         assertEquals(24, overlap(-100))
         assertEquals(24, overlap(-24))
         assertEquals(24, overlap(-100, height = 50))
+    }
+
+    @Test
+    fun `a display cutout counts as top inset even when the status bar reports less`() {
+        // A RN Modal's dialog window can report no status-bar top while the cutout stays.
+        assertEquals(173, overlap(0, statusBar = 0, cutout = 173))
+        assertEquals(0, overlap(173, statusBar = 0, cutout = 173))
+        assertEquals(173, overlap(0, statusBar = 173, cutout = 173))
+        assertEquals(0, overlap(173, statusBar = 173, cutout = 173))
+        // The taller of the two wins, the overlap is still only what remains above the view.
+        assertEquals(40, overlap(0, statusBar = 24, cutout = 40))
+        assertEquals(16, overlap(24, statusBar = 24, cutout = 40))
     }
 
     @Test
