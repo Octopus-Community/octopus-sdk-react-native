@@ -1,14 +1,18 @@
 package com.octopuscommunity.octopusreactnativesdk
 
 import com.facebook.react.bridge.JavaOnlyMap
+import com.facebook.react.bridge.JavaOnlyArray
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.BridgeReactContext
 import com.octopuscommunity.sdk.domain.model.ConnectionMode
+import com.octopuscommunity.sdk.BuildConfig as NativeSdkBuildConfig
 import java.lang.reflect.Proxy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -21,6 +25,60 @@ class OctopusSDKInitializerTest {
   private val initializer = OctopusSDKInitializer()
   private val removedMessage =
     "Octopus-owned authentication was removed. SSO is required (connectionMode.type must be 'sso')."
+
+  private fun successPromise(): Promise = Proxy.newProxyInstance(
+    Promise::class.java.classLoader, arrayOf(Promise::class.java)
+  ) { _, method, args ->
+    if (method.name == "reject") fail("Unexpected initialization rejection: ${args?.toList()}")
+    null
+  } as Promise
+
+  private fun options() = JavaOnlyMap.of(
+    "apiKey", "test-key", "sdkVersion", "test-version",
+    "connectionMode", JavaOnlyMap.of("type", "sso")
+  )
+
+  @Test
+  fun `equivalent managed fields and explicit default endpoint preserve the native session`() {
+    var initialized = false
+    var nativeCalls = 0
+    var invalidations = 0
+    val initializer = OctopusSDKInitializer({ _, _, _, _ ->
+      nativeCalls += 1
+      initialized = true
+    }, { initialized })
+    val context = BridgeReactContext(RuntimeEnvironment.getApplication())
+    val first = options().apply {
+      putMap("connectionMode", JavaOnlyMap.of(
+        "type", "sso", "appManagedFields", JavaOnlyArray.of("username", "biography")
+      ))
+    }
+    assertTrue(initializer.initialize(context, first, successPromise()) { invalidations += 1 })
+    val equivalent = options().apply {
+      putMap("connectionMode", JavaOnlyMap.of(
+        "type", "sso", "appManagedFields", JavaOnlyArray.of("biography", "username", "username")
+      ))
+      putMap("apiServer", JavaOnlyMap.of(
+        "host", NativeSdkBuildConfig.OCTOPUS_SERVER_HOST, "port", NativeSdkBuildConfig.OCTOPUS_SERVER_PORT
+      ))
+    }
+    assertTrue(initializer.initialize(context, equivalent, successPromise()) { invalidations += 1 })
+    assertEquals(2, nativeCalls)
+    assertEquals(1, invalidations)
+  }
+
+  @Test
+  fun `remembering a switched configuration preserves its session and reset invalidates it`() {
+    var invalidations = 0
+    val initializer = OctopusSDKInitializer({ _, _, _, _ -> }, { true })
+    val context = BridgeReactContext(RuntimeEnvironment.getApplication())
+    initializer.rememberConfiguration(context, "test-key", ConnectionMode.SSO(emptySet()), null)
+    assertTrue(initializer.initialize(context, options(), successPromise()) { invalidations += 1 })
+    assertEquals(0, invalidations)
+    initializer.forgetConfiguration()
+    assertTrue(initializer.initialize(context, options(), successPromise()) { invalidations += 1 })
+    assertEquals(1, invalidations)
+  }
 
   @Test
   fun `explicit SSO keeps the native empty managed fields default`() {

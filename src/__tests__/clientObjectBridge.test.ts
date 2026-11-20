@@ -83,14 +83,20 @@ describe('fetchOrCreateClientObjectRelatedPost', () => {
       text: 'A long enough post text.',
     });
 
-    expect(mockFetchOrCreate).toHaveBeenCalledWith({
-      objectId: 'article-1',
-      text: 'A long enough post text.',
-      attachment: null,
-      catchPhrase: null,
-      viewObjectButtonText: null,
-      groupId: null,
-    });
+    expect(mockFetchOrCreate).toHaveBeenCalledWith(
+      {
+        objectId: 'article-1',
+        text: 'A long enough post text.',
+        attachment: null,
+        medias: null,
+        catchPhrase: null,
+        viewObjectButtonText: null,
+        viewObjectButtonLanguage: null,
+        viewObjectButtonTexts: null,
+        groupId: null,
+      },
+      null
+    );
   });
 
   it('forwards a remote-image attachment unchanged', async () => {
@@ -103,14 +109,83 @@ describe('fetchOrCreateClientObjectRelatedPost', () => {
       groupId: 'group-7',
     });
 
-    expect(mockFetchOrCreate).toHaveBeenCalledWith({
+    expect(mockFetchOrCreate).toHaveBeenCalledWith(
+      {
+        objectId: 'article-1',
+        text: 'A long enough post text.',
+        attachment: { type: 'remoteImage', url: 'https://example.com/a.jpg' },
+        medias: null,
+        catchPhrase: 'What do you think?',
+        viewObjectButtonText: 'Read it',
+        viewObjectButtonLanguage: null,
+        viewObjectButtonTexts: null,
+        groupId: 'group-7',
+      },
+      null
+    );
+  });
+
+  it('forwards medias in display order', async () => {
+    const medias = [
+      { type: 'remoteImage', url: 'https://example.com/a.jpg' },
+      { type: 'localImage', uri: 'file:///tmp/b.jpg' },
+      { type: 'localImage', uri: 'bundled_image' },
+    ] as const;
+    await fetchOrCreateClientObjectRelatedPost({
+      objectId: 'article-1',
+      text: 'A long enough post text.',
+      medias,
+    });
+
+    expect(mockFetchOrCreate.mock.calls[0][0].medias).toStrictEqual([
+      ...medias,
+    ]);
+    expect(mockFetchOrCreate.mock.calls[0][0].attachment).toBeNull();
+  });
+
+  it('sends an empty medias as null, keeping the deprecated attachment', async () => {
+    await fetchOrCreateClientObjectRelatedPost({
       objectId: 'article-1',
       text: 'A long enough post text.',
       attachment: { type: 'remoteImage', url: 'https://example.com/a.jpg' },
-      catchPhrase: 'What do you think?',
-      viewObjectButtonText: 'Read it',
-      groupId: 'group-7',
+      medias: [],
     });
+
+    expect(mockFetchOrCreate.mock.calls[0][0]).toMatchObject({
+      attachment: { type: 'remoteImage', url: 'https://example.com/a.jpg' },
+      medias: null,
+    });
+  });
+
+  it('refuses attachment together with medias with INVALID_ARGS, before any native call', async () => {
+    const rejection = fetchOrCreateClientObjectRelatedPost({
+      objectId: 'article-1',
+      text: 'A long enough post text.',
+      attachment: { type: 'remoteImage', url: 'https://example.com/a.jpg' },
+      medias: [{ type: 'localImage', uri: 'file:///tmp/b.jpg' }],
+    });
+
+    await expect(rejection).rejects.toMatchObject({ code: 'INVALID_ARGS' });
+    await rejection.catch((error: unknown) => {
+      expect(isClientPostError(error)).toBe(true);
+    });
+    expect(mockFetchOrCreate).not.toHaveBeenCalled();
+  });
+
+  it('leaves more than the maximum to the native SDK, which refuses it', async () => {
+    // Both native SDKs refuse more than 10 medias with their own error, mapped to
+    // CLIENT_POST_ERROR; the wrapper does not duplicate the count.
+    const medias = Array.from({ length: 11 }, (_, index) => ({
+      type: 'remoteImage' as const,
+      url: `https://example.com/${index}.jpg`,
+    }));
+    await fetchOrCreateClientObjectRelatedPost({
+      objectId: 'article-1',
+      text: 'A long enough post text.',
+      medias,
+    });
+
+    expect(mockFetchOrCreate.mock.calls[0][0].medias).toHaveLength(11);
   });
 
   it('resolves with the native post as-is', async () => {

@@ -148,6 +148,7 @@ await initialize({
       // Theme-wide: applied to every text style below.
       fontFamily: 'MyBrandFont-Regular', // must be registered natively — see below
       fontWeight: 500, // 100-900, the CSS scale; needs no registration
+      navBarTitle: { fontSize: { size: 22 } }, // Android only; independent of body1
       textStyles: {
         title1: {
           fontType: 'serif', // serif, monospace, or default
@@ -218,7 +219,7 @@ await initialize({
 ```
 
 - **Groups and names follow the iOS SDK** (`OctopusTheme.Assets.Icons`): `groups`, `content`
-  (`post`, `comment`, `reply`, `video`, `poll`, `reaction`, `delete`, `report`),
+  (`post`, `comment`, `reply`, `video`, `poll`, `reaction`, `delete`, `report`, `translation`),
   `gamification`, `settings`, `profile`, `common` and `screenStates`. The bridge maps each slot onto its Android
   counterpart. Only the slots **both** native SDKs expose are available; the full list is the
   [`OctopusIcons`](./api/interfaces/OctopusIcons.md) type.
@@ -415,7 +416,24 @@ sets the Android navigation-bar title to the size of `body1`, which is smaller t
 the title size used with no font override. The native top-app-bar title has no
 typography role of its own and the style passed to it replaces the ambient one
 instead of merging with it, so a complete style has to be supplied. Use
-`textStyles.body1.fontSize` to control the resulting size. iOS is unaffected.
+`fonts.navBarTitle` to override the title independently, or
+`textStyles.body1.fontSize` to control that base size. iOS is unaffected.
+
+**Navigation-bar title (`fonts.navBarTitle`) — Android only:**
+
+Set `{ fontFamily?: string, fontSize?: { size?: number } }` next to `fontFamily` /
+`fontWeight`, outside `textStyles`. The family is an Android `res/font/` resource
+name as above; the size is in sp and must be finite and positive (otherwise it is
+ignored). Each property merges onto the title's current style: size only keeps
+its family; family only keeps its size. These overrides take precedence over the
+existing global font settings. An unresolved family logs a native warning and
+keeps the base family while still applying the requested size.
+
+Omit it to keep the existing rendering. It affects text titles on every themed
+bar, including the main feed with the bundled native Android 1.16 SDK.
+Logos, back/close buttons and all iOS fonts are unchanged. On iOS
+the title follows your app's navigation bar appearance; the option is ignored,
+including when it is the only font setting.
 
 **Icons (`icons`):** optional per-slot image overrides, tinted with the theme colors
 (reactions excepted). See [Icon Customization](#icon-customization).
@@ -490,10 +508,9 @@ await initialize({
 Omitting `topAppBar` keeps the default appearance (logo, leading, no colored
 background).
 
-> **Title vs. logo:** Use either a logo **or** a text title — not both. When a
-> `theme.logo` is configured, Android gives the logo precedence over a `text`
-> title in the nav bar (a native-SDK behavior), whereas iOS shows the text. For
-> a consistent text title across platforms, don't set a `theme.logo`.
+An explicit non-empty text title takes precedence over `theme.logo` on both
+platforms, including the `navBarTitle` prop of `<OctopusUIView>`. An absent or
+empty title keeps the logo fallback.
 
 ## Key Theming Functions
 

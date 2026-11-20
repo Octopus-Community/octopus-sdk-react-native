@@ -46,38 +46,51 @@ object BridgeShareTokenBroker {
   var isProviderRegistered: Boolean = false
     private set
 
-  private val pendingRequests = ConcurrentHashMap<String, Continuation<String?>>()
+  private data class PendingRequest(
+    val continuation: Continuation<String?>,
+    val tokenProviderId: String?
+  )
+
+  private val pendingRequests = ConcurrentHashMap<String, PendingRequest>()
 
   fun registerProvider() {
     isProviderRegistered = true
   }
 
   /**
-   * Drops the registration and settles every request still in flight as "unsigned", so a
-   * publish already waiting on JS is not left hanging until its timeout.
+   * Drops the global registration and settles its requests as "unsigned". Per-call signers
+   * have their own lifetime and must not be interrupted by a global listener being removed.
    */
   fun unregisterProvider() {
     isProviderRegistered = false
-    for (requestId in pendingRequests.keys) {
-      pendingRequests.remove(requestId)?.resume(null)
+    cancelRequests(tokenProviderId = null)
+  }
+
+  /** Releases any unanswered requests belonging to a completed call (or the global signer). */
+  fun cancelRequests(tokenProviderId: String?) {
+    for ((requestId, pending) in pendingRequests) {
+      if (pending.tokenProviderId == tokenProviderId) {
+        pendingRequests.remove(requestId)?.continuation?.resume(null)
+      }
     }
   }
 
   /**
-   * The callback handed to `CreatePostScreenInfo.bridgeShareTokenProvider`, or `null` when JS
-   * registered no signer — in which case the native SDK sends prefilled shares unsigned,
-   * exactly as it did before this feature existed.
+   * Uses the call's signer when [tokenProviderId] is provided, otherwise the global signer.
+   * Returns `null` when neither exists, so the native SDK sends the post unsigned.
    */
-  fun providerOrNull(): (suspend (bridgeFingerprint: String) -> String?)? =
-    if (isProviderRegistered) {
-      { bridgeFingerprint -> requestToken(bridgeFingerprint) }
+  fun providerOrNull(
+    tokenProviderId: String? = null
+  ): (suspend (bridgeFingerprint: String) -> String?)? =
+    if (tokenProviderId != null || isProviderRegistered) {
+      { bridgeFingerprint -> requestToken(bridgeFingerprint, tokenProviderId) }
     } else {
       null
     }
 
   /** Answers [requestId] with [token], or with "do not sign" when [token] is `null`. */
   fun completeRequest(requestId: String, token: String?) {
-    pendingRequests.remove(requestId)?.resume(token)
+    pendingRequests.remove(requestId)?.continuation?.resume(token)
   }
 
   /**
@@ -89,7 +102,7 @@ object BridgeShareTokenBroker {
    * unsigned post is refused by a pictures-off community anyway, so nothing is silently
    * accepted that should not have been.
    */
-  private suspend fun requestToken(bridgeFingerprint: String): String? {
+  private suspend fun requestToken(bridgeFingerprint: String, tokenProviderId: String?): String? {
     val emitter = OctopusEventEmitter.instance
     if (emitter == null) {
       Log.w(TAG, "No React event emitter available; publishing the share unsigned.")
@@ -100,9 +113,9 @@ object BridgeShareTokenBroker {
     return try {
       withTimeout(TOKEN_REQUEST_TIMEOUT_MS) {
         suspendCancellableCoroutine { continuation ->
-          pendingRequests[requestId] = continuation
+          pendingRequests[requestId] = PendingRequest(continuation, tokenProviderId)
           continuation.invokeOnCancellation { pendingRequests.remove(requestId) }
-          emitter.emitBridgeShareTokenRequest(requestId, bridgeFingerprint)
+          emitter.emitBridgeShareTokenRequest(requestId, bridgeFingerprint, tokenProviderId)
         }
       }
     } catch (e: TimeoutCancellationException) {

@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.15.3**](../README.md)
+[**@octopus-community/react-native v1.16.0**](../README.md)
 
 ---
 
@@ -8,7 +8,7 @@
 
 > **fetchCommunityData**(`memberId`): `Promise`\<[`OctopusCommunityData`](../interfaces/OctopusCommunityData.md) \| `null`\>
 
-Fetches a one-shot refresh of a member's public Octopus stats (message count, gamification).
+Fetches a member's public Octopus stats (message count and gamification).
 
 ## Parameters
 

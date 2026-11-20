@@ -110,6 +110,11 @@ export type ScreenType =
   | 'reportExplanation'
   | 'deleteAccount'
   /**
+   * The screen displayed in place of the community when the user cannot access it (native SDK
+   * 1.16+). The reason is given by `addCommunityAccessDeniedReasonListener`.
+   */
+  | 'communityAccessDenied'
+  /**
    * A screen the native SDK reported that this wrapper version does not model yet.
    * Forward compatible — safe to ignore, and safe to group under a catch-all branch.
    */

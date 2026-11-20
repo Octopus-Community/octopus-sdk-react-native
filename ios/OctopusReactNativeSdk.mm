@@ -164,6 +164,7 @@ RCT_EXTERN_METHOD(refreshEntitlements:(RCTPromiseResolveBlock)resolve
 // Parity wave — client-object bridge
 
 RCT_EXTERN_METHOD(fetchOrCreateClientObjectRelatedPost:(NSDictionary *)clientPost
+                  tokenProviderId:(NSString * _Nullable)tokenProviderId
                   withResolver:(RCTPromiseResolveBlock)resolve
                   withRejecter:(RCTPromiseRejectBlock)reject)
 

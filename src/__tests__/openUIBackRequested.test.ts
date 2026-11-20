@@ -134,7 +134,10 @@ describe('openUI onBackRequested', () => {
     // The emitter has no error channel: an exception escaping the handler would surface as an
     // unhandled rejection with no indication of where it came from.
     const { openUI } = freshModules();
-    const boom = new Error('host handler blew up');
+    const boom = Object.assign(new Error('host handler blew up'), {
+      token: 'secret-token',
+      cause: new Error('nested cause'),
+    });
     await openUI({
       onBackRequested: () => {
         throw boom;
@@ -142,10 +145,12 @@ describe('openUI onBackRequested', () => {
     });
 
     expect(() => registeredHandler()()).not.toThrow();
+    // Same summary as the other host callbacks: name and message only, never the error object
+    // with its extra fields and nested causes.
     expect(mockLog).toHaveBeenCalledWith(
       LogLevel.ERROR,
       expect.stringContaining('onBackRequested'),
-      boom
+      { name: 'Error', message: 'host handler blew up' }
     );
   });
 

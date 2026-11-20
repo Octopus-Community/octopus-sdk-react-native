@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.15.3**](../README.md)
+[**@octopus-community/react-native v1.16.0**](../README.md)
 
 ---
 
@@ -20,18 +20,13 @@ exactly like [useUserTokenProvider](useUserTokenProvider.md). Register it once, 
 host calls [navigateToOctopusCreatePost](navigateToOctopusCreatePost.md) — the editor reads whether a signer exists
 when it opens.
 
-### Platform difference on a declined signature
+### Declining a signature
 
-Returning `null` (or throwing) means "I will not sign this one".
-
-- **Android** publishes the post unsigned, and a pictures-off community then rejects it
-  server-side.
-- **iOS** fails the publish client-side instead: the native signing hook has no
-  "proceed unsigned" channel, so the editor stays open with an error rather than sending an
-  empty token.
-
-Both end in a failed publish for the case that matters, but the error surfaces from a
-different side. Return a real token for every request you intend to succeed.
+Returning `null`, throwing, or not answering within 60 seconds means "I will not sign this
+one". On both platforms the post is then sent unsigned and the server decides: a community
+that allows member pictures publishes it with its images, one that forbids them refuses it
+and the editor shows an error. Return a real token for every request that must succeed in a
+pictures-off community.
 
 ## Parameters
 

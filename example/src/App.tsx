@@ -180,6 +180,7 @@ const resolvedLogo = Image.resolveAssetSource(
 /**
  * A minimal `theme.icons` override, sent with the custom logo: three tinted glyphs replacing the
  * post's "comment" action, "more actions" and "clear text" buttons, plus the custom logo on empty lists.
+ * The translation toggle shares the comment glyph to exercise `content.translation`.
  * Every other slot keeps its SDK default.
  */
 const exampleIcons: OctopusIcons = {
@@ -187,6 +188,9 @@ const exampleIcons: OctopusIcons = {
     emptyContent: resolvedLogo,
   },
   content: {
+    translation: Image.resolveAssetSource(
+      require('../assets/images/icon-comment.png')
+    ),
     comment: {
       creation: {
         open: Image.resolveAssetSource(
@@ -450,6 +454,10 @@ export default function App() {
   const [hasAccessToCommunity, setHasAccessToCommunity] = useState<
     boolean | null
   >(null);
+  // `undefined` until the first value crosses the bridge; `null` is a real value (access
+  // granted or not known yet).
+  const [communityAccessDeniedReason, setCommunityAccessDeniedReason] =
+    useState<Octopus.CommunityAccessDeniedReason | null | undefined>(undefined);
   const [isMockUserConnected, setIsMockUserConnected] = useState(false);
   // What the SDK itself reports, as opposed to what the sample last asked for: `null` until
   // the first value crosses the bridge, which is a third state Settings has to be able to show.
@@ -646,7 +654,11 @@ export default function App() {
     const fontWeight =
       fontOverrideMode === 'default' ? undefined : EXAMPLE_FONT_WEIGHT;
     if (selectedFontType === 'default' && selectedFontSizeMode === 'default') {
-      return { fontFamily, fontWeight };
+      return {
+        fontFamily,
+        fontWeight,
+        navBarTitle: { fontSize: { size: 22 } },
+      };
     }
     const multiplier =
       selectedFontSizeMode === 'small'
@@ -675,7 +687,16 @@ export default function App() {
         }
       );
     }
-    return { fontFamily, fontWeight, textStyles: baseStyles };
+    return {
+      fontFamily,
+      fontWeight,
+      // Android only: demonstrate a title size distinct from body1 while
+      // keeping the current font family.
+      navBarTitle: {
+        fontSize: { size: 22 * multiplier },
+      },
+      textStyles: baseStyles,
+    };
   }, [selectedFontType, selectedFontSizeMode, fontOverrideMode]);
 
   /**
@@ -722,8 +743,14 @@ export default function App() {
     const subAccess = Octopus.addHasAccessToCommunityListener((hasAccess) => {
       setHasAccessToCommunity(hasAccess);
     });
+    const subReason = Octopus.addCommunityAccessDeniedReasonListener(
+      (reason) => {
+        setCommunityAccessDeniedReason(reason);
+      }
+    );
     return () => {
       subAccess.remove();
+      subReason.remove();
     };
   }, []);
 
@@ -932,9 +959,8 @@ export default function App() {
   useBridgeShareTokenProvider(async (bridgeFingerprint) => {
     const presignedToken = process.env.OCTOPUS_BRIDGE_SHARE_TOKEN;
     if (!presignedToken) {
-      // Declining is a legitimate answer, and its effect differs per platform (see the hook's
-      // documentation): Android publishes unsigned and lets the server refuse, iOS fails the
-      // publish client-side.
+      // Declining is a legitimate answer: the post is sent unsigned on both platforms, and the
+      // server publishes it where member pictures are allowed and refuses it where they are not.
       console.log(
         'Octopus bridge share: no OCTOPUS_BRIDGE_SHARE_TOKEN set, declining to sign'
       );
@@ -1222,6 +1248,7 @@ export default function App() {
       setIsSdkSessionReady(false);
       setConnectionError(null);
       setHasAccessToCommunity(null);
+      setCommunityAccessDeniedReason(undefined);
       setNotSeenNotificationsCount(0);
       setConnectionState(null);
       setProfile(null);
@@ -1295,6 +1322,7 @@ export default function App() {
     setInitError(null);
     setConnectionError(null);
     setHasAccessToCommunity(null);
+    setCommunityAccessDeniedReason(undefined);
     setNotSeenNotificationsCount(0);
     setLocaleOverrideError(null);
     setConnectionState(null);
@@ -1339,6 +1367,7 @@ export default function App() {
       // afterwards would overwrite them, and neither event has a getter or re-emits a
       // deduped value — the screen would stay blank for the rest of the session.
       setHasAccessToCommunity(null);
+      setCommunityAccessDeniedReason(undefined);
       setNotSeenNotificationsCount(0);
       setHostUser(null);
       setIsSdkSessionReady(false);
@@ -2155,6 +2184,7 @@ export default function App() {
                 onDisconnectUser={handleDisconnectUserForScenarios}
                 connectionError={connectionError}
                 hasAccessToCommunity={hasAccessToCommunity}
+                communityAccessDeniedReason={communityAccessDeniedReason}
                 pushToken={pushToken}
                 notSeenNotificationsCount={notSeenNotificationsCount}
                 onRefreshNotifications={handleUpdateNotifications}

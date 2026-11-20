@@ -5,15 +5,58 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.ReadableType
 import com.octopuscommunity.sdk.ApiServer
+import com.octopuscommunity.sdk.BuildConfig as NativeSdkBuildConfig
 import com.octopuscommunity.sdk.InternalOctopusApi
 import com.octopuscommunity.sdk.SdkFamily
 import com.octopuscommunity.sdk.OctopusSDK
 import com.octopuscommunity.sdk.domain.model.ConnectionMode
 import android.graphics.Color
 
-class OctopusSDKInitializer {
+class OctopusSDKInitializer internal constructor(
+  private val initializeNative: (ReactApplicationContext, String, ConnectionMode, ApiServer?) -> Unit,
+  private val isNativeInitialised: () -> Boolean
+) {
+  constructor() : this(
+    { context, apiKey, mode, server ->
+      OctopusSDK.initialize(context = context, apiKey = apiKey, connectionMode = mode, apiServer = server)
+    },
+    { OctopusSDK.isInitialised }
+  )
 
-  fun initialize(context: ReactApplicationContext, options: ReadableMap, promise: Promise): Boolean {
+  private data class SessionConfiguration(
+    val context: ReactApplicationContext,
+    val apiKey: String,
+    val connectionMode: ConnectionMode,
+    val serverHost: String,
+    val serverPort: Int
+  )
+  @Volatile private var sessionConfiguration: SessionConfiguration? = null
+
+  private fun configuration(
+    context: ReactApplicationContext, apiKey: String, mode: ConnectionMode, server: ApiServer?
+  ) = SessionConfiguration(
+    context, apiKey, mode,
+    server?.host?.removeSurrounding("[", "]") ?: NativeSdkBuildConfig.OCTOPUS_SERVER_HOST,
+    server?.port ?: NativeSdkBuildConfig.OCTOPUS_SERVER_PORT
+  )
+
+  internal fun rememberConfiguration(
+    context: ReactApplicationContext, apiKey: String, mode: ConnectionMode, server: ApiServer?
+  ) {
+    sessionConfiguration = configuration(context, apiKey, mode, server)
+  }
+
+  internal fun forgetConfiguration() {
+    sessionConfiguration = null
+  }
+
+  fun initialize(context: ReactApplicationContext, options: ReadableMap, promise: Promise): Boolean =
+    initialize(context, options, promise, {})
+
+  internal fun initialize(
+    context: ReactApplicationContext, options: ReadableMap, promise: Promise,
+    beforeSessionChange: () -> Unit
+  ): Boolean {
     val apiKey = options.getString("apiKey")
     if (apiKey == null) {
       promise.reject("INITIALIZE_ERROR", "Missing API key", null)
@@ -36,12 +79,14 @@ class OctopusSDKInitializer {
       OctopusTopAppBarManager.setConfig(topAppBarConfig)
 
       declareSdkFamily(options)
-      OctopusSDK.initialize(
-        context = context,
-        apiKey = apiKey,
-        connectionMode = connectionMode,
-        apiServer = apiServer
-      )
+      val nextConfiguration = configuration(context, apiKey, connectionMode, apiServer)
+      // Theme and other UI-only options do not replace the native container. Mirror its
+      // normalized configuration so a redundant initialize preserves an in-flight sign-in.
+      if (!isNativeInitialised() || sessionConfiguration != nextConfiguration) {
+        beforeSessionChange()
+      }
+      initializeNative(context, apiKey, connectionMode, apiServer)
+      sessionConfiguration = nextConfiguration
       promise.resolve(null)
       return true
     } catch (e: InvalidConnectionModeException) {
@@ -267,13 +312,20 @@ class OctopusSDKInitializer {
       null
     }
 
-    // Only create fonts config if we have text styles or a theme-wide override: a theme
-    // made only of `fontFamily` / `fontWeight` must not be dropped.
-    if (textStyles.isNotEmpty() || fontFamily != null || fontWeight != null) {
+    val navBarTitle = parsedConfig.getMap("navBarTitle")?.let { title ->
+      val family = title.getString("fontFamily")?.takeIf { it.isNotBlank() }
+      val size = if (title.hasKey("fontSize") && !title.isNull("fontSize")) {
+        title.getDouble("fontSize").takeIf { it.isFinite() && it > 0 }
+      } else null
+      if (family != null || size != null) OctopusNavBarTitleConfig(family, size) else null
+    }
+
+    if (textStyles.isNotEmpty() || fontFamily != null || fontWeight != null || navBarTitle != null) {
       return OctopusFontsConfig(
         textStyles = textStyles,
         fontFamily = fontFamily,
-        fontWeight = fontWeight
+        fontWeight = fontWeight,
+        navBarTitle = navBarTitle
       )
     }
 

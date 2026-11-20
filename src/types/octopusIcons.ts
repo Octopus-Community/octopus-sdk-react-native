@@ -243,6 +243,8 @@ export interface OctopusContentIcons {
   delete?: OctopusIconSource;
   /** The "report" action of a content. */
   report?: OctopusIconSource;
+  /** The "See original" / "See translation" toggle of a translated post, comment or reply. */
+  translation?: OctopusIconSource;
 }
 
 /** Icons of the gamification (levels and badges) screens. */

@@ -9,9 +9,14 @@ import { addBridgeShareTokenRequestListener } from './addBridgeShareTokenRequest
  * (text + CTA + image).
  * @returns A promise resolving to a compact JWT — signed **HS256 with the same shared secret as
  * your SSO tokens** and carrying `bridgeFingerprint` in its `bridge_fingerprint` claim — or
- * `null` to decline signing.
+ * `null` to decline signing, which sends the post unsigned.
  *
  * Sign on your backend. The shared secret must never live in the app bundle.
+ *
+ * This signer shape serves two places: the global signer registered with
+ * {@link useBridgeShareTokenProvider} (or {@link addBridgeShareTokenRequestListener}), and the
+ * optional per-call `tokenProvider` of {@link fetchOrCreateClientObjectRelatedPost}, which
+ * signs that call's post only.
  */
 export type BridgeShareTokenProvider = (
   bridgeFingerprint: string
@@ -30,16 +35,12 @@ export type BridgeShareTokenProvider = (
  * host calls {@link navigateToOctopusCreatePost} — the editor reads whether a signer exists
  * when it opens.
  *
- * ### Platform difference on a declined signature
- * Returning `null` (or throwing) means "I will not sign this one".
- *  - **Android** publishes the post unsigned, and a pictures-off community then rejects it
- *    server-side.
- *  - **iOS** fails the publish client-side instead: the native signing hook has no
- *    "proceed unsigned" channel, so the editor stays open with an error rather than sending an
- *    empty token.
- *
- * Both end in a failed publish for the case that matters, but the error surfaces from a
- * different side. Return a real token for every request you intend to succeed.
+ * ### Declining a signature
+ * Returning `null`, throwing, or not answering within 60 seconds means "I will not sign this
+ * one". On both platforms the post is then sent unsigned and the server decides: a community
+ * that allows member pictures publishes it with its images, one that forbids them refuses it
+ * and the editor shows an error. Return a real token for every request that must succeed in a
+ * pictures-off community.
  *
  * @example
  * ```typescript

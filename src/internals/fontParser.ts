@@ -21,6 +21,8 @@ export interface ParsedFontConfig {
   fontFamily?: string;
   /** Theme-wide font weight on the 100-900 scale, already validated. */
   fontWeight?: number;
+  /** Android navigation-bar title overrides, independent of body text. */
+  navBarTitle?: { fontFamily?: string; fontSize?: number };
 }
 
 /** The lowest and highest weights of the CSS / Android `FontWeight` scale. */
@@ -149,13 +151,41 @@ export function parseFontConfig(fonts?: OctopusFonts): ParsedFontConfig | null {
     warnOnSupersededFontTypes(fontFamily, textStyles);
   }
 
+  const title = fonts.navBarTitle;
+  const titleFamily =
+    typeof title?.fontFamily === 'string' && title.fontFamily.trim() !== ''
+      ? title.fontFamily.trim()
+      : undefined;
+  const requestedSize = title?.fontSize?.size;
+  const titleSize =
+    typeof requestedSize === 'number' &&
+    Number.isFinite(requestedSize) &&
+    requestedSize > 0
+      ? requestedSize
+      : undefined;
+  if (requestedSize != null && titleSize == null) {
+    log(
+      LogLevel.WARN,
+      'theme.fonts.navBarTitle.fontSize.size must be a finite positive number; ' +
+        'it is ignored and the current title size is kept.'
+    );
+  }
+  const navBarTitle =
+    titleFamily != null || titleSize != null
+      ? {
+          ...(titleFamily != null ? { fontFamily: titleFamily } : {}),
+          ...(titleSize != null ? { fontSize: titleSize } : {}),
+        }
+      : undefined;
+
   // `textStyles` is always emitted, even empty: both bridges key off it to
   // recognize a pre-processed config at all, so dropping it on a theme made only
   // of `fontFamily` / `fontWeight` would discard the whole font configuration.
   if (
     Object.keys(textStyles).length === 0 &&
     fontFamily == null &&
-    fontWeight == null
+    fontWeight == null &&
+    navBarTitle == null
   ) {
     return null;
   }
@@ -164,5 +194,6 @@ export function parseFontConfig(fonts?: OctopusFonts): ParsedFontConfig | null {
     textStyles,
     ...(fontFamily != null ? { fontFamily } : {}),
     ...(fontWeight != null ? { fontWeight } : {}),
+    ...(navBarTitle != null ? { navBarTitle } : {}),
   };
 }

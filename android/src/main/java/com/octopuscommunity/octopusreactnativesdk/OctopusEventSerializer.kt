@@ -342,6 +342,9 @@ object OctopusEventSerializer {
       is OctopusEvent.ScreenDisplayed.ReportExplanation -> {
         screenMap.putString("type", "reportExplanation")
       }
+      is OctopusEvent.ScreenDisplayed.CommunityAccessDenied -> {
+        screenMap.putString("type", "communityAccessDenied")
+      }
       is OctopusEvent.ScreenDisplayed.DeleteAccount -> {
         screenMap.putString("type", "deleteAccount")
       }

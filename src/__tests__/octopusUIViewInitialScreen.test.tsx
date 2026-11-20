@@ -126,10 +126,12 @@ describe('OctopusUIView initialScreen marshalling', () => {
     ).toEqual({
       type: 'createPost',
       text: 'hello',
-      imageUri: null,
+      imageUris: null,
       topicId: null,
       ctaUrl: 'https://example.com',
       ctaLabel: 'Open',
+      ctaLabelLanguage: null,
+      ctaLabelTexts: null,
     });
   });
 
@@ -139,10 +141,12 @@ describe('OctopusUIView initialScreen marshalling', () => {
     ).toEqual({
       type: 'createPost',
       text: null,
-      imageUri: null,
+      imageUris: null,
       topicId: null,
       ctaUrl: null,
       ctaLabel: null,
+      ctaLabelLanguage: null,
+      ctaLabelTexts: null,
     });
   });
 

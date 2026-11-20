@@ -25,10 +25,14 @@ class OctopusEventManager {
     sendEvent(name: "userTokenRequest", body: ["requestId": requestId])
   }
 
-  func emitBridgeShareTokenRequest(requestId: String, bridgeFingerprint: String) {
+  func emitBridgeShareTokenRequest(
+    requestId: String, bridgeFingerprint: String, tokenProviderId: String?
+  ) {
+    var body = ["requestId": requestId, "bridgeFingerprint": bridgeFingerprint]
+    if let tokenProviderId { body["tokenProviderId"] = tokenProviderId }
     sendEvent(
       name: "bridgeShareTokenRequest",
-      body: ["requestId": requestId, "bridgeFingerprint": bridgeFingerprint]
+      body: body
     )
   }
 
@@ -38,6 +42,13 @@ class OctopusEventManager {
 
   func emitHasAccessToCommunityChanged(hasAccess: Bool) {
     sendEvent(name: "hasAccessToCommunityChanged", body: ["hasAccess": hasAccess])
+  }
+
+  /// `reasonName` is the Android enum name of the reason (`ACCOUNT_BANNED`, …), or `nil` when the
+  /// access is granted or not known yet. JS maps a name it does not know to `unknown`.
+  func emitCommunityAccessDeniedReasonChanged(reasonName: String?) {
+    sendEvent(name: "communityAccessDeniedReasonChanged",
+              body: ["reason": reasonName.map { $0 as Any } ?? NSNull()])
   }
 
   func emitSDKEvent(eventData: [String: Any]) {

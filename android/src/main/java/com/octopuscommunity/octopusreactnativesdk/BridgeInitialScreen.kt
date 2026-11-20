@@ -4,7 +4,14 @@ import android.util.Log
 import androidx.navigation.NavController
 import androidx.navigation.NavGraph
 import com.octopuscommunity.sdk.domain.model.CreatePostScreenInfo
+import com.octopuscommunity.sdk.domain.model.OctopusLocalizedText
 import com.octopuscommunity.sdk.ui.OctopusDestination
+import com.octopuscommunity.sdk.ui.navigateToOctopusActivity
+import com.octopuscommunity.sdk.ui.navigateToOctopusActivityByClientUserId
+import com.octopuscommunity.sdk.ui.navigateToOctopusGroup
+import com.octopuscommunity.sdk.ui.navigateToOctopusPost
+import com.octopuscommunity.sdk.ui.navigateToOctopusProfileByClientUserId
+import org.json.JSONObject
 
 internal const val BRIDGE_HOME_ROUTE = "OctopusHome"
 
@@ -20,12 +27,15 @@ internal fun bridgeStartRoute(
 ): Any {
   if (createPostInfo != null) {
     val post = createPostInfo.prefilledPost
+    val perLanguageLabel = post?.cta?.localizedLabel as? OctopusLocalizedText.PerLanguage
     return OctopusDestination.CreatePost(
       groupId = post?.topicId,
       prefilledText = post?.text,
-      prefilledImageUri = post?.image?.toString(),
+      prefilledImageUris = post?.images.orEmpty().map { it.toString() },
       prefilledCustomActionLabel = post?.cta?.label,
       prefilledCustomActionUrl = post?.cta?.url?.toString(),
+      prefilledCustomActionLabelLanguage = perLanguageLabel?.defaultLanguageCode,
+      prefilledCustomActionLabelTranslations = perLanguageLabel?.let(::encodeLabelTranslations),
     )
   }
   return when (initialScreen) {
@@ -46,6 +56,17 @@ internal fun bridgeStartRoute(
       // No id: the connected user's own, editable profile (a nested graph).
       ?: OctopusDestination.CurrentUserProfileGraph
   }
+}
+
+/**
+ * The CTA labels of the languages other than the default one, in the form the native
+ * `CreatePost` route reads them: a compact JSON object of language code to label, `null` when
+ * there is none (a route argument cannot be a map). The default language's label rides
+ * `prefilledCustomActionLabel`.
+ */
+internal fun encodeLabelTranslations(label: OctopusLocalizedText.PerLanguage): String? {
+  val others = label.textsByLanguageCode - label.defaultLanguageCode
+  return if (others.isEmpty()) null else JSONObject(others).toString()
 }
 
 /**
@@ -76,6 +97,32 @@ internal fun NavController.restoreBridgeRoot(startRoute: Any) {
     if (startRoute is String) navigate(startRoute) else navigate(startRoute)
   } catch (e: Exception) {
     Log.w("OctopusContent", "Could not restore the root screen (${e.javaClass.simpleName})")
+  }
+}
+
+/**
+ * Pushes [screen] over the current destination — the main feed — instead of making it the root.
+ * Only for an embedded view without `onBackRequested` (OctopusContent's `initialScreenAsRoot`):
+ * system back then pops to the feed first and reaches the host from there. Uses the native SDK's
+ * `navigateToOctopus…` helpers; a navigation failure is logged and leaves the feed in place.
+ */
+internal fun NavController.pushBridgeInitialScreen(screen: BridgeInitialScreen) {
+  try {
+    when (screen) {
+      is BridgeInitialScreen.Post -> navigateToOctopusPost(postId = screen.postId)
+      is BridgeInitialScreen.Group -> navigateToOctopusGroup(groupId = screen.groupId)
+      is BridgeInitialScreen.MemberActivity ->
+        screen.clientUserId
+          ?.let { navigateToOctopusActivityByClientUserId(it) }
+          ?: screen.profileId?.let { navigateToOctopusActivity(it) }
+      is BridgeInitialScreen.Profile ->
+        screen.clientUserId
+          ?.let { navigateToOctopusProfileByClientUserId(it) }
+          // No id: the connected user's own, editable profile.
+          ?: navigate(OctopusDestination.CurrentUserProfileGraph)
+    }
+  } catch (e: Exception) {
+    Log.w("OctopusContent", "Initial screen navigation failed: ${screen.javaClass.simpleName} (${e.javaClass.simpleName})")
   }
 }
 

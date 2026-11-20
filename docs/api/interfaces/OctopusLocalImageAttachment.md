@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.15.3**](../README.md)
+[**@octopus-community/react-native v1.16.0**](../README.md)
 
 ---
 
@@ -8,8 +8,8 @@
 
 A local image to attach to a [ClientPost](ClientPost.md).
 
-`uri` follows the same convention as [OctopusPrefilledPost](OctopusPrefilledPost.md)'s `imageUri`: a bare name
-with no scheme is looked up as a bundled native image resource (Android `res/drawable`, iOS
+`uri` follows the same convention as the entries of [OctopusPrefilledPost](OctopusPrefilledPost.md)'s `imageUris`:
+a bare name with no scheme is looked up as a bundled native image resource (Android `res/drawable`, iOS
 asset catalog / bundle), anything else is treated as a `file://` URI.
 
 An image is **never silently dropped**, because the post is created once and never

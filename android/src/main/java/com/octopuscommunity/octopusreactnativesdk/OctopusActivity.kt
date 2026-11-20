@@ -31,10 +31,12 @@ class OctopusActivity : ComponentActivity() {
     const val EXTRA_NAV_BAR_LEADING_ACTION = "navBarLeadingAction"
     const val EXTRA_EMIT_BACK_REQUESTED = "emitBackRequested"
     const val EXTRA_CREATE_POST_TEXT = "createPostText"
-    const val EXTRA_CREATE_POST_IMAGE_URI = "createPostImageUri"
+    const val EXTRA_CREATE_POST_IMAGE_URIS = "createPostImageUris"
     const val EXTRA_CREATE_POST_TOPIC_ID = "createPostTopicId"
     const val EXTRA_CREATE_POST_CTA_URL = "createPostCtaUrl"
     const val EXTRA_CREATE_POST_CTA_LABEL = "createPostCtaLabel"
+    const val EXTRA_CREATE_POST_CTA_LABEL_LANGUAGE = "createPostCtaLabelLanguage"
+    const val EXTRA_CREATE_POST_CTA_LABEL_TEXTS = "createPostCtaLabelTexts"
     const val EXTRA_INITIAL_SCREEN_TYPE = "initialScreenType"
     const val EXTRA_INITIAL_SCREEN_POST_ID = "initialScreenPostId"
     const val EXTRA_INITIAL_SCREEN_GROUP_ID = "initialScreenGroupId"
@@ -72,11 +74,7 @@ class OctopusActivity : ComponentActivity() {
     val interceptUrls = intent.getBooleanExtra(EXTRA_INTERCEPT_URLS, false)
     val interceptProfileTaps = intent.getBooleanExtra(EXTRA_INTERCEPT_PROFILE_TAPS, false)
     val linkPath = intent.getStringExtra(EXTRA_LINK_PATH)
-    val createPostText = intent.getStringExtra(EXTRA_CREATE_POST_TEXT)
-    val createPostImageUri = intent.getStringExtra(EXTRA_CREATE_POST_IMAGE_URI)
-    val createPostTopicId = intent.getStringExtra(EXTRA_CREATE_POST_TOPIC_ID)
-    val createPostCtaUrl = intent.getStringExtra(EXTRA_CREATE_POST_CTA_URL)
-    val createPostCtaLabel = intent.getStringExtra(EXTRA_CREATE_POST_CTA_LABEL)
+    val rawPrefilledPost = RawPrefilledPost.fromIntent(intent)
     val initialScreenType = intent.getStringExtra(EXTRA_INITIAL_SCREEN_TYPE)
     // Parity wave — navigation & theme. Same string->enum mapping as
     // OctopusUIViewManager.setNavBarLeadingAction, kept in sync manually since the two live on
@@ -86,24 +84,17 @@ class OctopusActivity : ComponentActivity() {
       "back" -> NavigationIconType.Back
       else -> null
     }
-    var createPostInfo = if (
-      createPostText != null || createPostImageUri != null || createPostTopicId != null ||
-      createPostCtaUrl != null || createPostCtaLabel != null
-    ) {
+    var createPostInfo = if (!rawPrefilledPost.isEmpty) {
       try {
-        PrefilledPostBuilder.build(
+        rawPrefilledPost.build(
           context = this,
-          text = createPostText,
-          imageUri = createPostImageUri,
-          topicId = createPostTopicId,
-          ctaUrl = createPostCtaUrl,
-          ctaLabel = createPostCtaLabel,
           // Attached here rather than in the bridge method: a `suspend` lambda cannot ride an
           // Intent extra. `null` unless JS registered a signer, which keeps hosts that never
           // call `addBridgeShareTokenRequestListener` on the previous unsigned behaviour.
           bridgeShareTokenProvider = BridgeShareTokenBroker.providerOrNull(),
         )
-      } catch (e: OctopusPrefilledPost.ValidationError) {
+      } catch (e: IllegalArgumentException) {
+        // ValidationError and TooManyImagesError are both IllegalArgumentExceptions.
         // The bridge method already validated this payload before launching this Activity —
         // a failure here means the two builds disagree, which should not happen. Fail open on
         // an empty editor rather than crash the host app.

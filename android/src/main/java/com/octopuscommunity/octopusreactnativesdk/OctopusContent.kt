@@ -11,6 +11,7 @@ import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
@@ -52,15 +53,9 @@ import com.octopuscommunity.sdk.ui.OctopusTypographyDefaults
 import com.octopuscommunity.sdk.ui.components.NavigationIconType
 import com.octopuscommunity.sdk.ui.components.OctopusTopAppBarDefaults
 import com.octopuscommunity.sdk.ui.components.UrlOpeningStrategy
-import com.octopuscommunity.sdk.ui.OctopusDestination
 import com.octopuscommunity.sdk.ui.home.OctopusHomeContent
 import com.octopuscommunity.sdk.ui.home.OctopusHomeDefaults
 import com.octopuscommunity.sdk.ui.home.OctopusHomeScreen
-import com.octopuscommunity.sdk.ui.navigateToOctopusActivity
-import com.octopuscommunity.sdk.ui.navigateToOctopusActivityByClientUserId
-import com.octopuscommunity.sdk.ui.navigateToOctopusGroup
-import com.octopuscommunity.sdk.ui.navigateToOctopusPost
-import com.octopuscommunity.sdk.ui.navigateToOctopusProfileByClientUserId
 import com.octopuscommunity.sdk.ui.octopusComposables
 import com.octopuscommunity.sdk.ui.octopusDarkColorScheme
 import com.octopuscommunity.sdk.ui.octopusLightColorScheme
@@ -373,8 +368,23 @@ internal fun OctopusContent(
   } else {
     null
   }
-  val octopusTopAppBarTitle = navBarTitleTextStyle?.let {
-    OctopusTopAppBarDefaults.title(textStyle = it)
+  val navBarTitleConfig = themeConfig?.fonts?.navBarTitle
+  val resolvedTitleFamily = remember(navBarTitleConfig?.fontFamily, context) {
+    resolveFontFamily(
+      navBarTitleConfig?.fontFamily, context, "theme.fonts.navBarTitle.fontFamily", "current title font"
+    )
+  }
+  val octopusTopAppBarTitle: (@Composable (String?) -> Unit)? = if (navBarTitleConfig != null) {
+    { text ->
+      // Read inside Material's title slot: outside it LocalTextStyle is body text.
+      val base = navBarTitleTextStyle ?: LocalTextStyle.current
+      OctopusTopAppBarDefaults.title(
+        textStyle = resolveNavBarTitleStyle(base, navBarTitleConfig, resolvedTitleFamily)
+      )(text)
+    }
+  } else {
+    // Preserve the existing path exactly when the title override is absent.
+    navBarTitleTextStyle?.let { OctopusTopAppBarDefaults.title(textStyle = it) }
   }
 
   // Parity wave — navigation & theme: a per-call override wins over the global topAppBar
@@ -459,26 +469,32 @@ internal fun OctopusContent(
           }
         }
         if (showNavBar) {
-          OctopusHomeScreen(
-            navController = navController,
-            titleText = navBarTitleOverride ?: topAppBarConfig
-              ?.takeIf { it.titleType == "text" }
-              ?.titleText,
-            titleCentered = titleCenteredOverride ?: topAppBarConfig?.centered ?: false,
-            contentPadding = contentPadding,
-            backIcon = backButton,
-            leadingNavigationIcon = navBarLeadingAction,
-            onBack = delegateBack,
-            onNavigateToLogin = {
-              OctopusEventEmitter.instance?.emitLoginRequired()
-            },
-            onNavigateToProfileEdit = { fieldToEdit ->
-              OctopusEventEmitter.instance?.emitEditUser(fieldToEdit)
-            },
-            onNavigateToUrl = resolvedOnNavigateToUrl,
-            onNavigateToProfile = onNavigateToProfile,
-            onNavigateToClientObject = onNavigateToClientObject
+          val homeTitle = homeTitleText(
+            navBarTitleOverride ?: topAppBarConfig?.takeIf { it.titleType == "text" }?.titleText
           )
+          // Native 1.16 lets any non-null title win over the theme logo. Apply the
+          // iOS precedence (non-empty text hides the logo) to this home screen only,
+          // preserving logos on other bars.
+          OctopusTheme(images = homeImagesForTitle(OctopusTheme.images, homeTitle)) {
+            OctopusHomeScreen(
+              navController = navController,
+              titleText = homeTitle,
+              titleCentered = titleCenteredOverride ?: topAppBarConfig?.centered ?: false,
+              contentPadding = contentPadding,
+              backIcon = backButton,
+              leadingNavigationIcon = navBarLeadingAction,
+              onBack = delegateBack,
+              onNavigateToLogin = {
+                OctopusEventEmitter.instance?.emitLoginRequired()
+              },
+              onNavigateToProfileEdit = { fieldToEdit ->
+                OctopusEventEmitter.instance?.emitEditUser(fieldToEdit)
+              },
+              onNavigateToUrl = resolvedOnNavigateToUrl,
+              onNavigateToProfile = onNavigateToProfile,
+              onNavigateToClientObject = onNavigateToClientObject
+            )
+          }
         } else {
           // Mirrors the Flutter Android embedding's `showNavBar = false` branch: no top app
           // bar at all, so titleText/titleCentered/backIcon/navBarLeadingAction have nothing
@@ -575,27 +591,7 @@ internal fun OctopusContent(
     // Embedded view without `onBackRequested` (see `initialScreenAsRoot`): the initial screen
     // keeps the main feed underneath it.
     pushedInitialScreen?.let { screen ->
-      LaunchedEffect(screen) {
-        try {
-          when (screen) {
-            is BridgeInitialScreen.Post ->
-              navController.navigateToOctopusPost(postId = screen.postId)
-            is BridgeInitialScreen.Group ->
-              navController.navigateToOctopusGroup(groupId = screen.groupId)
-            is BridgeInitialScreen.MemberActivity ->
-              screen.clientUserId
-                ?.let { navController.navigateToOctopusActivityByClientUserId(it) }
-                ?: screen.profileId?.let { navController.navigateToOctopusActivity(it) }
-            is BridgeInitialScreen.Profile ->
-              screen.clientUserId
-                ?.let { navController.navigateToOctopusProfileByClientUserId(it) }
-                // No id: the connected user's own, editable profile.
-                ?: navController.navigate(OctopusDestination.CurrentUserProfileGraph)
-          }
-        } catch (e: Exception) {
-          Log.w("OctopusContent", "Initial screen navigation failed: ${screen.javaClass.simpleName} (${e.javaClass.simpleName})")
-        }
-      }
+      LaunchedEffect(screen) { navController.pushBridgeInitialScreen(screen) }
     }
   }
 }
@@ -609,7 +605,12 @@ internal fun OctopusContent(
  * as `'my_brand_font'`. When nothing matches, log a warning and keep the SDK's own font
  * rather than dropping the request silently.
  */
-private fun resolveFontFamily(name: String?, context: Context): FontFamily? {
+internal fun resolveFontFamily(
+  name: String?,
+  context: Context,
+  property: String = "theme.fonts.fontFamily",
+  fallback: String = "default SDK font"
+): FontFamily? {
   if (name.isNullOrBlank()) return null
   return try {
     val resId = context.resources.getIdentifier(name, "font", context.packageName)
@@ -618,14 +619,14 @@ private fun resolveFontFamily(name: String?, context: Context): FontFamily? {
     } else {
       Log.w(
         "OctopusContent",
-        "theme.fonts.fontFamily ${fontNameForLog(name)} was not found under res/font/ in the host app; " +
-          "keeping the default SDK font. Resource names are lowercase with underscores " +
+        "$property ${fontNameForLog(name)} was not found under res/font/ in the host app; " +
+          "keeping the $fallback. Resource names are lowercase with underscores " +
           "only, and carry no file extension."
       )
       null
     }
   } catch (e: Exception) {
-    Log.w("OctopusContent", "theme.fonts.fontFamily ${fontNameForLog(name)} could not be resolved (${e.javaClass.simpleName})")
+    Log.w("OctopusContent", "$property ${fontNameForLog(name)} could not be resolved (${e.javaClass.simpleName})")
     null
   }
 }

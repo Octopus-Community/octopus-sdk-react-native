@@ -32,10 +32,9 @@ object DebugOverrideMappers {
   }
 
   /**
-   * Reads the flat `postEnablePictures` / `postEnablePolls` / `postTextRequired` / `commentEnablePictures` /
-   * `replyEnablePictures` keys the JS wrapper always sends (see `debugOverrideContentOptions.ts`)
-   * — not nested `post` / `comment` / `reply` sub-maps. Each key independently defaults to `true`
-   * (the native default) when absent, matching the JS wrapper's own per-field `?? true`.
+   * Reads the flat keys the JS wrapper always sends (see `debugOverrideContentOptions.ts`),
+   * not nested `post` / `comment` / `reply` sub-maps. Creation flags default to `true`;
+   * `postImageTapOpensPost` and `postGroupNameTapOpensGroup` default to `false`.
    */
   fun toContentOptions(map: ReadableMap?): CommunityConfig.ContentOptions? {
     if (map == null) return null
@@ -47,6 +46,10 @@ object DebugOverrideMappers {
           ?.getBoolean("postEnablePolls") ?: true,
         textRequired = map.takeIf { it.hasKey("postTextRequired") && !it.isNull("postTextRequired") }
           ?.getBoolean("postTextRequired") ?: true,
+        imageTapOpensPost = map.takeIf { it.hasKey("postImageTapOpensPost") && !it.isNull("postImageTapOpensPost") }
+          ?.getBoolean("postImageTapOpensPost") ?: false,
+        groupNameTapOpensGroup = map.takeIf { it.hasKey("postGroupNameTapOpensGroup") && !it.isNull("postGroupNameTapOpensGroup") }
+          ?.getBoolean("postGroupNameTapOpensGroup") ?: false,
       ),
       comment = CommunityConfig.ContentOptions.CommentOptions(
         enablePictures = map.takeIf { it.hasKey("commentEnablePictures") }

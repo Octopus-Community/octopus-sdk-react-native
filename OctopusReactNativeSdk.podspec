@@ -1,7 +1,7 @@
 require "json"
 
 package = JSON.parse(File.read(File.join(__dir__, "package.json")))
-octopus_version = '1.15.1'
+octopus_version = '1.16.0'
 
 Pod::Spec.new do |s|
   s.name         = "OctopusReactNativeSdk"
@@ -24,10 +24,32 @@ else
   s.dependency "React-Core"
 end
 
-  s.dependency 'OctopusCommunity', octopus_version
-  s.dependency 'OctopusCommunityUI', octopus_version
-  s.dependency 'OctopusCommunityCore', octopus_version
-  s.dependency 'OctopusCommunityRemoteClient', octopus_version
-  s.dependency 'OctopusCommunityGrpcModels', octopus_version
-  s.dependency 'OctopusCommunityDependencyInjection', octopus_version
+  # The native iOS SDK is consumed through Swift Package Manager, not CocoaPods trunk
+  # (which stops accepting new publications). React Native's `spm_dependency`
+  # (scripts/cocoapods/spm.rb, RN >= 0.75) attaches the package to this pod's target
+  # during `pod install`, so the app keeps a plain CocoaPods setup.
+  unless respond_to?(:spm_dependency, true)
+    raise "OctopusReactNativeSdk needs React Native's `spm_dependency` helper (React Native 0.75 or later) " \
+          "to fetch the native Octopus SDK with Swift Package Manager. Make sure your Podfile requires " \
+          "react-native/scripts/react_native_pods.rb."
+  end
+
+  # Internal tooling (native-dev): inert unless both variables are set. During a
+  # native dev-source window the package resolves from one revision of another repository.
+  octopus_dev_url = ENV['OCTOPUS_IOS_DEV_PACKAGE_URL'].to_s
+  octopus_dev_revision = ENV['OCTOPUS_IOS_DEV_REVISION'].to_s
+  if octopus_dev_url.empty? || octopus_dev_revision.empty?
+    # Keep the exact pin equal to the `exact:` pin in Package.swift.
+    spm_dependency(s,
+      url: 'https://github.com/Octopus-Community/octopus-sdk-swift.git',
+      requirement: { kind: 'exactVersion', version: octopus_version },
+      products: ['Octopus', 'OctopusUI']
+    )
+  else
+    spm_dependency(s,
+      url: octopus_dev_url,
+      requirement: { kind: 'revision', revision: octopus_dev_revision },
+      products: ['Octopus', 'OctopusUI']
+    )
+  end
 end

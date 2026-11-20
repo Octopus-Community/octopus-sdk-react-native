@@ -151,9 +151,8 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
     resolve(nil)
   }
 
-  /// Answers one `bridgeShareTokenRequest`. A `nil` `token` means "do not sign", which fails
-  /// the publish on this platform — `OctopusPrefilledPost.sign` has no unsigned channel. See
-  /// `useBridgeShareTokenProvider`'s platform note.
+  /// Answers one `bridgeShareTokenRequest`. A `nil` `token` means "do not sign", which lets the
+  /// publish proceed unsigned, as on Android.
   @objc(completeBridgeShareTokenRequest:withToken:withResolver:withRejecter:)
   func completeBridgeShareTokenRequest(
     requestId: String,
@@ -219,21 +218,18 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
         // Decoded here rather than in decodeBridgeInitialScreen so an invalid prefill rejects
         // the promise with the same error codes as navigateToOctopusCreatePost, instead of
         // silently folding to the main feed. No prefill fields at all means a blank editor.
-        let text = initialScreenMap["text"] as? String
-        let imageUri = initialScreenMap["imageUri"] as? String
-        let topicId = initialScreenMap["topicId"] as? String
-        let ctaUrl = initialScreenMap["ctaUrl"] as? String
-        let ctaLabel = initialScreenMap["ctaLabel"] as? String
-        let hasPrefill = text != nil || imageUri != nil || topicId != nil
-          || ctaUrl != nil || ctaLabel != nil
-        if hasPrefill {
+        let rawPrefilledPost = RawPrefilledPost(initialScreenMap)
+        if !rawPrefilledPost.isEmpty {
           do {
-            let prefilledPost = try PrefilledPostBuilder.build(
-              text: text, imageUri: imageUri, topicId: topicId, ctaUrl: ctaUrl, ctaLabel: ctaLabel
-            )
+            let prefilledPost = try rawPrefilledPost.build()
             initialScreen = .home(.createPost(.init(prefilledPost: prefilledPost)))
           } catch let error as OctopusPrefilledPost.ValidationError {
             reject(error.toBridgeErrorCode(), error.debugDescription, error)
+            return
+          } catch let validationError as OctopusLocalizedText.ValidationError {
+            let (code, error) = validationError.bridgeRejection(
+              fallbackCode: "NAVIGATE_TO_CREATE_POST_ERROR")
+            reject(code, error.localizedDescription, error)
             return
           } catch {
             reject("NAVIGATE_TO_CREATE_POST_ERROR", error.localizedDescription, error)
@@ -466,18 +462,10 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
             + "provided — following the notification deep link and dropping the initial screen"
         )
       } else if (initialScreenMap["type"] as? String) == "createPost" {
-        let text = initialScreenMap["text"] as? String
-        let imageUri = initialScreenMap["imageUri"] as? String
-        let topicId = initialScreenMap["topicId"] as? String
-        let ctaUrl = initialScreenMap["ctaUrl"] as? String
-        let ctaLabel = initialScreenMap["ctaLabel"] as? String
-        let hasPrefill = text != nil || imageUri != nil || topicId != nil
-          || ctaUrl != nil || ctaLabel != nil
-        if hasPrefill {
+        let rawPrefilledPost = RawPrefilledPost(initialScreenMap)
+        if !rawPrefilledPost.isEmpty {
           do {
-            let prefilledPost = try PrefilledPostBuilder.build(
-              text: text, imageUri: imageUri, topicId: topicId, ctaUrl: ctaUrl, ctaLabel: ctaLabel
-            )
+            let prefilledPost = try rawPrefilledPost.build()
             initialScreen = .home(.createPost(.init(prefilledPost: prefilledPost)))
           } catch {
             NSLog(
@@ -772,8 +760,14 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
     } else {
       locale = nil
     }
-    octopus.overrideDefaultLocale(with: locale)
-    resolve(nil)
+    // The native SDK publishes the locale synchronously on the calling thread to `@MainActor`
+    // UI subscribers (`LanguageManager`, the home screen view model). Built in Swift 6 mode,
+    // which Swift Package Manager does, they assert the main queue: called from this module's
+    // queue, a language change killed the app with `dispatch_assert_queue_fail`.
+    Task { @MainActor in
+      octopus.overrideDefaultLocale(with: locale)
+      resolve(nil)
+    }
   }
 
   // MARK: - Reactions
@@ -1052,26 +1046,25 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
       reject("NAVIGATE_TO_CREATE_POST_ERROR", "SDK not initialized. Call initialize() first.", nil)
       return
     }
-    // Flat `ctaUrl` / `ctaLabel` top-level keys — not a nested `cta` dictionary. See
-    // `navigateToOctopusCreatePost.ts`, which always sends these flat (mirrors the Android
-    // bridge's own `options?.getString("ctaUrl")` / `"ctaLabel"` reads).
-    let dict = options as? [String: Any]
-    let text = dict?["text"] as? String
-    let imageUri = dict?["imageUri"] as? String
-    let topicId = dict?["topicId"] as? String
-    let ctaUrl = dict?["ctaUrl"] as? String
-    let ctaLabel = dict?["ctaLabel"] as? String
+    // Flat `ctaUrl` / `ctaLabel` / `ctaLabelLanguage` / `ctaLabelTexts` top-level keys — not a
+    // nested `cta` dictionary. See `src/internals/prefilledPost.ts`, which always sends these
+    // flat (mirrors the Android bridge's `RawPrefilledPost.read`).
+    let rawPrefilledPost = RawPrefilledPost((options as? [String: Any]) ?? [:])
 
     let prefilledPost: OctopusPrefilledPost
     do {
-      prefilledPost = try PrefilledPostBuilder.build(
-        text: text, imageUri: imageUri, topicId: topicId, ctaUrl: ctaUrl, ctaLabel: ctaLabel,
+      prefilledPost = try rawPrefilledPost.build(
         // `nil` unless JS registered a signer, which keeps hosts that never call
         // `addBridgeShareTokenRequestListener` on the previous unsigned behaviour.
         sign: bridgeShareTokenBroker.signClosureOrNil()
       )
     } catch let error as OctopusPrefilledPost.ValidationError {
       reject(error.toBridgeErrorCode(), error.debugDescription, error)
+      return
+    } catch let validationError as OctopusLocalizedText.ValidationError {
+      let (code, error) = validationError.bridgeRejection(
+        fallbackCode: "NAVIGATE_TO_CREATE_POST_ERROR")
+      reject(code, error.localizedDescription, error)
       return
     } catch {
       reject("NAVIGATE_TO_CREATE_POST_ERROR", error.localizedDescription, error)
@@ -1336,20 +1329,15 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
 
   /// Fetches the bridge post linked to a client object, creating it on first call.
   ///
-  /// The token provider is taken from `OctopusBridgeShareTokenBroker` rather than from a call
-  /// parameter: an `async` closure cannot cross the React Native bridge, so JS registers one
-  /// signer globally (`addBridgeShareTokenRequestListener`) and every signing path — this one
-  /// and the create-post editor's prefilled share — consults it.
+  /// `tokenProviderId` routes signing requests to this call's JS provider. Without it the
+  /// globally registered signer is used, or the post is created unsigned if none exists.
   ///
-  /// Unlike `OctopusPrefilledPost.sign`, this API's `tokenProvider` returns an **optional**
-  /// token, so "publish unsigned" is expressible here. `BridgeShareSignError.notSigned` — the
-  /// broker's stand-in for a `null` JS reply, invented because `sign` has no such channel — is
-  /// therefore translated back into `nil` instead of failing the call. That is what makes the
-  /// JS contract ("return null to skip signing") behave the same on both platforms for this
-  /// API, even though it cannot on the editor's.
-  @objc(fetchOrCreateClientObjectRelatedPost:withResolver:withRejecter:)
+  /// A `null` JS reply reaches `tokenProvider` as `nil`, so the post is created unsigned, as on
+  /// Android.
+  @objc(fetchOrCreateClientObjectRelatedPost:tokenProviderId:withResolver:withRejecter:)
   func fetchOrCreateClientObjectRelatedPost(
     clientPost: NSDictionary,
+    tokenProviderId: String?,
     resolve: @escaping RCTPromiseResolveBlock,
     reject: @escaping RCTPromiseRejectBlock
   ) -> Void {
@@ -1360,22 +1348,27 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
     let decoded: Octopus.ClientPost
     do {
       decoded = try ClientObjectMappers.decodeClientPost((clientPost as? [String: Any]) ?? [:])
+    } catch let validationError as OctopusLocalizedText.ValidationError {
+      let (code, error) = validationError.bridgeRejection(fallbackCode: "CLIENT_POST_ERROR")
+      reject(code, error.localizedDescription, error)
+      return
     } catch {
       reject("INVALID_ARGS", error.localizedDescription, error)
       return
     }
 
-    let sign = bridgeShareTokenBroker.signClosureOrNil()
+    let sign = bridgeShareTokenBroker.signClosureOrNil(tokenProviderId: tokenProviderId)
     let tokenProvider: @Sendable (String) async throws -> String? = { bridgeFingerprint in
       guard let sign else { return nil }
-      do {
-        return try await sign(bridgeFingerprint)
-      } catch BridgeShareSignError.notSigned {
-        return nil
-      }
+      return try await sign(bridgeFingerprint)
     }
 
     Task {
+      defer {
+        if let tokenProviderId {
+          bridgeShareTokenBroker.cancelRequests(tokenProviderId: tokenProviderId)
+        }
+      }
       do {
         let post = try await octopus.fetchOrCreateClientObjectRelatedPost(
           content: decoded, tokenProvider: tokenProvider
@@ -1486,6 +1479,7 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
   private func startObservingReactiveEvents() {
     startObservingNotSeenNotificationsCount()
     startObservingHasAccessToCommunity()
+    startObservingCommunityAccessDeniedReason()
     startObservingEvents()
     wireGroupAccessDeniedCallback()
     startObservingProfile()
@@ -1576,6 +1570,34 @@ class OctopusReactNativeSdk: NSObject, RCTBridgeModule {
       .store(in: &cancellables)
   }
   
+  private func startObservingCommunityAccessDeniedReason() {
+    guard let octopus = octopusSDK else { return }
+    octopus.$communityAccessDeniedReason
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] reason in
+        self?.eventManager.emitCommunityAccessDeniedReasonChanged(
+          reasonName: Self.communityAccessDeniedReasonWireValue(reason))
+      }
+      .store(in: &cancellables)
+  }
+
+  /// The wire value of a native access denied reason: the Android enum name, `nil` for no reason.
+  /// A case a newer native SDK adds goes out as `UNKNOWN`, which is also what JS maps any name it
+  /// does not know to.
+  static func communityAccessDeniedReasonWireValue(_ reason: OctopusCommunityAccessDeniedReason?) -> String? {
+    guard let reason else { return nil }
+    switch reason {
+    case .notInCohort: return "NOT_IN_COHORT"
+    case .communityTemporarilyDisabled: return "COMMUNITY_TEMPORARILY_DISABLED"
+    case .communityClosed: return "COMMUNITY_CLOSED"
+    case .memberExcluded: return "MEMBER_EXCLUDED"
+    case .accountBanned: return "ACCOUNT_BANNED"
+    case .accountDeleted: return "ACCOUNT_DELETED"
+    case .unknown: return "UNKNOWN"
+    @unknown default: return "UNKNOWN"
+    }
+  }
+
   private func startObservingEvents() {
     guard let octopus = octopusSDK else { return }
     octopus.eventPublisher

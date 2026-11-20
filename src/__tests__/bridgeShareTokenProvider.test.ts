@@ -60,9 +60,8 @@ describe('addBridgeShareTokenRequestListener', () => {
 
   it('announces the provider to the native side on subscribe', async () => {
     // The native side cannot infer this from the event subscription (see
-    // nativeEventGate.test.ts), and on iOS it MUST know: the native signing hook has no
-    // "publish unsigned" channel, so wiring it with nobody listening would break every
-    // prefilled image publish.
+    // nativeEventGate.test.ts), and it has to know: wiring the native signing hook with
+    // nobody listening would hold every prefilled image publish for the whole timeout.
     addBridgeShareTokenRequestListener(async () => 'jwt');
 
     expect(mockRegister).toHaveBeenCalledTimes(1);

@@ -7,8 +7,13 @@ import com.octopuscommunity.sdk.domain.model.ClientUser
 import com.octopuscommunity.sdk.domain.model.Resource
 import com.octopuscommunity.sdk.domain.network.OctopusResult
 import com.octopuscommunity.sdk.domain.repository.ClientUserError
+import com.octopuscommunity.sdk.domain.repository.ConnectionRepository.ConnectionState
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.async
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -18,6 +23,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import android.content.Context
@@ -28,12 +34,78 @@ import java.net.URI
 import android.net.Uri
 
 
-class OctopusSSOAuthenticator(
+class OctopusSSOAuthenticator internal constructor(
   private val context: Context,
-  private val eventEmitter: OctopusEventEmitter
+  private val emitTokenRequest: (String) -> Unit,
+  private val connect: suspend (ClientUser, suspend () -> String) -> OctopusResult<ConnectionState, ClientUserError>,
+  private val disconnect: suspend () -> Unit,
+  private val pictureLoader: (suspend (String, (File) -> Unit) -> Resource?)? = null
  ) {
+  constructor(context: Context, eventEmitter: OctopusEventEmitter) : this(
+    context,
+    eventEmitter::emitUserTokenRequest,
+    { user, provider -> OctopusSDK.connectUser(user = user, tokenProvider = provider) },
+    { if (OctopusSDK.isInitialised) OctopusSDK.disconnectUser() }
+  )
 
-  private val coroutineScope = CoroutineScope(Dispatchers.Main)
+  private val sessionLock = Any()
+  private var disposed = false
+  private class Session(val generation: Long) {
+    val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    @Volatile var cancellationCode = CODE_CONNECT_USER_ERROR
+  }
+  private var session = Session(0L)
+  // Finite teardown operations must complete even if a later lifecycle call ends a session
+  // or disposes the React module. This scope never runs sign-in or token requests.
+  private val disconnectScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+  private data class PendingDisconnect(val generation: Long, val task: Deferred<Unit>)
+  private var disconnectTask: PendingDisconnect? = null
+
+  /** Invalidate work before logout, reset, stop, or a community/container change. */
+  internal fun endSession(cancellationCode: String = CODE_CONNECT_USER_ERROR) {
+    synchronized(sessionLock) {
+      if (session.scope.isActive) session.cancellationCode = cancellationCode
+      session.scope.cancel()
+      for (requestId in pendingTokenRequests.keys) {
+        pendingTokenRequests.remove(requestId)
+          ?.resumeWithException(CancellationException("The SSO session ended"))
+      }
+      if (!disposed) session = Session(session.generation + 1)
+    }
+  }
+
+  internal fun dispose() = synchronized(sessionLock) {
+    disposed = true
+    endSession()
+  }
+
+  private fun checkSession(expected: Session) = synchronized(sessionLock) {
+    if (disposed || expected.generation != session.generation) {
+      throw CancellationException("The SSO session ended")
+    }
+  }
+
+  private fun launchInSession(
+    promise: Promise,
+    block: suspend CoroutineScope.(Session) -> Unit
+  ) {
+    val current = synchronized(sessionLock) {
+      // The first connect after logout belongs to a new generation, even while it is
+      // waiting for native teardown. A later logout must not reuse the old logout task.
+      if (!disposed && disconnectTask?.generation == session.generation) endSession()
+      session
+    }
+    val started = AtomicBoolean(false)
+    current.scope.launch {
+      started.set(true)
+      block(current)
+    }.invokeOnCompletion { error ->
+      // A reload can cancel a queued launch before its try/catch ever runs.
+      if (error != null && !started.get()) {
+        promise.reject(current.cancellationCode, "The SSO session ended before the operation started.", error)
+      }
+    }
+  }
   private val profilePictureCache by lazy {
     ProfilePictureCache(File(context.cacheDir, "octopus-profile-pictures"))
   }
@@ -87,19 +159,28 @@ class OctopusSSOAuthenticator(
    * bounded by [TOKEN_REQUEST_TIMEOUT_MS] so the promise always settles.
    */
   fun connectUser(params: ReadableMap, promise: Promise) {
-    coroutineScope.launch {
+    launchInSession(promise) { current ->
       var cachedPicture: File? = null
       var connected = false
       try {
         val clientUser = parseClientUser(params) { cachedPicture = it }
+        val pendingDisconnect = synchronized(sessionLock) { disconnectTask }
+        // The logout promise reports its failure. Sign-in only needs teardown to finish.
+        pendingDisconnect?.task?.join()
+        synchronized(sessionLock) {
+          // A newer logout may have replaced the task while this connect was waiting.
+          if (disconnectTask === pendingDisconnect) disconnectTask = null
+        }
+        checkSession(current)
 
         when (
-          val result = OctopusSDK.connectUser(
-            user = clientUser,
-            tokenProvider = { requestTokenFromRN() }
+          val result = connect(
+            clientUser,
+            { requestTokenFromRN(current) }
           )
         ) {
           is OctopusResult.Success -> {
+            checkSession(current)
             connected = true
             promise.resolve(null)
           }
@@ -122,7 +203,7 @@ class OctopusSSOAuthenticator(
       } catch (e: CancellationException) {
         if (isActive) {
           // The scope is alive, so this is not a scope cancellation: it is how
-          // `cancelTokenRequest` (or `disconnectUser`) reports that JS declined to sign a
+          // `cancelTokenRequest` reports that JS declined to sign a
           // token — an answer to report rather than an exception to rethrow.
           promise.reject(
             CODE_TOKEN_REQUEST_CANCELLED,
@@ -130,12 +211,9 @@ class OctopusSSOAuthenticator(
             e
           )
         } else {
-          // The scope itself was cancelled. Nothing in this module cancels `coroutineScope`
-          // today, so this branch is defence in depth rather than a path with a known
-          // trigger: settle the promise so JS never waits forever, then honour the
-          // cancellation instead of swallowing it.
+          // Session teardown cancels avatar preparation and pending authentication.
           promise.reject(
-            CODE_CONNECT_USER_ERROR,
+            current.cancellationCode,
             "The connection attempt was interrupted before it completed.",
             e
           )
@@ -205,23 +283,23 @@ class OctopusSSOAuthenticator(
   }
 
   fun disconnectUser(promise: Promise) {
-    coroutineScope.launch {
+    val task = synchronized(sessionLock) {
+      val previous = disconnectTask
+      if (!disposed && previous?.generation == session.generation && !previous.task.isCompleted) {
+        previous.task
+      } else {
+        endSession(CODE_TOKEN_REQUEST_CANCELLED)
+        // Serialize distinct logout generations too. A previous failure must not stop a
+        // later logout from trying to disconnect the newer session.
+        disconnectScope.async {
+          previous?.task?.join()
+          disconnect()
+        }.also { disconnectTask = PendingDisconnect(session.generation, it) }
+      }
+    }
+    disconnectScope.launch {
       try {
-        OctopusSDK.disconnectUser()
-
-        // Claim each continuation with an atomic `remove` before resuming it, the same way
-        // `completeTokenRequest` does. Without the claim, a `completeTokenRequest` arriving on
-        // the native-modules thread while this runs on the main thread can resume the same
-        // continuation, and the second resume throws "Already resumed" — which the catch
-        // below would report to JS as a spurious DISCONNECT_USER_ERROR. Entries added while
-        // this loop runs are deliberately left alone rather than dropped by a `clear()`: an
-        // unclaimed request still settles, on its own timeout.
-        for (requestId in pendingTokenRequests.keys) {
-          pendingTokenRequests
-            .remove(requestId)
-            ?.resumeWithException(CancellationException("User disconnected"))
-        }
-
+        task.await()
         promise.resolve(null)
       } catch (e: Exception) {
         promise.reject("DISCONNECT_USER_ERROR", "Failed to disconnect user: ${e.message}", e)
@@ -249,20 +327,27 @@ class OctopusSSOAuthenticator(
    * the [TimeoutCancellationException] travels back out through the native SDK (which
    * rethrows any non-gRPC exception raised by the token provider) to `connectUser`.
    */
-  private suspend fun requestTokenFromRN(): String {
+  private suspend fun requestTokenFromRN(current: Session): String {
     val requestId = UUID.randomUUID().toString()
 
-    return withTimeout(TOKEN_REQUEST_TIMEOUT_MS) {
-      suspendCancellableCoroutine { continuation ->
-        pendingTokenRequests[requestId] = continuation
+    val token = withTimeout(TOKEN_REQUEST_TIMEOUT_MS) {
+      suspendCancellableCoroutine<String> { continuation ->
+        synchronized(sessionLock) {
+          // The SDK may retain this provider beyond the connect call. A stale provider
+          // must never register a request in the next user's session.
+          checkSession(current)
+          pendingTokenRequests[requestId] = continuation
 
-        continuation.invokeOnCancellation {
-          pendingTokenRequests.remove(requestId)
+          continuation.invokeOnCancellation {
+            pendingTokenRequests.remove(requestId)
+          }
+
+          emitTokenRequest(requestId)
         }
-
-        eventEmitter.emitUserTokenRequest(requestId)
       }
     }
+    checkSession(current)
+    return token
   }
 
   private suspend fun parseClientUser(params: ReadableMap, onCachedPicture: (File) -> Unit): ClientUser {
@@ -285,7 +370,9 @@ class OctopusSSOAuthenticator(
     val nickname = profileParams.getString("username")
     val bio = profileParams.getString("biography")
     val profilePicture = profileParams.getString("profilePicture")?.let { input ->
-      withContext(Dispatchers.IO) { loadProfilePictureResource(input, onCachedPicture) }
+      withContext(Dispatchers.IO) {
+        (pictureLoader ?: ::loadProfilePictureResource)(input, onCachedPicture)
+      }
     }
 
     return ClientUser.Profile(

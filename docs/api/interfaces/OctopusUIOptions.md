@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.15.3**](../README.md)
+[**@octopus-community/react-native v1.16.0**](../README.md)
 
 ---
 
@@ -35,9 +35,10 @@ window that has no bottom safe area there (a device with a home button and no ho
 below the UI, a floating iPad window), the native iOS SDK adds 16 pt on top of whatever
 this option resolves to, `0` and an absent value included, so the profile bubble and
 create-post button do not touch the screen edge. Nothing is added above a home indicator or
-above host bottom chrome. This covers every initial screen except
-`initialScreen: { type: 'profile' }`, which mounts a separate native profile screen that
-gets no margin and ignores this option on iOS.
+above host bottom chrome. This margin applies to every initial screen, including
+`initialScreen: { type: 'profile' }`. On iOS the profile initial screen ignores the
+configured inset (it stays `0`), but still receives this native 16 pt screen-edge margin
+when the window has no bottom safe area.
 
 **iOS caveat — hardware keyboards, embedded `<OctopusUIView>`, value above `0`.** While a
 keyboard is up, the native SDK stops reserving the band once the keyboard height it is

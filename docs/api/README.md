@@ -1,14 +1,18 @@
-**@octopus-community/react-native v1.15.3**
+**@octopus-community/react-native v1.16.0**
 
 ---
 
-# @octopus-community/react-native v1.15.3
+# @octopus-community/react-native v1.16.0
 
 ## Enumerations
 
 - [LogLevel](enumerations/LogLevel.md)
 - [SyncFollowGroupStatus](enumerations/SyncFollowGroupStatus.md)
 - [UrlOpeningStrategy](enumerations/UrlOpeningStrategy.md)
+
+## Classes
+
+- [OctopusPrefilledPostTooManyImagesError](classes/OctopusPrefilledPostTooManyImagesError.md)
 
 ## Interfaces
 
@@ -35,6 +39,7 @@
 - [NavigateToOctopusCreatePostError](interfaces/NavigateToOctopusCreatePostError.md)
 - [NavigateToProfileEventParams](interfaces/NavigateToProfileEventParams.md)
 - [NotificationClickedEvent](interfaces/NotificationClickedEvent.md)
+- [OctopusAutoTranslatedText](interfaces/OctopusAutoTranslatedText.md)
 - [OctopusColorSet](interfaces/OctopusColorSet.md)
 - [OctopusCommentCreationIcons](interfaces/OctopusCommentCreationIcons.md)
 - [OctopusCommentIcons](interfaces/OctopusCommentIcons.md)
@@ -58,6 +63,7 @@
 - [OctopusInitialScreenProfile](interfaces/OctopusInitialScreenProfile.md)
 - [OctopusLocalImageAttachment](interfaces/OctopusLocalImageAttachment.md)
 - [OctopusNotConnected](interfaces/OctopusNotConnected.md)
+- [OctopusPerLanguageText](interfaces/OctopusPerLanguageText.md)
 - [OctopusPollIcons](interfaces/OctopusPollIcons.md)
 - [OctopusPost](interfaces/OctopusPost.md)
 - [OctopusPostCreationIcons](interfaces/OctopusPostCreationIcons.md)
@@ -107,6 +113,8 @@
 - [BridgeShareTokenRequestListenerCallback](type-aliases/BridgeShareTokenRequestListenerCallback.md)
 - [ClientObjectRelatedPostListenerCallback](type-aliases/ClientObjectRelatedPostListenerCallback.md)
 - [ClientPostErrorCode](type-aliases/ClientPostErrorCode.md)
+- [CommunityAccessDeniedReason](type-aliases/CommunityAccessDeniedReason.md)
+- [CommunityAccessDeniedReasonListenerCallback](type-aliases/CommunityAccessDeniedReasonListenerCallback.md)
 - [CommunityDataListenerCallback](type-aliases/CommunityDataListenerCallback.md)
 - [ConnectionStateListenerCallback](type-aliases/ConnectionStateListenerCallback.md)
 - [ConnectUserErrorCode](type-aliases/ConnectUserErrorCode.md)
@@ -134,6 +142,7 @@
 - [OctopusFontType](type-aliases/OctopusFontType.md)
 - [OctopusIconSource](type-aliases/OctopusIconSource.md)
 - [OctopusInitialScreen](type-aliases/OctopusInitialScreen.md)
+- [OctopusLocalizedText](type-aliases/OctopusLocalizedText.md)
 - [OctopusNavBarLeadingAction](type-aliases/OctopusNavBarLeadingAction.md)
 - [OctopusNavigationMode](type-aliases/OctopusNavigationMode.md)
 - [OctopusNotification](type-aliases/OctopusNotification.md)
@@ -159,10 +168,16 @@
 - [UserTokenProvider](type-aliases/UserTokenProvider.md)
 - [UserTokenRequestListenerCallback](type-aliases/UserTokenRequestListenerCallback.md)
 
+## Variables
+
+- [OCTOPUS_POST_MAX_IMAGE_COUNT](variables/OCTOPUS_POST_MAX_IMAGE_COUNT.md)
+- [OctopusLocalizedText](variables/OctopusLocalizedText.md)
+
 ## Functions
 
 - [addBridgeShareTokenRequestListener](functions/addBridgeShareTokenRequestListener.md)
 - [addClientObjectRelatedPostListener](functions/addClientObjectRelatedPostListener.md)
+- [addCommunityAccessDeniedReasonListener](functions/addCommunityAccessDeniedReasonListener.md)
 - [addCommunityDataListener](functions/addCommunityDataListener.md)
 - [addConnectionStateListener](functions/addConnectionStateListener.md)
 - [addEditUserListener](functions/addEditUserListener.md)

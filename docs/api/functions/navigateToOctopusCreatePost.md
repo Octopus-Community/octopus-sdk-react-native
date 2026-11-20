@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.15.3**](../README.md)
+[**@octopus-community/react-native v1.16.0**](../README.md)
 
 ---
 
@@ -33,13 +33,24 @@ A promise that resolves once the UI has been opened.
 ## Throws
 
 A [NavigateToOctopusCreatePostError](../interfaces/NavigateToOctopusCreatePostError.md) when `prefilledPost` fails native
-validation — see [isNavigateToOctopusCreatePostError](isNavigateToOctopusCreatePostError.md).
+validation — see [isNavigateToOctopusCreatePostError](isNavigateToOctopusCreatePostError.md). An
+[OctopusPrefilledPostTooManyImagesError](../classes/OctopusPrefilledPostTooManyImagesError.md) when it carries more than
+[OCTOPUS_POST_MAX_IMAGE_COUNT](../variables/OCTOPUS_POST_MAX_IMAGE_COUNT.md) images, and a plain `Error` when it sets both `imageUri`
+and `imageUris`, or both `cta.label` and `cta.localizedLabel`. All of them are rejections,
+never synchronous throws.
 
 ## Example
 
 ```typescript
 await navigateToOctopusCreatePost({
   text: 'Hello from the host app',
-  cta: { url: 'https://example.com', label: 'Learn more' },
+  imageUris: ['file:///path/to/first.jpg', 'file:///path/to/second.jpg'],
+  cta: {
+    url: 'https://example.com',
+    localizedLabel: OctopusLocalizedText.perLanguage(
+      { en: 'Learn more', fr: 'En savoir plus' },
+      'en'
+    ),
+  },
 });
 ```

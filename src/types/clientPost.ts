@@ -1,8 +1,10 @@
+import type { OctopusLocalizedText } from './octopusLocalizedText';
+
 /**
  * A local image to attach to a {@link ClientPost}.
  *
- * `uri` follows the same convention as {@link OctopusPrefilledPost}'s `imageUri`: a bare name
- * with no scheme is looked up as a bundled native image resource (Android `res/drawable`, iOS
+ * `uri` follows the same convention as the entries of {@link OctopusPrefilledPost}'s `imageUris`:
+ * a bare name with no scheme is looked up as a bundled native image resource (Android `res/drawable`, iOS
  * asset catalog / bundle), anything else is treated as a `file://` URI.
  *
  * An image is **never silently dropped**, because the post is created once and never
@@ -37,7 +39,7 @@ export interface OctopusRemoteImageAttachment {
 }
 
 /**
- * The image attached to a {@link ClientPost} — either bundled/local, or web-hosted.
+ * An image attached to a {@link ClientPost} — either bundled/local, or web-hosted.
  */
 export type OctopusClientPostAttachment =
   | OctopusLocalImageAttachment
@@ -58,9 +60,21 @@ export interface ClientPost {
    * {@link setNavigateToClientObjectCallback} receives when the user taps the post's button.
    */
   readonly objectId: string;
-  /** The post text. Must be between 10 and 5000 characters. */
+  /** The post text: at least one visible character, at most 5000 characters. */
   readonly text: string;
-  /** Optional image. */
+  /**
+   * The images of the post, in display order, at most {@link OCTOPUS_POST_MAX_IMAGE_COUNT}.
+   * More is refused by the native SDK with `CLIENT_POST_ERROR`, before the post is created.
+   * Cannot be set together with `attachment`: {@link fetchOrCreateClientObjectRelatedPost} then
+   * rejects with `INVALID_ARGS`, before any native call.
+   */
+  readonly medias?: readonly OctopusClientPostAttachment[] | null;
+  /**
+   * A single image. Same as `medias: [attachment]`; cannot be set together with a non-empty
+   * `medias`.
+   *
+   * @deprecated Use medias.
+   */
   readonly attachment?: OctopusClientPostAttachment | null;
   /**
    * A short line displayed in bold below the text, e.g. "What do you think about this?".
@@ -68,11 +82,32 @@ export interface ClientPost {
    */
   readonly catchPhrase?: string | null;
   /**
-   * The label of the button that takes the user back to your object. Must be under 28
-   * characters — 4 to 28 is the recommended range. Omitted means no button, and
-   * {@link setNavigateToClientObjectCallback} then never fires for this post.
+   * The label of the button that takes the user back to your object, translated automatically
+   * by Octopus. Must be under 28 characters — 4 to 28 is the recommended range. Omitted means
+   * no button, and {@link setNavigateToClientObjectCallback} then never fires for this post.
+   *
+   * @deprecated Use viewObjectButton, with `OctopusLocalizedText.autoTranslated(text)` to keep
+   * the automatic translation.
    */
   readonly viewObjectButtonText?: string | null;
+  /**
+   * The label of the button that takes the user back to your object:
+   * {@link OctopusLocalizedText.perLanguage} to give it in each language of your app,
+   * {@link OctopusLocalizedText.autoTranslated} to let Octopus translate one label. Omitted
+   * means no button, and {@link setNavigateToClientObjectCallback} then never fires for this
+   * post.
+   *
+   * Keep each label under 28 characters so that it fits on one line: a longer one is accepted,
+   * and the button can then take several lines. Like the rest of the content, it is taken when
+   * the post is created only: a post that already exists for `objectId` keeps its button.
+   *
+   * A per-language label that breaks one of the rules listed on {@link OctopusLocalizedText} is
+   * refused with the matching `LOCALIZED_TEXT_…` {@link ClientPostErrorCode}, before the post is
+   * created. Cannot be set together with `viewObjectButtonText`:
+   * {@link fetchOrCreateClientObjectRelatedPost} then rejects with `INVALID_ARGS`, before any
+   * native call.
+   */
+  readonly viewObjectButton?: OctopusLocalizedText | null;
   /**
    * The group to publish into. Omitted means the default group configured for your community
    * with the Octopus team.

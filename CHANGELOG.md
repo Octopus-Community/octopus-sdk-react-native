@@ -1,5 +1,87 @@
 # @octopus-community/react-native
 
+## 1.16.0
+
+### Minor Changes
+
+- ffe4cd0: **Added:** `addCommunityAccessDeniedReasonListener` tells why the user cannot access the community, as a `CommunityAccessDeniedReason` (`'notInCohort'`, `'communityTemporarilyDisabled'`, `'communityClosed'`, `'memberExcluded'`, `'accountBanned'`, `'accountDeleted'`, `'unknown'`), or `null` when the access is granted or not known yet. Like `addHasAccessToCommunityListener`, register it before `initialize()` when the first value matters. A reason a newer native SDK adds is reported as `'unknown'`. With `'accountDeleted'`, your app can disconnect the member on its side; `connectUser` keeps reporting a banned member as banned.
+
+  **Added:** the `'communityAccessDenied'` `ScreenType`, reported by the `screenDisplayed` SDK event when the access denied screen is displayed, on Android and iOS. This screen was reported as `'unknown'` before; a `Record<ScreenType, …>` or an exhaustive `switch` over `ScreenType` needs the new member.
+
+  **Changed:** native 1.16 replaces the community with a dedicated screen when the user cannot access it: an icon, a title for the reason and the server's message. A banned member reads which policy they broke and who to contact; a member whose account was deleted can access the community again from the screen. On iOS, the `profile` initial screen of `openUI` and `OctopusUIView` no longer uses the native `OctopusProfileScreen`, deprecated in native 1.16: it opens `OctopusHomeScreen` on its `.profile` initial screen, which, like every initial screen, shows the access denied screen.
+
+- 8f4567b: **Added:** With native SDK 1.16.0, community-data lookups and observations return the member's total points in `OctopusGamification.score` on Android and iOS. A total of zero is returned as `0`. The score is `null` when the server omits the total. The entire `gamification` field is `null` for profiles tagged as admins or when gamification is disabled.
+- 6a5b84b: **Added:** a post carries up to 10 photos (`OCTOPUS_POST_MAX_IMAGE_COUNT`).
+  - `OctopusPrefilledPost.imageUris` prefills the editor with several photos, in display order, for `navigateToOctopusCreatePost` and the `createPost` initial screen of `openUI` and `OctopusUIView`. Blank entries are dropped. More than 10 are refused with the new `OctopusPrefilledPostTooManyImagesError` (`max`, `count`), which carries no `code`: `isNavigateToOctopusCreatePostError` returns `false` for it, so an exhaustive `switch` over `NavigateToOctopusCreatePostErrorCode` keeps compiling. `navigateToOctopusCreatePost` rejects with it; `openUI` and `OctopusUIView` throw it synchronously, like their other `initialScreen` checks.
+  - `ClientPost.medias` attaches several local or remote images to a post created by `fetchOrCreateClientObjectRelatedPost`. More than 10 are refused by the native SDK with `CLIENT_POST_ERROR`, before the post is created.
+
+  **Deprecated:**
+  - `OctopusPrefilledPost.imageUri`, replaced by `imageUris`. It still works as a one-element `imageUris`; setting both `imageUri` and a non-empty `imageUris` is refused with a plain `Error`.
+  - `ClientPost.attachment`, replaced by `medias`. It still works; setting both `attachment` and a non-empty `medias` makes `fetchOrCreateClientObjectRelatedPost` reject with `INVALID_ARGS`, before any native call.
+
+  See the 1.16.0 section of `MIGRATING.md`.
+
+- 6a5b84b: Bump the wrapped native Octopus SDKs to **1.16.0** on both platforms (Android from 1.15.3, iOS from 1.15.1). The native SDKs bring posts with several photos and a fullscreen photo viewer.
+
+  **Android build requirement:** the native Android SDK 1.16 compiles against Android 16 (API 36), so Android host apps now need `compileSdk` 36 or later and Android Gradle Plugin 8.9.1 or later. React Native 0.81 projects created from its template already use both; `minSdk` stays at 24 and no `targetSdk` change is required. See the 1.16.0 section of `MIGRATING.md`.
+
+  Other changes the native SDKs bring to the community screens, with no TypeScript change (see the native [Android](https://github.com/Octopus-Community/octopus-sdk-android/releases/tag/v1.16.0) and [iOS](https://github.com/Octopus-Community/octopus-sdk-swift/releases/tag/v1.16.0) release notes for the full list):
+  - **Informal tone per language.** A community can address its members informally ("tu" rather than "vous"), language by language, from its settings. On Android, a host that overrides member-addressing strings must now override both their `_formal` and `_informal` resources (see the 1.16.0 section of `MIGRATING.md`).
+  - **Photos.** The fullscreen viewer swipes between a post's photos, and a pinch zooms inline on photos and videos.
+  - **Feeds.** A compact one-line post footer, short timestamps ("8m", "3h", "2d"), and the translation toggle sits above the translated content.
+  - **Access and sessions.** A closed community pauses the SDK's calls until it reopens; on Android, an expired member session falls back to a guest until `connectUser` is called again.
+  - **Nickname choice.** Members can close the nickname choice screen and return to their draft.
+  - **Android alignment with iOS.** Denying community access pops the Octopus screens pushed over the community to show the access denied screen (your app's screens are never popped); the default palette and navigation bar title styling match iOS, with your theme overrides keeping priority; and a call-to-action button alone no longer shows the "see original" toggle.
+  - **Slovak** translations.
+
+- 423b601: Add an optional per-call `tokenProvider` to `fetchOrCreateClientObjectRelatedPost`. Concurrent calls route signing requests to their own provider, released when the call ends. Calls without a provider keep using the global bridge-share token listener.
+  In TypeScript, point-free callbacks such as `.map(fetchOrCreateClientObjectRelatedPost)` should become `.map((p) => fetchOrCreateClientObjectRelatedPost(p))` so the array index is not passed as the optional `tokenProvider` (see the 1.16.0 section of `MIGRATING.md`); non-function values keep using the global listener at runtime.
+- da4a66e: **Added:** the button labels of a bridge post and of a prefilled post's call to action can be given per language, with the new `OctopusLocalizedText` (`OctopusLocalizedText.perLanguage(texts, defaultLanguage)` or `OctopusLocalizedText.autoTranslated(text)`). Languages are BCP 47 tags (`'en'`, `'pt-BR'`, `'zh-Hant-TW'`), sent as given: the bridges only read an underscore as a hyphen (`'pt_BR'` is `'pt-BR'`), the same on Android and iOS. A reader whose language is listed sees that label as is; any other reader sees an automatic translation of the default language's label.
+  - `ClientPost.viewObjectButton` for `fetchOrCreateClientObjectRelatedPost`. Like the rest of the content, it is taken when the post is created only.
+  - `OctopusPostCTA.localizedLabel` for `navigateToOctopusCreatePost` and the `createPost` initial screen of `openUI` and `OctopusUIView`.
+
+  The wrapper does not check a per-language label: the native SDKs validate it when the call reaches them, the same way on Android and iOS. A refused one rejects with one of five new codes, added to `ClientPostErrorCode` and `NavigateToOctopusCreatePostErrorCode`: `LOCALIZED_TEXT_EMPTY_TEXTS`, `LOCALIZED_TEXT_BLANK_TEXT`, `LOCALIZED_TEXT_EMPTY_LANGUAGE`, `LOCALIZED_TEXT_DUPLICATE_LANGUAGE` and `LOCALIZED_TEXT_DEFAULT_LANGUAGE_MISSING`. `ClientPostError` and `NavigateToOctopusCreatePostError` gain an optional `languageCode`, set when the reason names a language. An exhaustive `switch` over either code union needs the new members.
+
+  **Deprecated:**
+  - `ClientPost.viewObjectButtonText`, replaced by `viewObjectButton`. It still works, as an auto-translated label; setting both makes `fetchOrCreateClientObjectRelatedPost` reject with `INVALID_ARGS`, before any native call.
+  - `OctopusPostCTA.label`, replaced by `localizedLabel`. It still works as an auto-translated label. Setting both is refused with a plain `Error` before any native call.
+
+  **Type-level change:** `OctopusPostCTA.label` is now optional. Code that reads it needs `?? ''` or a narrowing check.
+
+  **Example:** the bridge and create-post scenarios take per-language labels: a switch, a default label with its language (prefilled `en`) and any number of language and label rows.
+
+  See the 1.16.0 section of `MIGRATING.md`.
+
+- b8ff57d: Add optional `post.imageTapOpensPost` and `post.groupNameTapOpensGroup` flags to the debug content-options override, both defaulting to `false`. Forward them to both native SDKs and add sample presets for image taps, group-name taps, and both together.
+
+### Patch Changes
+
+- 88cb963: Add Android-only `theme.fonts.navBarTitle` with optional `fontFamily` (host `res/font/` resource name) and `fontSize: { size }` (positive sp). Each property overrides only that part of the bar's current title style, including any existing global font settings. An unresolved font logs a native warning, keeps the current family and still applies a requested size. Logos and back/close buttons are unchanged. On iOS this option is ignored; titles follow the host app's navigation bar appearance.
+
+  The main-feed title honours this style with native Android SDK 1.16 or later. An explicit non-empty home text title (`topAppBar.title` or the `navBarTitle` prop of `<OctopusUIView>`) now takes precedence over a theme logo on Android, matching the iOS bridge; an empty one keeps the logo. Without a theme logo, an empty home title now shows the default title instead of an empty bar, also matching iOS: passing `""` no longer hides the title on Android.
+
+- e3e48d9: Cancel pending Android sign-in and token requests when the session ends or React Native reloads, so an earlier avatar load cannot sign in to a new session. Document how to bind retained embedded views to React Navigation route focus to keep hidden screens from handling Android Back.
+
+  Preserve pending sign-in when initialization repeats the same configuration. Keep logout cancellation errors consistent across platforms and let overlapping logout calls complete reliably.
+
+  Wait for pending logout before signing in another user, and ensure a later logout disconnects that new user instead of reusing an earlier session's logout.
+
+  Allow sign-in after a failed logout while still reporting the logout error to its caller.
+
+- 677be92: When the `openUI` `onBackRequested` callback throws, the bridge now logs only the error's `name` and `message`, like the other host callbacks, instead of the whole error object with its extra fields and nested causes.
+- 4359a46: On iOS, declining a bridge share signature now sends the prefilled post unsigned, as Android already did, instead of failing the publish in the editor. When the `useBridgeShareTokenProvider` / `addBridgeShareTokenRequestListener` callback returns `null`, throws, or does not answer within 60 seconds, the server decides on both platforms: a community that allows member pictures publishes the post with its images, one that forbids them refuses it and the editor shows an error. Return a token for every share that must be published in a community that forbids member pictures. The bundled native iOS SDK 1.16 brings the unsigned send.
+- 8dd125d: The example app adds a scenario that detaches and re-attaches an embedded community view repeatedly inside a native-stack navigator. Sample only.
+- 6a5b84b: Example: the create-post scenario prefills with `imageUris`, offers a "10 bundled photos" attachment and an "11 bundled photos (refused)" preset that shows the too-many-images error, and the bridge scenario gains a "Random product" preset creating a fresh post with a remote and a bundled photo through `medias`. Sample only.
+- 36337d4: iOS: `overrideDefaultLocale` no longer crashes the app while the community UI is shown, in Swift 6 builds of the native SDK (the experimental Swift Package Manager install; from 1.16.0, every install builds it this way, since the pod fetches the native SDK as a Swift package). The call now reaches the native SDK on the main thread, and its promise resolves once the locale is applied.
+- b44f530: iOS: the native Octopus SDK is now fetched with Swift Package Manager instead of CocoaPods
+  trunk, which stops accepting new publications on December 2, 2026. The podspec attaches the
+  `octopus-sdk-swift` package (same exact version as before) to the `OctopusReactNativeSdk` pod
+  through React Native's `spm_dependency` helper, so a standard React Native or Expo app keeps
+  its CocoaPods setup and only re-runs `pod install`. The `OctopusCommunity*` pods are no
+  longer installed. MIGRATING.md lists the setups that need an edit.
+- e2249d4: A post text no longer has a 10-character minimum: one visible character is enough, so a member can publish "Bravo !". `ClientPost.text` is now documented as at least one visible character and at most 5000, and `TEXT_TOO_SHORT` stays in `NavigateToOctopusCreatePostErrorCode` so exhaustive switches keep compiling. The bundled native SDKs 1.16 accept it.
+- de8c51e: Add `theme.icons.content.translation` to customize the "See original" / "See translation" toggle icon of translated posts, comments and replies on Android and iOS. The example's custom icon set exercises this slot.
+
 ## 1.15.3
 
 ### Patch Changes

@@ -7,6 +7,7 @@ import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableMap
 import com.octopuscommunity.sdk.OctopusSDK
+import com.octopuscommunity.sdk.domain.model.OctopusLocalizedText
 import com.octopuscommunity.sdk.domain.model.OctopusPrefilledPost
 
 class OctopusUIController(private val reactContext: ReactApplicationContext) {
@@ -99,30 +100,23 @@ class OctopusUIController(private val reactContext: ReactApplicationContext) {
 
     val type = optionalString("type")
     if (type == "createPost") {
-      val text = optionalString("text")
-      val imageUri = optionalString("imageUri")
-      val topicId = optionalString("topicId")
-      val ctaUrl = optionalString("ctaUrl")
-      val ctaLabel = optionalString("ctaLabel")
-      val hasPrefill = text != null || imageUri != null || topicId != null ||
-        ctaUrl != null || ctaLabel != null
-      if (hasPrefill) {
+      val rawPrefilledPost = RawPrefilledPost.read(initialScreen)
+      if (!rawPrefilledPost.isEmpty) {
         try {
           // Validate up front so a bad prefill rejects instead of opening the UI, mirroring
           // navigateToOctopusCreatePost. OctopusActivity repeats this exact build once launched.
-          PrefilledPostBuilder.build(reactContext, text, imageUri, topicId, ctaUrl, ctaLabel)
+          rawPrefilledPost.build(reactContext)
         } catch (e: OctopusPrefilledPost.ValidationError) {
           promise.reject(e.toBridgeErrorCode(), e.message, e)
+          return false
+        } catch (e: OctopusLocalizedText.ValidationError) {
+          promise.rejectLocalizedText(e)
           return false
         } catch (e: Exception) {
           promise.reject("NAVIGATE_TO_CREATE_POST_ERROR", e.message ?: "Invalid prefilled post", e)
           return false
         }
-        text?.let { intent.putExtra(OctopusActivity.EXTRA_CREATE_POST_TEXT, it) }
-        imageUri?.let { intent.putExtra(OctopusActivity.EXTRA_CREATE_POST_IMAGE_URI, it) }
-        topicId?.let { intent.putExtra(OctopusActivity.EXTRA_CREATE_POST_TOPIC_ID, it) }
-        ctaUrl?.let { intent.putExtra(OctopusActivity.EXTRA_CREATE_POST_CTA_URL, it) }
-        ctaLabel?.let { intent.putExtra(OctopusActivity.EXTRA_CREATE_POST_CTA_LABEL, it) }
+        rawPrefilledPost.putExtras(intent)
       }
       intent.putExtra(OctopusActivity.EXTRA_INITIAL_SCREEN_TYPE, type)
       return true

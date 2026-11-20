@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.15.3**](../README.md)
+[**@octopus-community/react-native v1.16.0**](../README.md)
 
 ---
 
@@ -40,7 +40,10 @@ the SDK is not initialized — call `initialize()` first. Both platforms.
 
 A plain `Error` synchronously when `initialScreen` is structurally
 invalid (blank `postId` / `groupId`, or an `activity` member violating the
-exactly-one-id contract), and a [NavigateToOctopusCreatePostError](../interfaces/NavigateToOctopusCreatePostError.md)
+exactly-one-id contract, or a `createPost` `prefilledPost` that sets both
+`imageUri` and `imageUris`, or both `cta.label` and `cta.localizedLabel`)
+— thrown before the promise exists, so a `.catch` on the result does not
+see it — and a [NavigateToOctopusCreatePostError](../interfaces/NavigateToOctopusCreatePostError.md)
 when a `createPost` initial screen's `prefilledPost` fails native
 validation.
 

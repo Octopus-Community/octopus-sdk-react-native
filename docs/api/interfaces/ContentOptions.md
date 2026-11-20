@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.15.3**](../README.md)
+[**@octopus-community/react-native v1.16.0**](../README.md)
 
 ---
 
@@ -6,9 +6,10 @@
 
 # Interface: ContentOptions
 
-Per-content-type options governing what members may add when creating content.
+Per-content-type options governing content creation and post tap navigation.
 
-Every flag defaults to `true` when its sub-object (or the whole options object) is omitted.
+Creation flags default to `true`; post tap flags default to `false`, including when
+their sub-object (or the whole options object) is omitted.
 Mirrors the native `CommunityConfig.ContentOptions` config type — see
 [debugOverrideContentOptions](../functions/debugOverrideContentOptions.md). This is a **debug-only** testing hatch: it does not exist
 on a real production community config, which is set server-side.
@@ -42,6 +43,20 @@ Whether a post may include a picture. Defaults to `true`.
 > `optional` **enablePolls**: `boolean`
 
 Whether a post may be a poll. Defaults to `true`.
+
+#### groupNameTapOpensGroup?
+
+> `optional` **groupNameTapOpensGroup**: `boolean`
+
+Whether tapping a post's group name opens that group in feeds and post detail.
+Defaults to `false`. Members without access follow the native group access-denied flow.
+
+#### imageTapOpensPost?
+
+> `optional` **imageTapOpensPost**: `boolean`
+
+Whether tapping a feed image opens the post when its card can open the detail.
+Defaults to `false`. Otherwise, and in post detail, images still open fullscreen.
 
 #### textRequired?
 

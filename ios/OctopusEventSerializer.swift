@@ -275,6 +275,8 @@ class OctopusEventSerializer {
       return ["type": "settingsAccount"]
     case .reportExplanation:
       return ["type": "reportExplanation"]
+    case .communityAccessDenied:
+      return ["type": "communityAccessDenied"]
     case .deleteAccount:
       return ["type": "deleteAccount"]
     // Screens added in native SDK 1.11.

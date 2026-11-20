@@ -2,6 +2,7 @@ package com.octopuscommunity.octopusreactnativesdk
 
 import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.os.Looper
 import com.facebook.react.bridge.BridgeReactContext
@@ -93,6 +94,30 @@ class OctopusUIControllerCloseUITest {
     } else {
       assertEquals(notExportedPermission(context), registration.broadcastPermission)
     }
+  }
+
+  @Test
+  fun `close rejects with CLOSE_UI_ERROR when the broadcast cannot be sent`() {
+    val application = RuntimeEnvironment.getApplication()
+    val failure = SecurityException("broadcast refused")
+    val context = object : BridgeReactContext(application) {
+      override fun sendBroadcast(intent: Intent) {
+        throw failure
+      }
+    }
+    val calls = mutableListOf<Pair<String, List<Any?>>>()
+    val promise = Proxy.newProxyInstance(
+      Promise::class.java.classLoader,
+      arrayOf(Promise::class.java)
+    ) { _, method, args ->
+      calls += method.name to (args?.toList() ?: emptyList())
+      null
+    } as Promise
+    OctopusUIController(context).closeUI(promise)
+    // One settlement only: a reject, never a resolve before or after it.
+    val (name, args) = calls.single()
+    assertEquals("reject", name)
+    assertEquals(listOf("CLOSE_UI_ERROR", "Failed to close Octopus UI", failure), args)
   }
 
   @Test

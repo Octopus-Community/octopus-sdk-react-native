@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.15.3**](../README.md)
+[**@octopus-community/react-native v1.16.0**](../README.md)
 
 ---
 
@@ -6,7 +6,7 @@
 
 # Type Alias: ScreenType
 
-> **ScreenType** = `"mainFeed"` \| `"postsFeed"` \| `"groups"` \| `"groupDetail"` \| `"postDetail"` \| `"commentDetail"` \| `"createPost"` \| `"profile"` \| `"activity"` \| `"otherUserProfile"` \| `"otherUserPosts"` \| `"editProfile"` \| `"reportContent"` \| `"reportProfile"` \| `"validateNickname"` \| `"settingsList"` \| `"settingsAccount"` \| `"reportExplanation"` \| `"deleteAccount"` \| `"unknown"`
+> **ScreenType** = `"mainFeed"` \| `"postsFeed"` \| `"groups"` \| `"groupDetail"` \| `"postDetail"` \| `"commentDetail"` \| `"createPost"` \| `"profile"` \| `"activity"` \| `"otherUserProfile"` \| `"otherUserPosts"` \| `"editProfile"` \| `"reportContent"` \| `"reportProfile"` \| `"validateNickname"` \| `"settingsList"` \| `"settingsAccount"` \| `"reportExplanation"` \| `"deleteAccount"` \| `"communityAccessDenied"` \| `"unknown"`
 
 Screen types displayed in the Octopus UI.
 

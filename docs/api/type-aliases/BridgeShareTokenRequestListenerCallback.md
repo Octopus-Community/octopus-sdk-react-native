@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.15.3**](../README.md)
+[**@octopus-community/react-native v1.16.0**](../README.md)
 
 ---
 
@@ -8,7 +8,8 @@
 
 > **BridgeShareTokenRequestListenerCallback** = (`bridgeFingerprint`) => `Promise`\<`string` \| `null`\>
 
-Signs one prefilled share. Receives the fingerprint the SDK computed for the final post
+Signs one prefilled share, or one [fetchOrCreateClientObjectRelatedPost](../functions/fetchOrCreateClientObjectRelatedPost.md) call made
+without its own `tokenProvider`. Receives the fingerprint the SDK computed for the final post
 content and returns the JWT authorising it, or `null` to publish unsigned.
 
 ## Parameters

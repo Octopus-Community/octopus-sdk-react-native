@@ -7,6 +7,12 @@ data class OctopusTextStyleConfig(
   val fontSize: Double? // Font size in points
 )
 
+/** Android-only title overrides; null properties inherit the title slot's base style. */
+data class OctopusNavBarTitleConfig(
+  val fontFamily: String? = null,
+  val fontSize: Double? = null
+)
+
 data class OctopusFontsConfig(
   val textStyles: Map<String, OctopusTextStyleConfig>?,
   /**
@@ -18,7 +24,8 @@ data class OctopusFontsConfig(
    * Theme-wide font weight on the 100-900 scale (already validated by the TypeScript
    * layer). Null keeps the SDK's own weight.
    */
-  val fontWeight: Int? = null
+  val fontWeight: Int? = null,
+  val navBarTitle: OctopusNavBarTitleConfig? = null
 )
 
 /**

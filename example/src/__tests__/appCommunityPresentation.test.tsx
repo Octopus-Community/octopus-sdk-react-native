@@ -60,6 +60,9 @@ jest.mock(
     useBridgeShareTokenProvider: jest.fn(),
     overrideDefaultLocale: jest.fn(async () => {}),
     addHasAccessToCommunityListener: jest.fn(() => ({ remove: jest.fn() })),
+    addCommunityAccessDeniedReasonListener: jest.fn(() => ({
+      remove: jest.fn(),
+    })),
     addNotSeenNotificationsCountListener: jest.fn(() => ({
       remove: jest.fn(),
     })),

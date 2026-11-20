@@ -190,6 +190,60 @@ class InitialScreenRootTest {
   }
 
   @Test
+  fun `without onBackRequested each initial screen is pushed over the main feed`() {
+    val cases = listOf<Pair<BridgeInitialScreen, NavHostController.() -> Unit>>(
+      BridgeInitialScreen.Post("post-1") to {
+        assertEquals(
+          "post-1",
+          currentBackStackEntry!!.toRoute<OctopusDestination.PostDetails>().postId
+        )
+      },
+      BridgeInitialScreen.Group("group-1") to {
+        assertEquals(
+          "group-1",
+          currentBackStackEntry!!.toRoute<OctopusDestination.GroupDetails>().groupId
+        )
+      },
+      BridgeInitialScreen.MemberActivity("profile-1", null) to {
+        assertEquals(
+          OctopusDestination.Activity(userId = "profile-1"),
+          currentBackStackEntry!!.toRoute<OctopusDestination.Activity>()
+        )
+      },
+      BridgeInitialScreen.MemberActivity(null, "client-1") to {
+        assertEquals(
+          OctopusDestination.Activity(clientUserId = "client-1"),
+          currentBackStackEntry!!.toRoute<OctopusDestination.Activity>()
+        )
+      },
+      BridgeInitialScreen.Profile("client-1") to {
+        assertEquals(
+          OctopusDestination.ProfileSummary(clientUserId = "client-1"),
+          currentBackStackEntry!!.toRoute<OctopusDestination.ProfileSummary>()
+        )
+      },
+      BridgeInitialScreen.Profile(null) to {
+        assertEquals(
+          OctopusDestination.CurrentUserProfileSummary(),
+          currentBackStackEntry!!.toRoute<OctopusDestination.CurrentUserProfileSummary>()
+        )
+      },
+    )
+    for ((screen, assertPushed) in cases) {
+      // OctopusContent keeps the feed as the root when the view has no `onBackRequested`.
+      val navController = controller(null)
+      navController.pushBridgeInitialScreen(screen)
+      navController.assertPushed()
+      assertEquals(BRIDGE_HOME_ROUTE, navController.previousBackStackEntry?.destination?.route)
+
+      // System back pops to the feed first; only the next back reaches the host.
+      assertTrue(navController.popBackStack())
+      assertEquals(BRIDGE_HOME_ROUTE, navController.currentDestination?.route)
+      navController.assertIsRoot()
+    }
+  }
+
+  @Test
   fun `root feed forwards system back only to a listening host behind a visible icon`() {
     assertTrue(forwardsRootFeedBack(true, true, true, null))
     assertTrue(forwardsRootFeedBack(true, true, false, NavigationIconType.Close))

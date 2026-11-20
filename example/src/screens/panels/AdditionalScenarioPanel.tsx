@@ -7,14 +7,40 @@ import { KeyValueCard } from '../../components/KeyValueCard';
 import { ScenarioResultPanel } from '../../components/ScenarioResultPanel';
 import { ScenarioRunButton } from '../../components/ScenarioRunButton';
 import { TextParamField } from '../../components/ScenarioParamField';
+import { LocalizedLabelEditor } from '../../components/LocalizedLabelEditor';
 import type { CommunityPresentationMode } from '../../components/CommunityPresentation';
 import type { ScenarioId } from '../../scenarios/catalog';
 import type { ExposeClientUserIdOverride } from '../../scenarios/unifiedProfile';
 import { useScenarioRun } from '../../debug/useScenarioRun';
+import {
+  BUNDLED_SAMPLE_IMAGE_NAME,
+  REMOTE_SAMPLE_IMAGE_URL,
+} from '../../scenarios/sampleImage';
+import {
+  buildLocalizedLabel,
+  describeBridgeError,
+  initialLocalizedLabelForm,
+} from '../../scenarios/localizedLabel';
 import { formatSDKEvent } from '../../utils/formatSDKEvent';
 import { redactApiKeys } from '../../config/apiKeyMask';
 import { chromeColors } from '../../theme/branding';
 import { sampleTypography } from '../../theme/tokens';
+
+// The per-call counterpart of App.tsx's global `useBridgeShareTokenProvider`. Like it, it
+// carries no secret and no signing code: a real host asks its backend. It replays the optional
+// hand-supplied OCTOPUS_BRIDGE_SHARE_TOKEN, or declines, which sends the post unsigned.
+const perCallSigner =
+  (label: string): Octopus.BridgeShareTokenProvider =>
+  async (bridgeFingerprint) => {
+    const presignedToken = process.env.OCTOPUS_BRIDGE_SHARE_TOKEN;
+    // Logged as a length only — a fingerprint identifies the exact content being published.
+    console.log(
+      `Octopus bridge share (per-call, ${label}): ${
+        presignedToken ? 'signing' : 'declining'
+      } a ${bridgeFingerprint.length}-char fingerprint`
+    );
+    return presignedToken || null;
+  };
 
 export const ADDITIONAL_SCENARIOS: ScenarioId[] = [
   'unifiedProfile',
@@ -58,6 +84,21 @@ export function AdditionalScenarioPanel({
   const [callbackEnabled, setCallbackEnabled] = useState(false);
   const [backendExpanded, setBackendExpanded] = useState(false);
   const [objectId, setObjectId] = useState('rn-sample-product');
+  const [perCallSigning, setPerCallSigning] = useState(false);
+  const [buttonLabel, setButtonLabel] = useState(() =>
+    initialLocalizedLabelForm('View product')
+  );
+  // The bridge presets' call, with the error code — and the language a per-language label
+  // error names — in the result line, not only the message.
+  const fetchOrCreateBridgePost = async (
+    ...args: Parameters<typeof Octopus.fetchOrCreateClientObjectRelatedPost>
+  ) => {
+    try {
+      return await Octopus.fetchOrCreateClientObjectRelatedPost(...args);
+    } catch (e) {
+      throw new Error(describeBridgeError(e));
+    }
+  };
   const [groupId, setGroupId] = useState('');
   const [sdkEvents, setSdkEvents] = useState<
     { title: string; details: string }[]
@@ -276,6 +317,30 @@ export function AdditionalScenarioPanel({
         {note(
           'Looks up or creates the demo product post on the configured community. Run only with a demo community.'
         )}
+        <Text style={[sampleTypography.body, { color: chrome.text }]}>
+          Per-call signer
+        </Text>
+        <Switch
+          testID="bridge-per-call-signing-switch"
+          accessibilityLabel="Use a per-call token provider"
+          value={perCallSigning}
+          onValueChange={setPerCallSigning}
+        />
+        {note(
+          perCallSigning
+            ? 'Presets 1 and 2 pass their own tokenProvider: it replays OCTOPUS_BRIDGE_SHARE_TOKEN, or declines (unsigned post). The Metro log names the call that signed.'
+            : 'Presets 1 and 2 use the global signer registered in App.tsx.'
+        )}
+        <LocalizedLabelEditor
+          testID="sample-param-bridge-button"
+          title="Button label"
+          form={buttonLabel}
+          onChange={setButtonLabel}
+          isDark={isDark}
+        />
+        {note(
+          'The button label is taken when the post is created only: use Preset 2 or 3 (a fresh object id) to see a changed label.'
+        )}
         {result}
         <ScenarioRunButton
           testID="qa-preset-bridge-1"
@@ -285,12 +350,13 @@ export function AdditionalScenarioPanel({
           onPress={() =>
             run(
               async () => {
-                const post = await Octopus.fetchOrCreateClientObjectRelatedPost(
+                const post = await fetchOrCreateBridgePost(
                   {
                     objectId: objectId.trim(),
                     text: 'Sample product discussion',
-                    viewObjectButtonText: 'View product',
-                  }
+                    viewObjectButton: buildLocalizedLabel(buttonLabel),
+                  },
+                  perCallSigning ? perCallSigner('preset 1') : undefined
                 );
                 await Octopus.openUI({
                   initialScreen: { type: 'post', postId: post.id },
@@ -298,6 +364,67 @@ export function AdditionalScenarioPanel({
                 return post;
               },
               (post) => `Opened post ${post.id}`
+            )
+          }
+        />
+        <PresetButton
+          testID="qa-preset-bridge-2"
+          label="Preset 2 · Random product (fresh objectId each tap)"
+          isDark={isDark}
+          disabled={!objectId.trim()}
+          onPress={() =>
+            run(
+              async () => {
+                // A fresh object id always creates the post, so its medias are always sent:
+                // a remote image, then a bundled one, as in the other samples.
+                const post = await fetchOrCreateBridgePost(
+                  {
+                    objectId: `${objectId.trim()}-${Date.now()}`,
+                    text: 'Sample product discussion, with photos',
+                    medias: [
+                      { type: 'remoteImage', url: REMOTE_SAMPLE_IMAGE_URL },
+                      { type: 'localImage', uri: BUNDLED_SAMPLE_IMAGE_NAME },
+                    ],
+                    viewObjectButton: buildLocalizedLabel(buttonLabel),
+                  },
+                  perCallSigning ? perCallSigner('preset 2') : undefined
+                );
+                await Octopus.openUI({
+                  initialScreen: { type: 'post', postId: post.id },
+                });
+                return post;
+              },
+              (post) => `Opened post ${post.id}`
+            )
+          }
+        />
+        <PresetButton
+          testID="qa-preset-bridge-3"
+          label="Preset 3 · Two concurrent calls, one signer each"
+          isDark={isDark}
+          disabled={!objectId.trim()}
+          onPress={() =>
+            run(
+              async () => {
+                // Two fresh objects with photos, created at the same time, each with its own
+                // tokenProvider: in a pictures-off community each signer is asked once, for its
+                // own call only, and the global signer is never asked.
+                const stamp = Date.now();
+                const create = (label: string) =>
+                  fetchOrCreateBridgePost(
+                    {
+                      objectId: `${objectId.trim()}-${label}-${stamp}`,
+                      text: `Sample product discussion (${label})`,
+                      medias: [
+                        { type: 'remoteImage', url: REMOTE_SAMPLE_IMAGE_URL },
+                      ],
+                      viewObjectButton: buildLocalizedLabel(buttonLabel),
+                    },
+                    perCallSigner(label)
+                  );
+                return Promise.all([create('call A'), create('call B')]);
+              },
+              ([first, second]) => `Created posts ${first.id} and ${second.id}`
             )
           }
         />

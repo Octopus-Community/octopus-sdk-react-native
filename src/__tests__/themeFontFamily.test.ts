@@ -31,7 +31,7 @@ async function initWithFonts(fonts: Record<string, unknown>) {
     connectionMode: { type: 'sso', appManagedFields: [] },
     theme: { fonts },
   });
-  return mockInitialize.mock.calls[0][0].theme.fonts.parsedConfig;
+  return mockInitialize.mock.calls[0][0].theme.fonts?.parsedConfig ?? null;
 }
 
 describe('initialize forwards the theme-wide fontFamily and fontWeight', () => {

@@ -410,18 +410,10 @@ class OctopusUIViewManager(private val reactContext: ReactApplicationContext) :
 
         val type = optionalString("type")
         if (type == "createPost") {
-            val text = optionalString("text")
-            val imageUri = optionalString("imageUri")
-            val topicId = optionalString("topicId")
-            val ctaUrl = optionalString("ctaUrl")
-            val ctaLabel = optionalString("ctaLabel")
-            val hasPrefill = text != null || imageUri != null || topicId != null ||
-                ctaUrl != null || ctaLabel != null
-            view.createPostInfo.value = if (hasPrefill) {
+            val rawPrefilledPost = RawPrefilledPost.read(initialScreen)
+            view.createPostInfo.value = if (!rawPrefilledPost.isEmpty) {
                 try {
-                    PrefilledPostBuilder.build(
-                        reactContext, text, imageUri, topicId, ctaUrl, ctaLabel
-                    )
+                    rawPrefilledPost.build(reactContext)
                 } catch (e: Exception) {
                     Log.w(TAG, "Invalid initialScreen createPost prefill — opening a blank editor", e)
                     CreatePostScreenInfo()

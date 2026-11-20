@@ -10,13 +10,14 @@ export const SCENARIO_TITLES = {
   customEvents: 'Send a custom analytics event',
   locale: "Switch the community's language",
   lifecycle: 'Restart or stop the SDK',
+  hostLifecycles: 'Host lifecycles',
   bridge: 'Open the post attached to a product',
   createPost: 'Start a post from the host app',
   reactions: 'React to a post from the host app',
   theme: "Apply the host's brand to the community",
   communityData: "Read a member's community profile",
   profileFieldsLock: 'Lock the profile fields the host owns',
-  contentOptions: 'Change what members are allowed to post',
+  contentOptions: 'Change content creation and post taps',
   termsAcceptance: 'Change how members accept the terms',
   forceNicknameChoice: 'Choose a nickname before the first contribution',
   consentTexts: 'Customize the community consent wordings',
@@ -51,6 +52,8 @@ export const SCENARIO_SUBTITLES = {
   locale: "The community's own labels switch to the language you picked.",
   lifecycle:
     'The session ends and the community goes back to its not-connected state.',
+  hostLifecycles:
+    'Push a plain host screen over the community in a native-stack, then pop it to re-attach the same community view.',
   bridge:
     'A post tied to a host object opens — created on the spot the first time you ask for it.',
   createPost:
@@ -63,7 +66,7 @@ export const SCENARIO_SUBTITLES = {
   profileFieldsLock:
     "The locked fields turn read-only in the community's profile editor.",
   contentOptions:
-    'The composer offers only the kinds of content the community allows.',
+    'Change composer content types, image taps and group name taps for local testing.',
   termsAcceptance:
     'The community asks for consent the way you picked, or stops asking altogether.',
   forceNicknameChoice:
@@ -104,13 +107,16 @@ export const SCENARIO_OUTCOMES = {
   customEvents: 'the event at the top of the Events log.',
   locale: "the community's buttons and labels in the language you picked.",
   lifecycle: 'the community back in its not-connected state.',
+  hostLifecycles:
+    'the post and its comments still usable after repeated native-stack push/pop cycles.',
   bridge: 'the post for that object.',
   createPost: 'the composer, pre-filled with what the host passed.',
   reactions: 'your reaction on the post you named.',
   theme: "the community in the host's colours, or in the SDK's default look.",
   communityData: "the member's nickname and ids, refreshing as they change.",
   profileFieldsLock: 'the locked fields greyed out in the profile editor.',
-  contentOptions: 'the composer offering only the allowed content types.',
+  contentOptions:
+    'the allowed composer content, feed images opening posts and group names opening groups when enabled.',
   termsAcceptance:
     'the consent step in the form you chose, or no consent step at all.',
   forceNicknameChoice:
@@ -147,6 +153,7 @@ export const SCENARIO_APIS: Record<ScenarioId, string[]> = {
   customEvents: ['trackCustomEvent'],
   locale: ['overrideDefaultLocale'],
   lifecycle: ['reset', 'stop', 'switchCommunity'],
+  hostLifecycles: ['host: native-stack', 'OctopusUIView'],
   bridge: ['fetchOrCreateClientObjectRelatedPost'],
   createPost: ['navigateToOctopusCreatePost'],
   reactions: ['setReaction'],
@@ -233,6 +240,7 @@ export const SCENARIO_SECTIONS: {
     scenarios: [
       'customEvents',
       'lifecycle',
+      'hostLifecycles',
       'events',
       'trackABTests',
       'forceOctopusABTests',

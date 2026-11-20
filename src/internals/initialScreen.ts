@@ -2,12 +2,13 @@ import { LogLevel } from '../enums/LogLevel.enum';
 import type { OctopusInitialScreen } from '../types/octopusInitialScreen';
 import { requireExactlyOneMemberId } from './communityDataMemberId';
 import { log } from './logger';
+import { normalizePrefilledPost } from './prefilledPost';
 
 /**
  * The flat wire shape `openUI` sends the native bridges as
  * `options.initialScreen`. One flat object rather than nested payloads,
  * mirroring the existing flat `navigateToOctopusCreatePost` bridge shape
- * (`text` / `imageUri` / `topicId` / `ctaUrl` / `ctaLabel` at the top level)
+ * (`text` / `imageUris` / `topicId` / `ctaUrl` / `ctaLabel` at the top level)
  * and the `fetchCommunityData(profileId, clientUserId)` id pair.
  *
  * Absent fields are `null`, never `''` or `undefined`, so both natives read
@@ -20,10 +21,12 @@ export interface NativeInitialScreen {
   profileId?: string | null;
   clientUserId?: string | null;
   text?: string | null;
-  imageUri?: string | null;
+  imageUris?: string[] | null;
   topicId?: string | null;
   ctaUrl?: string | null;
   ctaLabel?: string | null;
+  ctaLabelLanguage?: string | null;
+  ctaLabelTexts?: Record<string, string> | null;
 }
 
 /**
@@ -43,9 +46,12 @@ export interface NativeInitialScreen {
  * producer-side normalization rules out.
  *
  * Throws a plain `Error` synchronously — before any native call — when the
- * screen is structurally invalid (blank `postId` / `groupId`, or an `activity`
- * member violating the exactly-one-id contract), matching the in-process
- * validation idiom of {@link requireExactlyOneMemberId}.
+ * screen is structurally invalid (blank `postId` / `groupId`, an `activity`
+ * member violating the exactly-one-id contract, or a `createPost` prefill
+ * setting both `imageUri` and `imageUris`, or both `cta.label` and
+ * `cta.localizedLabel`), matching the in-process
+ * validation idiom of {@link requireExactlyOneMemberId}. A prefill with too
+ * many images throws an `OctopusPrefilledPostTooManyImagesError` instead.
  */
 export function normalizeInitialScreen(
   screen: OctopusInitialScreen,
@@ -94,17 +100,11 @@ export function normalizeInitialScreen(
       const clientUserId = screen.clientUserId?.trim() || null;
       return { type: 'profile', clientUserId };
     }
-    case 'createPost': {
-      const prefilledPost = screen.prefilledPost;
+    case 'createPost':
       return {
         type: 'createPost',
-        text: prefilledPost?.text ?? null,
-        imageUri: prefilledPost?.imageUri ?? null,
-        topicId: prefilledPost?.topicId ?? null,
-        ctaUrl: prefilledPost?.cta?.url ?? null,
-        ctaLabel: prefilledPost?.cta?.label ?? null,
+        ...normalizePrefilledPost(screen.prefilledPost ?? {}, caller),
       };
-    }
   }
 }
 

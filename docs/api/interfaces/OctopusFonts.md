@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.15.3**](../README.md)
+[**@octopus-community/react-native v1.16.0**](../README.md)
 
 ---
 
@@ -48,7 +48,8 @@ also sets the Android navigation-bar title to the size of the `body1` style,
 which is smaller than the title size used with no font override. The native
 top-app-bar title has no typography role of its own and the style we pass
 replaces the ambient one rather than merging with it, so a complete style has
-to be supplied. Use `textStyles.body1.fontSize` to control the resulting size.
+to be supplied. Use [navBarTitle](#navbartitle) to override the title independently, or
+`textStyles.body1.fontSize` to control that base size.
 
 Omit it to keep each native SDK's own default font.
 
@@ -75,6 +76,31 @@ Setting this also triggers the Android navigation-bar side effect described on
 [fontFamily](#fontfamily).
 
 Omit it to keep each native SDK's own default weight.
+
+---
+
+### navBarTitle?
+
+> `optional` **navBarTitle**: `object`
+
+Android only. Overrides the text title font of every Octopus navigation bar.
+On iOS the title follows your app's navigation bar appearance; this is ignored.
+
+Each omitted property keeps the bar's current style, including any global
+fontFamily / fontWeight override. Logos and back / close buttons are unchanged.
+The main-feed title requires native Android SDK 1.16 or later.
+
+#### fontFamily?
+
+> `optional` **fontFamily**: `string`
+
+Android res/font resource name, without extension, as for fontFamily.
+
+#### fontSize?
+
+> `optional` **fontSize**: [`OctopusFontSize`](OctopusFontSize.md)
+
+Positive size in sp. Invalid or non-positive values are ignored.
 
 ---
 

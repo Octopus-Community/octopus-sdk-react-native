@@ -2,8 +2,8 @@
 
 [![npm package](https://img.shields.io/npm/v/@octopus-community/react-native.svg)](https://www.npmjs.com/package/@octopus-community/react-native)
 [![Platforms](https://img.shields.io/badge/platforms-Android_7.0%2B_%7C_iOS_15.1%2B-lightgrey)](#requirements)
-[![Android SDK](https://img.shields.io/badge/Android_SDK-1.15.3-34a853?logo=android&logoColor=white)](https://github.com/Octopus-Community/octopus-sdk-android)
-[![iOS SDK](https://img.shields.io/badge/iOS_SDK-1.15.1-f05138?logo=apple&logoColor=white)](https://github.com/Octopus-Community/octopus-sdk-swift)
+[![Android SDK](https://img.shields.io/badge/Android_SDK-1.16.0-34a853?logo=android&logoColor=white)](https://github.com/Octopus-Community/octopus-sdk-android)
+[![iOS SDK](https://img.shields.io/badge/iOS_SDK-1.16.0-f05138?logo=apple&logoColor=white)](https://github.com/Octopus-Community/octopus-sdk-swift)
 [![License](https://img.shields.io/badge/license-Octopus_SDK_License-lightgrey)](LICENSE.md)
 
 Add a branded community (feed, posts, comments, reactions, profiles, groups) to your React Native
@@ -31,15 +31,16 @@ and [iOS](https://github.com/Octopus-Community/octopus-sdk-swift) SDKs behind on
 
 | React Native version(s) | Android       | iOS   | Old arch | New arch      | Octopus native SDK          |
 | ----------------------- | ------------- | ----- | -------- | ------------- | --------------------------- |
-| v0.81.x (tested 0.81.4) | 7.0+ (API 24) | 15.1+ | ✅       | Interop layer | Android 1.15.3 · iOS 1.15.1 |
+| v0.81.x (tested 0.81.4) | 7.0+ (API 24) | 15.1+ | ✅       | Interop layer | Android 1.16.0 · iOS 1.16.0 |
 
 * Older React Native versions (e.g. v0.78+) may work but are untested
 * New architecture is supported via the React Native interoperability layer
 * The minimum iOS and Xcode versions are the ones React Native itself requires, so they move with
   the React Native version you use
 * Other requirements:
-  * **Android**: Kotlin 2.x
-  * **iOS**: Xcode 16.1+, CocoaPods with `use_frameworks!` (see below)
+  * **Android**: Kotlin 2.x, `compileSdk` 36+ and Android Gradle Plugin 8.9.1+
+  * **iOS**: Xcode 16.1+, CocoaPods with `use_frameworks!` and React Native's `spm_dependency`
+    helper, present in every React Native 0.75+ app (see below)
 * Package `MAJOR.MINOR` tracks the native SDKs (1.13.x wraps native 1.13.x), so a breaking
   TypeScript change can ship in a minor; each one is documented in [MIGRATING.md](./MIGRATING.md).
   Details in the [integration guide](./docs/integration-guide.md#versioning).
@@ -50,18 +51,23 @@ and [iOS](https://github.com/Octopus-Community/octopus-sdk-swift) SDKs behind on
 npm install @octopus-community/react-native
 ```
 
-**iOS**: the native SDK is distributed as frameworks and must be linked **statically** — with
-dynamic frameworks the native UI cannot find its resource bundle and the first Octopus screen
-crashes. Enable it in your `Podfile`, then run `pod install`:
+**iOS**: `pod install` fetches the native Octopus SDK as a Swift package
+([`octopus-sdk-swift`](https://github.com/Octopus-Community/octopus-sdk-swift), at the exact
+version this package pins) and attaches it to the `OctopusReactNativeSdk` pod through React
+Native's `spm_dependency` helper — no Octopus pod comes from CocoaPods trunk. Your `Podfile` must
+load `react-native/scripts/react_native_pods.rb`, as every React Native and Expo template does,
+and Xcode resolves the package on the first build, so the build machine needs access to
+`github.com`. Link the pods as static frameworks, the configuration the example app is built and
+tested with, then run `pod install`:
 
 ```ruby
 # Podfile
 use_frameworks! :linkage => :static
 ```
 
-CocoaPods applies this to every pod of the target. Next to Firebase Firestore (or another pod that
-depends on `gRPC-Core`), the link can fail with `Undefined symbol: grpc_…`: see
-[Troubleshooting](./docs/integration-guide.md#troubleshooting).
+CocoaPods applies this to every pod of the target. `pod install` then warns that `OctopusReactNativeSdk` uses Swift packages with static linking and
+suggests dynamic frameworks: the example app builds and runs with static frameworks, so the
+warning needs no action.
 
 **Expo**: set the same option through `expo-build-properties`:
 
@@ -143,6 +149,29 @@ or a host screen covers it. Hiding a mounted view with opacity alone leaves its
 native system Back handlers active. The prop pauses the view's lifecycle without
 discarding its navigation stack; set it back to `true` when the view becomes active.
 It defaults to `true` and is a no-op on iOS.
+
+With React Navigation, bind `isVisible` to the route's focus. The SDK does not
+read your navigator's state: an unfocused route can remain attached and laid out,
+especially in a tab navigator with `detachInactiveScreens={false}`. Attachment,
+opacity and the app's foreground state cannot tell the SDK which route is active.
+
+```tsx
+import { useIsFocused } from '@react-navigation/native';
+import { OctopusUIView } from '@octopus-community/react-native';
+
+function CommunityScreen() {
+  const isFocused = useIsFocused();
+  return <OctopusUIView isVisible={isFocused} style={{ flex: 1 }} />;
+}
+```
+
+Use this screen as the tab or stack route. When another route covers it, focus
+becomes `false`, so Android Back acts on the visible host route. Returning to the
+community restores its existing navigation stack. React Navigation belongs to
+the host app; the SDK does not require it as a dependency.
+
+For a custom tab or overlay that does not change route focus, derive visibility
+from your own active tab and overlay state:
 
 ```tsx
 <View

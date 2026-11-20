@@ -34,10 +34,15 @@ class OctopusEventEmitter(private val reactContext: ReactContext) {
     sendEvent("userTokenRequest", params)
   }
 
-  fun emitBridgeShareTokenRequest(requestId: String, bridgeFingerprint: String) {
+  fun emitBridgeShareTokenRequest(
+    requestId: String,
+    bridgeFingerprint: String,
+    tokenProviderId: String?
+  ) {
     val params = Arguments.createMap()
     params.putString("requestId", requestId)
     params.putString("bridgeFingerprint", bridgeFingerprint)
+    if (tokenProviderId != null) params.putString("tokenProviderId", tokenProviderId)
     sendEvent("bridgeShareTokenRequest", params)
   }
 
@@ -51,6 +56,16 @@ class OctopusEventEmitter(private val reactContext: ReactContext) {
     val params = Arguments.createMap()
     params.putBoolean("hasAccess", hasAccess)
     sendEvent("hasAccessToCommunityChanged", params)
+  }
+
+  /**
+   * [reasonName] is the native `CommunityAccessDeniedReason` name (`ACCOUNT_BANNED`, …), or null
+   * when the access is granted or not known yet. JS maps a name it does not know to `unknown`.
+   */
+  fun emitCommunityAccessDeniedReasonChanged(reasonName: String?) {
+    val params = Arguments.createMap()
+    if (reasonName != null) params.putString("reason", reasonName) else params.putNull("reason")
+    sendEvent("communityAccessDeniedReasonChanged", params)
   }
 
   fun emitSDKEvent(eventData: WritableMap) {

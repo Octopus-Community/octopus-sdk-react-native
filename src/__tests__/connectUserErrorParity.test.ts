@@ -559,7 +559,7 @@ const findUniqueFunctionBody = (
   source: string,
   name: string
 ): string | null => {
-  const header = `func\\s+${name}\\s*\\(`;
+  const header = `(?:fun|func)\\s+${name}\\s*\\(`;
   const declarations = [
     ...stripComments(source).matchAll(new RegExp(header, 'g')),
   ];
@@ -970,8 +970,23 @@ describe('the timeout is applied, not merely declared', () => {
   });
 
   it('settles the requests still pending when the user disconnects', () => {
-    expect(androidDisconnect).toContain('pendingTokenRequests');
+    // Logout must keep the documented rejection code even when it cancels the entire
+    // sign-in scope, before the token-provider continuation can resume.
+    expect(androidDisconnect).toMatch(
+      /\bendSession\s*\(\s*CODE_TOKEN_REQUEST_CANCELLED\s*\)/
+    );
+    expect(
+      reaches(
+        androidSource,
+        androidDisconnect ?? '',
+        /\bpendingTokenRequests\b/
+      )
+    ).toBe(true);
     expect(iosDisconnect).toContain('takeAllPendingTokenRequests');
+    expect(iosDisconnect).toContain('CancellationError');
+    expect(stripComments(iosSource)).toMatch(
+      /underlyingError\s+is\s+CancellationError\s*\{\s*code\s*=\s*"TOKEN_REQUEST_CANCELLED"/
+    );
   });
 });
 

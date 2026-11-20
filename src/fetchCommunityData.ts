@@ -6,7 +6,7 @@ import type {
 } from './types/octopusCommunityData';
 
 /**
- * Fetches a one-shot refresh of a member's public Octopus stats (message count, gamification).
+ * Fetches a member's public Octopus stats (message count and gamification).
  *
  * @param memberId - Exactly one of `profileId` or `clientUserId` must be set.
  * @returns The member's community data, or `null` when the member is unknown.

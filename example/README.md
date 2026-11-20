@@ -2,6 +2,37 @@ This is the **Octopus Community React Native SDK** example app. It demonstrates 
 
 # Getting started
 
+## Host lifecycle release QA
+
+After initializing a **demo** community, open **Scenarios → Host callbacks & events →
+Host lifecycles** (`scenarios-hostLifecycles-card`). The example's other host routes use
+component state; this scenario owns a real `@react-navigation/native-stack` navigator.
+
+1. Set `hostLifecycles-post-edit` to the demo post fixture if needed.
+2. Tap **Preset 3 · View detached and re-attached** (`qa-preset-hostLifecycles-3`).
+3. Wait for the post and its comments to render. Tap **Push host screen**
+   (`hostLifecycles-push-button`), wait for the opaque host screen, then tap **Pop host
+   screen** (`hostLifecycles-pop-button`). Native-stack keeps the community's React
+   component mounted while its native screen is detached and re-attached.
+4. Repeat the push/pop at least three times. After each completed return,
+   `hostLifecycles-result` counts the cycle. This single result text stays above the
+   navigator on every screen, including the host cover. Verify the post/comments render and remain
+   usable, with no crash or native scope error. A counter alone is **not** a PASS.
+5. **Back to scenario** (`hostLifecycles-back-button`) returns to the preset and retains
+   the result. Running the preset again resets the counter and starts a fresh host stack.
+
+This implements only shared preset **3**, on Android and iOS. Presets 1, 2, 4 and 5 are
+not implemented here. `hostLifecycles-result` starts with `Not run yet`, changes to
+`Running…` on launch/push, then `Returned N time(s)…` after the community's native
+opening transition completes following a cover push/pop. The first community appearance
+and repeated appearance events without another cover push do not count.
+It never automatically claims `OK`: visual verification of the post and comments belongs
+to the QA run. Android hardware Back and the iOS back gesture can also pop the host screen.
+
+Install dependencies with `yarn`; iOS also needs `yarn example ios:pod` after adding the
+native screens dependency. The Android example configures the screens fragment factory
+before activity creation so activity restoration does not restore unsupported fragments.
+
 > **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
 
 ## Environment variables
@@ -112,6 +143,18 @@ an injected demo JWT. Saved configurations using a removed authentication mode r
 - **Scenarios** — The searchable index of capabilities. Each scenario opens its own page with single-tap QA presets carrying fixed `testID`s, its result panel, and the free-form controls for that capability: theming lives in the Theme scenario, batch group sync in Sync Followed Groups, the free-text custom event in Custom Events, the push token in Push Notifications.
 - **Settings** — Connect/disconnect, display mode (fullscreen vs embedded), URL interception, profile-tap handling, locale override, **Back to Config** (disconnects, tears the SDK state down and returns to the Config screen), and the **Debug console**.
 - **Community** — Open the Octopus UI in fullscreen or embedded mode with the current theme and options.
+
+The content-options scenario also tests the debug post tap overrides. Both are off by default;
+the controls can force each on or off, and clearing restores the community config.
+
+| Preset | Test ID | Expected navigation |
+|---|---|---|
+| Image tap opens post | `qa-preset-contentOptions-8` | Feed images open the post when its card can open detail; otherwise, and in post detail, images open fullscreen. |
+| Group name opens group | `qa-preset-contentOptions-9` | Group names open the group from feeds and post detail, using the native access-denied flow when needed. |
+| Both post tap options | `qa-preset-contentOptions-10` | Both behaviours above are enabled. |
+
+These presets reset all creation flags to enabled. In production the native SDK reads the
+tap flags from the community config; host apps do not need to apply an override.
 
 The **Debug console** (Settings → *Open debug console*) is one merged, newest-first log of the SDK
 event stream and of every API call the app fired, copyable as plain text — it replaces the old SDK

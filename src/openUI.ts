@@ -1,5 +1,6 @@
 import { setFullscreenBackRequestedCallback } from './internals/fullscreenBackRequested';
 import { resolveInitialScreen } from './internals/initialScreen';
+import { withLanguageCode } from './internals/localizedText';
 import { OctopusReactNativeSdk } from './internals/nativeModule';
 import type { OctopusInitialScreen } from './types/octopusInitialScreen';
 import type { OctopusNotification } from './types/octopusNotification';
@@ -200,7 +201,10 @@ export interface OpenUIOptions {
  *   the SDK is not initialized — call `initialize()` first. Both platforms.
  * @throws A plain `Error` synchronously when `initialScreen` is structurally
  *   invalid (blank `postId` / `groupId`, or an `activity` member violating the
- *   exactly-one-id contract), and a {@link NavigateToOctopusCreatePostError}
+ *   exactly-one-id contract, or a `createPost` `prefilledPost` that sets both
+ *   `imageUri` and `imageUris`, or both `cta.label` and `cta.localizedLabel`)
+ *   — thrown before the promise exists, so a `.catch` on the result does not
+ *   see it — and a {@link NavigateToOctopusCreatePostError}
  *   when a `createPost` initial screen's `prefilledPost` fails native
  *   validation.
  *
@@ -250,18 +254,20 @@ export function openUI(options?: OpenUIOptions): Promise<void> {
     notification !== undefined,
     'openUI'
   );
-  return OctopusReactNativeSdk.openUI({
-    interceptUrls,
-    interceptProfileTaps,
-    notification,
-    initialScreen,
-    // Parity wave — navigation & theme. `navigationMode` always resolves to a
-    // concrete value — defaulting to `'navigationStack'` when unset, per the
-    // TSDoc above — rather than left `undefined` for the native side to
-    // default away: iso with Flutter's `embeddedView`, which always emits the
-    // wire key precisely so a host that says nothing still gets the
-    // non-buggy default, not the native SDK's own `.automatic`.
-    navigationMode: opts.navigationMode ?? 'navigationStack',
-    navBarLeadingAction: opts.navBarLeadingAction,
-  });
+  return Promise.resolve<void>(
+    OctopusReactNativeSdk.openUI({
+      interceptUrls,
+      interceptProfileTaps,
+      notification,
+      initialScreen,
+      // Parity wave — navigation & theme. `navigationMode` always resolves to a
+      // concrete value — defaulting to `'navigationStack'` when unset, per the
+      // TSDoc above — rather than left `undefined` for the native side to
+      // default away: iso with Flutter's `embeddedView`, which always emits the
+      // wire key precisely so a host that says nothing still gets the
+      // non-buggy default, not the native SDK's own `.automatic`.
+      navigationMode: opts.navigationMode ?? 'navigationStack',
+      navBarLeadingAction: opts.navBarLeadingAction,
+    })
+  ).catch((error: unknown) => Promise.reject(withLanguageCode(error)));
 }

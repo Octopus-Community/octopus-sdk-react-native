@@ -5,7 +5,14 @@ import {
   sampleMonoFont,
   sampleSpacing,
 } from '../theme/tokens';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import {
   View,
@@ -14,7 +21,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  Platform,
 } from 'react-native';
 import { MaterialIcons } from '@react-native-vector-icons/material-icons/static';
 import { useHardwareBack } from '../navigation/useHardwareBack';
@@ -41,6 +47,8 @@ import {
   debugOverrideConsentTexts,
   navigateToOctopusCreatePost,
   isNavigateToOctopusCreatePostError,
+  OCTOPUS_POST_MAX_IMAGE_COUNT,
+  OctopusPrefilledPostTooManyImagesError,
   syncFollowGroups,
 } from '@octopus-community/react-native';
 import type {
@@ -54,6 +62,7 @@ import type {
 } from '@octopus-community/react-native';
 import { PillButton } from '../components/PillButton';
 import { PresetButton } from '../components/PresetButton';
+import { bundledSamplePhotos } from '../scenarios/sampleImage';
 import {
   LiveCommunityConfigCard,
   useLiveCommunityConfig,
@@ -143,19 +152,8 @@ const REACTION_LABELS: Record<string, string> = {
   rage: 'Rage 😡',
 };
 
-/**
- * Name of the bundled sample image used by the `createPost` "bundled image" presets. Resolved
- * as a native bundled resource by {@link navigateToOctopusCreatePost} (see the
- * `OctopusPrefilledPost.imageUri` doc comment): a bare name with no scheme resolves as an
- * Android drawable resource / an iOS asset-catalog image with that name. The two platforms
- * stage this sample asset under different, convention-mandated names — Android drawable names
- * must be lowercase snake_case, the iOS asset-catalog entry here is PascalCase — so this picks
- * the right one per platform instead of passing one literal for both.
- */
-const BUNDLED_SAMPLE_IMAGE_NAME = Platform.select({
-  ios: 'OctopusSampleImage',
-  default: 'octopus_sample_image',
-});
+/** The `createPost` scenario's attachment toggles. `photos` is the maximum number of photos. */
+type CreatePostAttachment = 'cta' | 'image' | 'photos';
 
 /**
  * Local, non-catalog view state for the `communityData` scenario's Preset 6: a small
@@ -181,6 +179,14 @@ import {
 } from '../scenarios/catalog';
 import type { ScenarioId } from '../scenarios/catalog';
 import { CONSENT_TEXTS_PRESETS } from '../scenarios/consentTexts';
+import {
+  buildLocalizedLabel,
+  describeBridgeError,
+  initialLocalizedLabelForm,
+} from '../scenarios/localizedLabel';
+import { LocalizedLabelEditor } from '../components/LocalizedLabelEditor';
+// Load the native navigator only when its QA route is opened.
+const HostLifecyclesScenario = lazy(() => import('./HostLifecyclesScenario'));
 export type { ScenarioId } from '../scenarios/catalog';
 /**
  * Scenarios whose effect is visible in the community itself, and which therefore offer the
@@ -549,6 +555,8 @@ export interface ScenariosScreenProps {
 
   // communityAccess
   hasAccessToCommunity: boolean | null;
+  /** `undefined` until the first value is received; `null` means no refusal. */
+  communityAccessDeniedReason?: Octopus.CommunityAccessDeniedReason | null;
 
   // pushNotifications
   pushToken: string | null;
@@ -649,6 +657,7 @@ export function ScenariosScreen({
   onConnectUser,
   onDisconnectUser,
   hasAccessToCommunity,
+  communityAccessDeniedReason,
   pushToken,
   notSeenNotificationsCount,
   onRefreshNotifications,
@@ -815,7 +824,11 @@ export function ScenariosScreen({
 
   const accessLabel =
     hasAccessToCommunity === null ? '—' : hasAccessToCommunity ? 'Yes' : 'No';
-  const communityAccessInfo = `Has access to community (Octopus-managed): ${accessLabel}`;
+  const deniedReasonLabel =
+    communityAccessDeniedReason === undefined
+      ? '—'
+      : (communityAccessDeniedReason ?? 'null');
+  const communityAccessInfo = `Has access to community (Octopus-managed): ${accessLabel}\nCommunity access denied reason: ${deniedReasonLabel}`;
 
   type CommunityAccessAction = 'grant' | 'deny' | 'track' | 'trackNone';
   const [communityAccessAction, setCommunityAccessAction] =
@@ -971,16 +984,28 @@ export function ScenariosScreen({
   const [createPostRunState, runCreatePost] = useScenarioRun('createPost');
 
   const runCreatePostPreset = useCallback(
-    (prefilledPost: Parameters<typeof navigateToOctopusCreatePost>[0]) =>
+    (
+      // A function when building the prefill can throw (the label form refuses a language
+      // given twice), so that error lands in the scenario result too.
+      prefilledPost:
+        | Parameters<typeof navigateToOctopusCreatePost>[0]
+        | (() => Parameters<typeof navigateToOctopusCreatePost>[0])
+    ) =>
       runCreatePost(async () => {
         try {
-          await navigateToOctopusCreatePost(prefilledPost);
+          await navigateToOctopusCreatePost(
+            typeof prefilledPost === 'function'
+              ? prefilledPost()
+              : prefilledPost
+          );
         } catch (e) {
           const message = isNavigateToOctopusCreatePostError(e)
-            ? `${e.code}: ${e.message}`
-            : e instanceof Error
-              ? e.message
-              : String(e);
+            ? describeBridgeError(e)
+            : e instanceof OctopusPrefilledPostTooManyImagesError
+              ? `Too many photos: ${e.count} passed, at most ${e.max}`
+              : e instanceof Error
+                ? e.message
+                : String(e);
           throw new Error(message);
         }
       }, 'Opened the create-post editor'),
@@ -990,17 +1015,24 @@ export function ScenariosScreen({
   const [createPostText, setCreatePostText] = useState(
     'QA scenario — text post'
   );
+  const [createPostCtaLabel, setCreatePostCtaLabel] = useState(() =>
+    initialLocalizedLabelForm('Learn more')
+  );
   const [createPostAttachments, setCreatePostAttachments] = useState<
-    ReadonlySet<'cta' | 'image'>
+    ReadonlySet<CreatePostAttachment>
   >(new Set());
   const toggleCreatePostAttachment = useCallback(
     (key: string) =>
       setCreatePostAttachments((prev) => {
         const next = new Set(prev);
-        if (next.has(key as 'cta' | 'image')) {
-          next.delete(key as 'cta' | 'image');
+        const attachment = key as CreatePostAttachment;
+        if (next.has(attachment)) {
+          next.delete(attachment);
         } else {
-          next.add(key as 'cta' | 'image');
+          next.add(attachment);
+          // One image source at a time: a single photo or the maximum.
+          if (attachment === 'image') next.delete('photos');
+          if (attachment === 'photos') next.delete('image');
         }
         return next;
       }),
@@ -1008,23 +1040,37 @@ export function ScenariosScreen({
   );
   const onRunCreatePost = useCallback(() => {
     const text = createPostText.trim();
-    return runCreatePostPreset({
+    return runCreatePostPreset(() => ({
       text: text === '' ? undefined : text,
-      imageUri: createPostAttachments.has('image')
-        ? BUNDLED_SAMPLE_IMAGE_NAME
-        : undefined,
+      imageUris: createPostAttachments.has('photos')
+        ? bundledSamplePhotos(OCTOPUS_POST_MAX_IMAGE_COUNT)
+        : createPostAttachments.has('image')
+          ? bundledSamplePhotos(1)
+          : undefined,
       cta: createPostAttachments.has('cta')
-        ? { url: 'https://example.com', label: 'Learn more' }
+        ? {
+            url: 'https://example.com',
+            localizedLabel: buildLocalizedLabel(createPostCtaLabel),
+          }
         : undefined,
-    });
-  }, [createPostText, createPostAttachments, runCreatePostPreset]);
+    }));
+  }, [
+    createPostText,
+    createPostAttachments,
+    createPostCtaLabel,
+    runCreatePostPreset,
+  ]);
   // The Run button carries whichever catalog preset the current text + attachments
-  // combination matches. Combinations the catalog doesn't name (e.g. no text and no
+  // combination matches. Text + photos takes a sample-only id, outside the shared catalog
+  // (as in the native Android sample). Combinations nothing names (e.g. no text and no
   // attachments) fall back to the scenario's generic run id.
   const createPostPresetTestID = (() => {
     const hasText = createPostText.trim() !== '';
     const hasCta = createPostAttachments.has('cta');
     const hasImage = createPostAttachments.has('image');
+    if (hasText && createPostAttachments.has('photos')) {
+      return 'sample-preset-createPost-10-images';
+    }
     if (hasText && !hasCta && !hasImage) return 'qa-preset-createPost-1';
     if (hasText && hasCta && !hasImage) return 'qa-preset-createPost-2';
     if (hasText && !hasCta && hasImage) return 'qa-preset-createPost-3';
@@ -1363,6 +1409,9 @@ export function ScenariosScreen({
   const [postDisabled, setPostDisabled] = useState<
     ReadonlySet<'pictures' | 'polls' | 'text'>
   >(new Set());
+  const [postTapsEnabled, setPostTapsEnabled] = useState<
+    ReadonlySet<'image' | 'group'>
+  >(new Set());
   const [commentDisabled, setCommentDisabled] = useState<
     ReadonlySet<'pictures'>
   >(new Set());
@@ -1401,6 +1450,8 @@ export function ScenariosScreen({
           enablePictures: !postDisabled.has('pictures'),
           enablePolls: !postDisabled.has('polls'),
           textRequired: !postDisabled.has('text'),
+          imageTapOpensPost: postTapsEnabled.has('image'),
+          groupNameTapOpensGroup: postTapsEnabled.has('group'),
         },
         comment: { enablePictures: !commentDisabled.has('pictures') },
         reply: { enablePictures: !replyDisabled.has('pictures') },
@@ -1410,15 +1461,43 @@ export function ScenariosScreen({
   }, [
     clearContentOptions,
     postDisabled,
+    postTapsEnabled,
     commentDisabled,
     replyDisabled,
     runContentOptionsPreset,
   ]);
-  // The clear toggle carries its own preset id (on its chip); the six named disabled-flag
-  // combinations carry theirs on the Run button. An unlisted combination (or clear toggled
-  // together with other flags) falls back to the scenario's generic run id.
+  const runPostTapPreset = (image: boolean, group: boolean) => {
+    setPostDisabled(new Set());
+    setCommentDisabled(new Set());
+    setReplyDisabled(new Set());
+    setClearContentOptions(new Set());
+    setPostTapsEnabled(
+      new Set([
+        ...(image ? (['image'] as const) : []),
+        ...(group ? (['group'] as const) : []),
+      ])
+    );
+    return runContentOptionsPreset(
+      {
+        post: {
+          enablePictures: true,
+          enablePolls: true,
+          textRequired: true,
+          imageTapOpensPost: image,
+          groupNameTapOpensGroup: group,
+        },
+        comment: { enablePictures: true },
+        reply: { enablePictures: true },
+      },
+      'Post tap override applied'
+    );
+  };
+  // Clear and tap presets carry ids on their controls; creation presets use the Run button.
+  // Custom combinations use the generic run id.
   const contentOptionsPresetTestID = (() => {
-    if (clearContentOptions.has('clear')) return 'qa-run-contentOptions';
+    if (clearContentOptions.has('clear') || postTapsEnabled.size > 0) {
+      return 'qa-run-contentOptions';
+    }
     const postTextOptional = postDisabled.has('text');
     const postPictures = postDisabled.has('pictures');
     const postPolls = postDisabled.has('polls');
@@ -1595,7 +1674,7 @@ export function ScenariosScreen({
         (data) => {
           if (data) {
             setLastProfileId(data.profileId);
-            return `Found — profileId=${data.profileId}, messageCount=${data.messageCount ?? '—'}, gamification.level=${data.gamification?.level ?? 'null'}`;
+            return `Found — profileId=${data.profileId}, messageCount=${data.messageCount ?? '—'}, gamification.level=${data.gamification?.level ?? 'null'}, gamification.score=${data.gamification?.score ?? 'null'}`;
           }
           return 'No community data for this clientUserId (unknown member)';
         }
@@ -1610,7 +1689,7 @@ export function ScenariosScreen({
       () => fetchCommunityData({ profileId: lastProfileId }),
       (data) =>
         data
-          ? `Found — profileId=${data.profileId}, messageCount=${data.messageCount ?? '—'}, gamification.level=${data.gamification?.level ?? 'null'}`
+          ? `Found — profileId=${data.profileId}, messageCount=${data.messageCount ?? '—'}, gamification.level=${data.gamification?.level ?? 'null'}, gamification.score=${data.gamification?.score ?? 'null'}`
           : 'No community data for this profileId (unknown member)'
     );
   }, [runCommunityData, lastProfileId]);
@@ -1732,7 +1811,7 @@ export function ScenariosScreen({
       ? `Observing… ${
           hasObservedUpdate
             ? observedCommunityData
-              ? `messageCount=${observedCommunityData.messageCount ?? '—'}`
+              ? `messageCount=${observedCommunityData.messageCount ?? '—'}, gamification.score=${observedCommunityData.gamification?.score ?? 'null'}`
               : 'member unknown'
             : '(waiting for first update)'
         }`
@@ -1916,8 +1995,8 @@ export function ScenariosScreen({
             <Text testID="clientProfile-data" style={{ color: textColor }}>
               {`profileId: ${clientProfileView.data.profileId}\nmessageCount: ${clientProfileView.data.messageCount ?? '—'}\ngamification: ${
                 clientProfileView.data.gamification
-                  ? `level ${clientProfileView.data.gamification.level}`
-                  : '—'
+                  ? `level ${clientProfileView.data.gamification.level}, score ${clientProfileView.data.gamification.score ?? 'null'}`
+                  : 'null'
               }`}
             </Text>
           )}
@@ -2106,6 +2185,19 @@ export function ScenariosScreen({
 
   // The detail route: one scenario, opened from the list. Every `ScenarioCard` below renders
   // only when it is the open one, so the JSX stays a flat catalog of scenarios.
+  if (selected === 'hostLifecycles') {
+    return (
+      <Suspense fallback={<Text>Loading host lifecycles…</Text>}>
+        <HostLifecyclesScenario
+          isDark={isDark}
+          isInitialized={isInitialized}
+          onBack={() => setSelected(null)}
+          onOpenDebug={onOpenDebug}
+        />
+      </Suspense>
+    );
+  }
+
   return (
     <ScenarioDetailFrame
       title={SCENARIO_TITLES[selected]}
@@ -2618,7 +2710,31 @@ export function ScenariosScreen({
           options={[
             { key: 'cta', label: 'CTA' },
             { key: 'image', label: 'Bundled image' },
+            {
+              key: 'photos',
+              label: `${OCTOPUS_POST_MAX_IMAGE_COUNT} bundled photos`,
+            },
           ]}
+        />
+        {createPostAttachments.has('cta') ? (
+          <LocalizedLabelEditor
+            testID="sample-param-createPost-cta-label"
+            title="CTA label"
+            form={createPostCtaLabel}
+            onChange={setCreatePostCtaLabel}
+            isDark={isDark}
+          />
+        ) : null}
+        <PresetButton
+          testID="sample-preset-createPost-11-images"
+          label={`${OCTOPUS_POST_MAX_IMAGE_COUNT + 1} bundled photos (refused)`}
+          isDark={isDark}
+          onPress={() =>
+            runCreatePostPreset({
+              text: createPostText.trim() || undefined,
+              imageUris: bundledSamplePhotos(OCTOPUS_POST_MAX_IMAGE_COUNT + 1),
+            })
+          }
         />
         <ScenarioResultPanel
           testID="createPost-result"
@@ -2955,9 +3071,44 @@ export function ScenariosScreen({
       >
         <Text style={[styles.hint, { color: secondaryColor }]}>
           Text optional allows an image post, with or without a poll, to omit
-          text. A poll alone still needs text. The server still applies the
-          community's own content settings.
+          text. A poll alone still needs text. Image taps can open the post from
+          a feed when its detail is available; otherwise, and in post detail,
+          images open fullscreen. Group name taps can open the group, including
+          its access-denied flow. Both tap options are off by default. The
+          server still applies the community's own content settings.
         </Text>
+        <PresetButton
+          testID="qa-preset-contentOptions-8"
+          label="Image tap opens post"
+          isDark={isDark}
+          disabled={contentOptionsRunState.status === 'running'}
+          onPress={() => runPostTapPreset(true, false)}
+        />
+        <PresetButton
+          testID="qa-preset-contentOptions-9"
+          label="Group name opens group"
+          isDark={isDark}
+          disabled={contentOptionsRunState.status === 'running'}
+          onPress={() => runPostTapPreset(false, true)}
+        />
+        <PresetButton
+          testID="qa-preset-contentOptions-10"
+          label="Both post tap options"
+          isDark={isDark}
+          disabled={contentOptionsRunState.status === 'running'}
+          onPress={() => runPostTapPreset(true, true)}
+        />
+        <SetParamField
+          testID="qa-param-contentOptions-post-taps"
+          label="Post taps: enabled"
+          isDark={isDark}
+          selected={postTapsEnabled}
+          onToggle={toggleContentOptionsFlag(setPostTapsEnabled)}
+          options={[
+            { key: 'image', label: 'Image opens post' },
+            { key: 'group', label: 'Group name opens group' },
+          ]}
+        />
         <SetParamField
           testID="qa-param-contentOptions-post"
           label="Post: disabled"
@@ -3206,8 +3357,12 @@ export function ScenariosScreen({
         textColor={textColor}
       >
         <Text style={[styles.hint, { color: secondaryColor }]}>
-          RN returns profileId, messageCount and gamification.level here.
-          Nickname and clientUserId are not available through this API.
+          RN returns profileId, messageCount, gamification.level and
+          gamification.score here. With native SDK 1.16.0 on Android and iOS,
+          score is the member's total points, including 0, or null when the
+          total is missing. Gamification is null for profiles tagged as admins
+          or when gamification is disabled. Nickname and clientUserId are not
+          available through this API.
         </Text>
         {[
           [
@@ -3273,6 +3428,12 @@ export function ScenariosScreen({
             {
               label: 'messageCount',
               value: String(observedCommunityData?.messageCount ?? 'null'),
+            },
+            {
+              label: 'gamification.score',
+              value: String(
+                observedCommunityData?.gamification?.score ?? 'null'
+              ),
             },
           ]}
         />

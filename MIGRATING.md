@@ -8,6 +8,276 @@ are listed in [`CHANGELOG.md`](./CHANGELOG.md) and don't need a migration entry.
 > One file, one section per version — we do **not** create per-version
 > `MIGRATION_x_y.md` files (a versioned filename multiplies docs over time).
 
+## 1.16.0
+
+The wrapped native SDKs move to the **1.16** line (Android 1.16.0, iOS 1.16.0). Android build
+requirements, home-title behaviour and member-addressing string overrides change, and the iOS
+native SDK now comes from Swift Package Manager instead of CocoaPods trunk. The new APIs are
+listed in [`CHANGELOG.md`](./CHANGELOG.md); no call that worked in 1.15 fails at runtime, but a few
+type-level changes can stop TypeScript code from compiling (see "Type-level changes" below). Two single-image
+fields and two plain-string button labels are deprecated.
+
+### Build requirements — Android `compileSdk` 36
+
+The native Android SDK 1.16 compiles against Android 16 (API 36). Android host apps must use
+`compileSdk` 36 or later and Android Gradle Plugin (AGP) 8.9.1 or later, the
+[minimum AGP for API 36](https://developer.android.com/build/releases/about-agp#api-level-support).
+`minSdk` stays at 24, and no `targetSdk` change is required.
+
+React Native 0.81 projects created from its template already compile against API 36 with a
+recent enough AGP. If you lowered them, raise them back.
+
+**Before** (`android/build.gradle`):
+
+```groovy
+buildscript {
+    ext {
+        compileSdkVersion = 35
+    }
+}
+```
+
+**After:**
+
+```groovy
+buildscript {
+    ext {
+        compileSdkVersion = 36
+    }
+}
+```
+
+If your project pins the Android Gradle Plugin itself (`classpath("com.android.tools.build:gradle:<version>")`),
+use 8.9.1 or later, with the Gradle version it requires.
+
+### iOS — the native SDK comes from Swift Package Manager, not CocoaPods trunk
+
+CocoaPods trunk stops accepting new publications on December 2, 2026, so the podspec no longer
+depends on the `OctopusCommunity*` pods. `pod install` now attaches the native SDK's Swift package
+([`octopus-sdk-swift`](https://github.com/Octopus-Community/octopus-sdk-swift), same exact
+version) to the `OctopusReactNativeSdk` pod through React Native's `spm_dependency` helper, and
+Xcode resolves it on the first build. No TypeScript change.
+
+A standard React Native or Expo app only re-runs `pod install`: keep
+`use_frameworks! :linkage => :static` (or `"useFrameworks": "static"`), and ignore the `[SPM]`
+warning about static linking. Act only if one of these applies:
+
+- **Your `Podfile` does not load `react-native/scripts/react_native_pods.rb`** (or uses React
+  Native older than 0.75): `pod install` stops with an error naming `spm_dependency`. Load it, as
+  the React Native and Expo templates do.
+- **You added the `gRPC-Swift` workaround** next to Firebase Firestore: remove
+  `pod 'gRPC-Swift', :podspec => 'gRPC-Swift.podspec.json'` from your `Podfile`; Octopus no longer
+  uses that pod.
+- **Your build machines have no access to `github.com`**: Xcode now fetches the native SDK and its
+  Swift dependencies (gRPC Swift, SwiftNIO, SwiftProtobuf, KeychainAccess) as packages. Allow it,
+  or resolve once with `xcodebuild -resolvePackageDependencies` and cache the packages directory.
+
+### Home title behaviour — Android
+
+The global `initialize({ topAppBar })` setting, used by both fullscreen `openUI()` and
+embedded `<OctopusUIView>`, and the per-view `navBarTitle` prop now follow the iOS title
+behaviour:
+
+- **Explicit text takes precedence over a logo.** Previously, a theme logo hid an explicit
+  home title on Android. A non-empty `topAppBar.title: { type: 'text', text }` or
+  `navBarTitle` now displays that text instead. To keep showing the logo, use
+  `topAppBar.title: { type: 'logo' }` and omit the per-view `navBarTitle` override.
+- **An empty title falls back to the logo or default title.** Previously, passing `""`
+  without a theme logo hid the home title on Android. It now shows the theme logo when
+  configured, otherwise the default home title. An empty `navBarTitle` does not fall back to
+  a text `topAppBar.title`; omit the prop to use that text.
+  Hosts that passed `""` to hide the title must account for this fallback. There is no
+  option to hide just the title while keeping the bar. Embedded Android hosts that provide
+  their own title chrome can hide the entire bar with `<OctopusUIView showNavBar={false} />`.
+
+### Android — member-addressing string overrides
+
+The native Android SDK 1.16 reads each text that addresses the member from a `_formal` and an
+`_informal` resource, so that a community can set an informal tone per language. The unsuffixed
+resource of these texts is no longer read: a host override of it stops applying, silently. The keys
+concerned are the ones the native SDK's `values/strings.xml` defines with both suffixes. Move each
+such override to both variants. Some unused resources were also removed; see the native
+[Android 1.16.0 release notes](https://github.com/Octopus-Community/octopus-sdk-android/releases/tag/v1.16.0).
+
+**Before** (`android/app/src/main/res/values/strings.xml`):
+
+```xml
+<string name="error_unknown">Something went wrong, try again.</string>
+```
+
+**After:**
+
+```xml
+<string name="error_unknown_formal">Something went wrong, please try again.</string>
+<string name="error_unknown_informal">Something went wrong, try again.</string>
+```
+
+iOS hosts have no string override to move.
+
+### Several photos per post
+
+Not breaking: a post now carries up to 10 photos (`OCTOPUS_POST_MAX_IMAGE_COUNT`), and the
+single-image fields keep working. Move to the list forms when you touch the code.
+
+`OctopusPrefilledPost` takes `imageUris`, in display order, instead of `imageUri`:
+
+```ts
+// Before
+await navigateToOctopusCreatePost({ text, imageUri: photoUri });
+
+// After
+await navigateToOctopusCreatePost({ text, imageUris: [photoUri] });
+```
+
+Pass one or the other: `imageUri` together with a non-empty `imageUris` is refused with a plain
+`Error`. More than 10 non-blank entries are refused with an
+`OctopusPrefilledPostTooManyImagesError`, which is not a `NavigateToOctopusCreatePostError` (it
+has no `code`), so check it on its own:
+
+```ts
+try {
+  await navigateToOctopusCreatePost({ text, imageUris: photoUris });
+} catch (error) {
+  if (error instanceof OctopusPrefilledPostTooManyImagesError) {
+    // error.count photos were passed, at most error.max are accepted
+  } else if (isNavigateToOctopusCreatePostError(error)) {
+    // text, CTA or image problem, as before
+  }
+}
+```
+
+`openUI` and `OctopusUIView` throw the same errors synchronously for a `createPost` initial
+screen, as they do for their other `initialScreen` checks.
+
+`ClientPost` takes `medias` instead of `attachment`:
+
+```ts
+// Before
+await fetchOrCreateClientObjectRelatedPost({
+  objectId: article.id,
+  text: article.title,
+  attachment: { type: 'remoteImage', url: article.imageUrl },
+});
+
+// After
+await fetchOrCreateClientObjectRelatedPost({
+  objectId: article.id,
+  text: article.title,
+  medias: [
+    { type: 'remoteImage', url: article.imageUrl },
+    { type: 'localImage', uri: thumbnailFileUri },
+  ],
+});
+```
+
+Do not set both: `fetchOrCreateClientObjectRelatedPost` then rejects with `INVALID_ARGS`, before
+any native call. More than 10 `medias` are refused by the native SDK with `CLIENT_POST_ERROR`.
+As before, the content only counts when the post is created: adding `medias` to an object whose
+post already exists does not change that post.
+
+### Per-language button labels
+
+The button label of a bridge post and of a prefilled post's call to action can now
+be given per language, with `OctopusLocalizedText`. The plain-string fields keep working as
+auto-translated labels. Move to the new fields when you touch the code.
+
+**Type-level change:** `OctopusPostCTA.label` is now optional. Code that reads it needs
+`?? ''` or a narrowing check.
+
+`ClientPost` takes `viewObjectButton` instead of `viewObjectButtonText`:
+
+```ts
+// Before
+await fetchOrCreateClientObjectRelatedPost({
+  objectId: article.id,
+  text: article.title,
+  viewObjectButtonText: 'Read the article',
+});
+
+// After: the same automatic translation…
+await fetchOrCreateClientObjectRelatedPost({
+  objectId: article.id,
+  text: article.title,
+  viewObjectButton: OctopusLocalizedText.autoTranslated('Read the article'),
+});
+
+// …or one label per language
+await fetchOrCreateClientObjectRelatedPost({
+  objectId: article.id,
+  text: article.title,
+  viewObjectButton: OctopusLocalizedText.perLanguage(
+    { 'en': 'Read the article', 'fr': "Lire l'article", 'pt-BR': 'Ler o artigo' },
+    'en'
+  ),
+});
+```
+
+`OctopusPostCTA` takes `localizedLabel` instead of `label`:
+
+```ts
+// Before
+await navigateToOctopusCreatePost({ cta: { url, label: 'Learn more' } });
+
+// After
+await navigateToOctopusCreatePost({
+  cta: { url, localizedLabel: OctopusLocalizedText.autoTranslated('Learn more') },
+});
+```
+
+Set one or the other: `viewObjectButtonText` together with `viewObjectButton` makes
+`fetchOrCreateClientObjectRelatedPost` reject with `INVALID_ARGS`, and `label` together with
+`localizedLabel` is refused with a plain `Error`, both before any native call.
+
+Give the languages as BCP 47 tags (`'en'`, `'pt-BR'`, `'zh-Hant-TW'`). They are sent as given:
+the bridge only reads an underscore as a hyphen (`'pt_BR'` is `'pt-BR'`), on Android and iOS
+alike. Nothing is checked in JS: the native SDK validates the label when the call reaches it,
+and a label it refuses rejects with a `LOCALIZED_TEXT_…` code, with the language it names in
+`languageCode`:
+
+```ts
+try {
+  await fetchOrCreateClientObjectRelatedPost(post);
+} catch (error) {
+  if (isClientPostError(error) && error.code === 'LOCALIZED_TEXT_BLANK_TEXT') {
+    // error.languageCode is the language whose label is blank
+  }
+}
+```
+
+These codes are new members of `ClientPostErrorCode` and `NavigateToOctopusCreatePostErrorCode`:
+an exhaustive `switch` over either needs them. As before, a bridge post's content only counts when
+the post is created: changing the button of an object whose post already exists does not change
+that post.
+
+### Type-level changes
+
+Nothing is removed or renamed, and no call that worked in 1.15 fails at runtime, but TypeScript
+can reject code that compiled against 1.15:
+
+- **`OctopusPostCTA.label` is optional** (see "Per-language button labels" above): code that
+  reads it needs `?? ''` or a narrowing check.
+- **`fetchOrCreateClientObjectRelatedPost` takes an optional per-call `tokenProvider`** as its
+  second parameter. A point-free callback now passes the array index there, which TypeScript
+  refuses (TS2345); wrap it:
+
+  ```ts
+  // Before
+  await Promise.all(articles.map(fetchOrCreateClientObjectRelatedPost));
+
+  // After
+  await Promise.all(
+    articles.map((post) => fetchOrCreateClientObjectRelatedPost(post))
+  );
+  ```
+
+  In plain JavaScript a non-function second argument is ignored, and the global bridge-share token
+  listener signs as before.
+- **`ScreenType` has a new member, `'communityAccessDenied'`**, reported by the `screenDisplayed`
+  SDK event for the access denied screen (it was `'unknown'` before). A `Record<ScreenType, …>`
+  or an exhaustive `switch` over `ScreenType` needs it.
+- **`ClientPostErrorCode` and `NavigateToOctopusCreatePostErrorCode` have new `LOCALIZED_TEXT_…`
+  members** (see "Per-language button labels" above): an exhaustive `switch` over either needs them.
+
 ## 1.15.0
 
 The wrapped native SDKs move to the **1.15** line (Android 1.15.0, iOS 1.15.0), which removes

@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.15.3**](../README.md)
+[**@octopus-community/react-native v1.16.0**](../README.md)
 
 ---
 
@@ -63,6 +63,14 @@ Reply icons.
 > `optional` **report**: `ImageResolvedAssetSource`
 
 The "report" action of a content.
+
+---
+
+### translation?
+
+> `optional` **translation**: `ImageResolvedAssetSource`
+
+The "See original" / "See translation" toggle of a translated post, comment or reply.
 
 ---
 

@@ -328,6 +328,7 @@ describe('module-level event inventory', () => {
     'backRequested',
     'bridgeShareTokenRequest',
     'clientObjectPostChanged',
+    'communityAccessDeniedReasonChanged',
     'communityDataChanged',
     'connectionStateChanged',
     'editUser',

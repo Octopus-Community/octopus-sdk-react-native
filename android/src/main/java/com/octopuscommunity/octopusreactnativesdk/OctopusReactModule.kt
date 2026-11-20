@@ -16,6 +16,7 @@ import com.octopuscommunity.sdk.InternalOctopusApi
 import com.octopuscommunity.sdk.OctopusProfile
 import com.octopuscommunity.sdk.OctopusSDK
 import com.octopuscommunity.sdk.domain.model.OctopusGroup
+import com.octopuscommunity.sdk.domain.model.OctopusLocalizedText
 import com.octopuscommunity.sdk.domain.model.OctopusPrefilledPost
 import com.octopuscommunity.sdk.domain.model.SyncFollowGroupAction
 import com.octopuscommunity.sdk.domain.model.SyncFollowGroupStatus
@@ -44,6 +45,7 @@ class OctopusReactModule(reactContext: ReactApplicationContext) :
   private val coroutineScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
   private var notSeenNotificationsJob: Job? = null
   private var hasAccessToCommunityJob: Job? = null
+  private var communityAccessDeniedReasonJob: Job? = null
   private var eventsJob: Job? = null
   private var communityDataJob: Job? = null
   private var profileJob: Job? = null
@@ -70,7 +72,9 @@ class OctopusReactModule(reactContext: ReactApplicationContext) :
 
   @ReactMethod
   fun initialize(options: ReadableMap, promise: Promise) {
-    val success = sdkInitializer.initialize(reactApplicationContext, options, promise)
+    val success = sdkInitializer.initialize(reactApplicationContext, options, promise) {
+      ssoAuthenticator.endSession()
+    }
     // Start observing reactive events after SDK initialization succeeds
     if (success) {
       startObservingReactiveEvents()
@@ -588,20 +592,20 @@ class OctopusReactModule(reactContext: ReactApplicationContext) :
 
   @ReactMethod
   fun navigateToOctopusCreatePost(options: ReadableMap?, promise: Promise) {
-    val text = options?.takeIf { it.hasKey("text") }?.getString("text")
-    val imageUri = options?.takeIf { it.hasKey("imageUri") }?.getString("imageUri")
-    val topicId = options?.takeIf { it.hasKey("topicId") }?.getString("topicId")
-    val ctaUrl = options?.takeIf { it.hasKey("ctaUrl") }?.getString("ctaUrl")
-    val ctaLabel = options?.takeIf { it.hasKey("ctaLabel") }?.getString("ctaLabel")
+    val rawPrefilledPost = RawPrefilledPost.read(options)
 
     try {
       // Validate up front so a bad prefill rejects instead of opening the UI. OctopusActivity
       // repeats this exact build from the same raw fields once launched.
-      PrefilledPostBuilder.build(reactApplicationContext, text, imageUri, topicId, ctaUrl, ctaLabel)
+      rawPrefilledPost.build(reactApplicationContext)
     } catch (e: OctopusPrefilledPost.ValidationError) {
       promise.reject(e.toBridgeErrorCode(), e.message, e)
       return
+    } catch (e: OctopusLocalizedText.ValidationError) {
+      promise.rejectLocalizedText(e)
+      return
     } catch (e: Exception) {
+      // Includes TooManyImagesError, which the JS layer already refuses with its own error.
       promise.reject("NAVIGATE_TO_CREATE_POST_ERROR", e.message ?: "Invalid prefilled post", e)
       return
     }
@@ -613,11 +617,7 @@ class OctopusReactModule(reactContext: ReactApplicationContext) :
         options.getBoolean("interceptProfileTaps")
       intent.putExtra(OctopusActivity.EXTRA_INTERCEPT_PROFILE_TAPS, interceptProfileTaps)
       intent.putExtra(OctopusActivity.EXTRA_INITIAL_SCREEN_TYPE, "createPost")
-      text?.let { intent.putExtra(OctopusActivity.EXTRA_CREATE_POST_TEXT, it) }
-      imageUri?.let { intent.putExtra(OctopusActivity.EXTRA_CREATE_POST_IMAGE_URI, it) }
-      topicId?.let { intent.putExtra(OctopusActivity.EXTRA_CREATE_POST_TOPIC_ID, it) }
-      ctaUrl?.let { intent.putExtra(OctopusActivity.EXTRA_CREATE_POST_CTA_URL, it) }
-      ctaLabel?.let { intent.putExtra(OctopusActivity.EXTRA_CREATE_POST_CTA_LABEL, it) }
+      rawPrefilledPost.putExtras(intent)
       reactApplicationContext.startActivity(intent)
       promise.resolve(null)
     } catch (e: Exception) {
@@ -664,6 +664,7 @@ class OctopusReactModule(reactContext: ReactApplicationContext) :
       promise.reject("SWITCH_COMMUNITY_ERROR", "connectionMode is required", null)
       return
     }
+    ssoAuthenticator.endSession()
     coroutineScope.launch {
       try {
         val connectionMode = sdkInitializer.parseConnectionMode(options)
@@ -675,6 +676,7 @@ class OctopusReactModule(reactContext: ReactApplicationContext) :
           connectionMode = connectionMode,
           apiServer = apiServer
         )
+        sdkInitializer.rememberConfiguration(reactApplicationContext, apiKey, connectionMode, apiServer)
         startObservingReactiveEvents()
         promise.resolve(null)
       } catch (e: Exception) {
@@ -689,9 +691,11 @@ class OctopusReactModule(reactContext: ReactApplicationContext) :
    */
   @ReactMethod
   fun reset(promise: Promise) {
+    ssoAuthenticator.endSession()
     coroutineScope.launch {
       try {
         OctopusSDK.reset()
+        sdkInitializer.forgetConfiguration()
         promise.resolve(null)
       } catch (e: Exception) {
         promise.reject("RESET_ERROR", e.message ?: "Failed to reset the Octopus SDK", e)
@@ -707,8 +711,10 @@ class OctopusReactModule(reactContext: ReactApplicationContext) :
    */
   @ReactMethod
   fun stop(promise: Promise) {
+    ssoAuthenticator.endSession()
     try {
       OctopusSDK.stop()
+      sdkInitializer.forgetConfiguration()
       promise.resolve(null)
     } catch (e: Exception) {
       promise.reject("STOP_ERROR", e.message ?: "Failed to stop the Octopus SDK", e)
@@ -851,6 +857,7 @@ class OctopusReactModule(reactContext: ReactApplicationContext) :
   private fun startObservingReactiveEvents() {
     startNotSeenNotificationsCollection()
     startHasAccessToCommunityCollection()
+    startCommunityAccessDeniedReasonCollection()
     startEventsCollection()
     wireGroupAccessDeniedCallback()
     startProfileCollection()
@@ -892,6 +899,15 @@ class OctopusReactModule(reactContext: ReactApplicationContext) :
     hasAccessToCommunityJob = coroutineScope.launch {
       OctopusSDK.hasAccessToCommunity.collect { hasAccess ->
         eventEmitter.emitHasAccessToCommunityChanged(hasAccess)
+      }
+    }
+  }
+
+  private fun startCommunityAccessDeniedReasonCollection() {
+    communityAccessDeniedReasonJob?.cancel()
+    communityAccessDeniedReasonJob = coroutineScope.launch {
+      OctopusSDK.communityAccessDeniedReason.collect { reason ->
+        eventEmitter.emitCommunityAccessDeniedReasonChanged(reason?.name)
       }
     }
   }
@@ -963,6 +979,7 @@ class OctopusReactModule(reactContext: ReactApplicationContext) :
    * [ReactApplicationContext] — behind a flow that outlives them both.
    */
   override fun invalidate() {
+    ssoAuthenticator.dispose()
     coroutineScope.cancel()
     super.invalidate()
   }
@@ -972,17 +989,20 @@ class OctopusReactModule(reactContext: ReactApplicationContext) :
   /**
    * Fetches the bridge post linked to a client object, creating it on first call.
    *
-   * The token provider is taken from [BridgeShareTokenBroker] rather than from a call
-   * parameter: a `suspend` lambda cannot cross the React Native bridge, so JS registers one
-   * signer globally (`addBridgeShareTokenRequestListener`) and every signing path — this one
-   * and the create-post editor's prefilled share — consults it. When JS registered none,
-   * `providerOrNull()` returns `null` and the native SDK creates the post unsigned, matching
-   * the optional `tokenProvider` parameter's own default.
+   * [tokenProviderId] routes signing requests to this call's JS provider. Without it the
+   * globally registered signer is used, or the post is created unsigned if none exists.
    */
   @ReactMethod
-  fun fetchOrCreateClientObjectRelatedPost(clientPost: ReadableMap, promise: Promise) {
+  fun fetchOrCreateClientObjectRelatedPost(
+    clientPost: ReadableMap,
+    tokenProviderId: String?,
+    promise: Promise
+  ) {
     val decoded = try {
       ClientObjectBridge.decodeClientPost(reactApplicationContext, clientPost)
+    } catch (e: OctopusLocalizedText.ValidationError) {
+      promise.rejectLocalizedText(e)
+      return
     } catch (e: IllegalArgumentException) {
       promise.reject("INVALID_ARGS", e.message ?: "Invalid clientPost", e)
       return
@@ -991,7 +1011,7 @@ class OctopusReactModule(reactContext: ReactApplicationContext) :
       try {
         val res = OctopusSDK.fetchOrCreateClientObjectRelatedPost(
           clientPost = decoded,
-          tokenProvider = BridgeShareTokenBroker.providerOrNull()
+          tokenProvider = BridgeShareTokenBroker.providerOrNull(tokenProviderId)
         )
         when (res) {
           is OctopusResult.Success ->
@@ -1004,6 +1024,8 @@ class OctopusReactModule(reactContext: ReactApplicationContext) :
         }
       } catch (e: Exception) {
         promise.reject("CLIENT_POST_ERROR", e.message ?: "Unknown error", e)
+      } finally {
+        tokenProviderId?.let { BridgeShareTokenBroker.cancelRequests(it) }
       }
     }
   }

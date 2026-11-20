@@ -1,6 +1,7 @@
 import type { EmitterSubscription } from 'react-native';
 import { LogLevel } from '../enums/LogLevel.enum';
 import { eventEmitter } from './eventEmitter';
+import { errorSummary } from './errorSummary';
 import { log } from './logger';
 
 /** What `openUI({ onBackRequested })` accepts — see its TSDoc for the contract. */
@@ -56,7 +57,11 @@ export function setFullscreenBackRequestedCallback(
     } catch (error: unknown) {
       // The emitter has no error channel; an exception escaping here would be an unhandled
       // rejection with no indication of where it came from.
-      log(LogLevel.ERROR, 'The openUI onBackRequested callback threw.', error);
+      log(
+        LogLevel.ERROR,
+        'The openUI onBackRequested callback threw.',
+        errorSummary(error)
+      );
     }
   });
 }

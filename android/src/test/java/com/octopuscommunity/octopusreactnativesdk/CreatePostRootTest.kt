@@ -55,7 +55,7 @@ class CreatePostRootTest {
     val info = PrefilledPostBuilder.build(
       context = RuntimeEnvironment.getApplication(),
       text = "Draft from the host app / with ? and #",
-      imageUri = "file:///tmp/draft.png",
+      imageUris = listOf("file:///tmp/draft.png"),
       topicId = "group-1",
       ctaUrl = "https://example.com/item?x=1&y=2#details",
       ctaLabel = "Learn more",
@@ -65,13 +65,42 @@ class CreatePostRootTest {
       OctopusDestination.CreatePost(
         groupId = "group-1",
         prefilledText = "Draft from the host app / with ? and #",
-        prefilledImageUri = "file:///tmp/draft.png",
+        prefilledImageUris = listOf("file:///tmp/draft.png"),
         prefilledCustomActionLabel = "Learn more",
         prefilledCustomActionUrl = "https://example.com/item?x=1&y=2#details",
       ),
       navController.currentBackStackEntry!!.toRoute<OctopusDestination.CreatePost>()
     )
     assertNull(navController.previousBackStackEntry)
+  }
+
+  private fun routeWithImages(imageUris: List<String>): OctopusDestination.CreatePost {
+    val info = PrefilledPostBuilder.build(
+      context = RuntimeEnvironment.getApplication(),
+      text = null,
+      imageUris = imageUris,
+      topicId = null,
+      ctaUrl = null,
+      ctaLabel = null,
+    )
+    return controller(info).currentBackStackEntry!!.toRoute<OctopusDestination.CreatePost>()
+  }
+
+  @Test
+  fun `ten identical prefilled images survive route serialization without deduplication`() {
+    val images = List(10) { "file:///tmp/draft.png" }
+    assertEquals(images, routeWithImages(images).prefilledImageUris)
+  }
+
+  @Test
+  fun `ten distinct prefilled images survive route serialization in display order`() {
+    val images = List(10) { "file:///tmp/draft-$it.png" }
+    assertEquals(images, routeWithImages(images).prefilledImageUris)
+  }
+
+  @Test
+  fun `empty prefilled images serialize as an editor with no images`() {
+    assertEquals(OctopusDestination.CreatePost(), routeWithImages(emptyList()))
   }
 
   @Test

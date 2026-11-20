@@ -3,15 +3,18 @@ package com.octopuscommunity.octopusreactnativesdk
 import android.content.Context
 import android.net.Uri
 import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.WritableMap
 import com.octopuscommunity.sdk.domain.model.ClientPost
 import com.octopuscommunity.sdk.domain.model.OctopusItem
+import com.octopuscommunity.sdk.domain.model.OctopusLocalizedText
 import com.octopuscommunity.sdk.domain.model.OctopusPost
 import com.octopuscommunity.sdk.domain.model.OctopusReactionKind
 import com.octopuscommunity.sdk.domain.model.Resource
 import com.octopuscommunity.sdk.domain.network.OctopusResult
 import com.octopuscommunity.sdk.domain.repository.ClientPostError
+import java.util.Locale
 
 /**
  * Wire mapping for the client-object bridge: `fetchOrCreateClientObjectRelatedPost`,
@@ -62,6 +65,17 @@ object ClientObjectBridge {
   /**
    * Decodes the JS `ClientPost` object into the native model.
    *
+   * The deprecated single `attachment` becomes the only element of `medias`, which is what the
+   * native SDK reads it as (`images` is `medias`, else the attachment). Both at once are refused
+   * here (`require`, reported as `INVALID_ARGS`). More than the native maximum is not counted
+   * here: the native SDK refuses it with a `FileError`.
+   *
+   * The button label arrives as the flat fields of [decodeLocalizedText]: the deprecated
+   * `viewObjectButtonText` alone is an auto-translated label, as the native `String`
+   * constructors make it.
+   *
+   * @throws OctopusLocalizedText.ValidationError when the per-language button label is invalid;
+   * the caller rejects with its own code (see [rejectLocalizedText]).
    * @throws IllegalArgumentException when a required field is missing, so the caller can
    * reject with `INVALID_ARGS` rather than letting the native SDK report a content error for
    * what is really a wiring mistake.
@@ -75,14 +89,33 @@ object ClientObjectBridge {
       ?: throw IllegalArgumentException("objectId is required and must be non-empty")
     val text = map.getStringOrNull("text")?.takeIf { it.isNotBlank() }
       ?: throw IllegalArgumentException("text is required and must be non-empty")
+    val attachment = map.getMapOrNull("attachment")?.let { decodeAttachment(context, it, "attachment") }
+    val medias = decodeMedias(context, map)
+    require(attachment == null || medias.isEmpty()) { "Set medias only: attachment is deprecated." }
+    val viewObjectButton = decodeLocalizedText(
+      text = map.getStringOrNull("viewObjectButtonText"),
+      language = map.getStringOrNull("viewObjectButtonLanguage"),
+      texts = PrefilledPostBuilder.readStringMap(map, "viewObjectButtonTexts"),
+    )
     return ClientPost(
       objectId = objectId,
+      viewObjectButton = viewObjectButton,
       text = text,
-      attachment = map.getMapOrNull("attachment")?.let { decodeAttachment(context, it) },
       catchPhrase = map.getStringOrNull("catchPhrase"),
-      viewObjectButtonText = map.getStringOrNull("viewObjectButtonText"),
-      groupId = map.getStringOrNull("groupId")
+      groupId = map.getStringOrNull("groupId"),
+      medias = medias.ifEmpty { listOfNotNull(attachment) },
     )
+  }
+
+  /** Decodes the JS `medias` array, each entry with [decodeAttachment]'s fail-fast rule. */
+  private fun decodeMedias(context: Context, map: ReadableMap): List<Resource> {
+    if (!map.hasKey("medias") || map.isNull("medias")) return emptyList()
+    val array = map.getArray("medias") ?: return emptyList()
+    return (0 until array.size()).map { index ->
+      val entry = if (array.isNull(index)) null else runCatching { array.getMap(index) }.getOrNull()
+      entry?.let { decodeAttachment(context, it, "medias[$index]") }
+        ?: throw IllegalArgumentException("medias[$index] must be an attachment object")
+    }
   }
 
   /**
@@ -99,26 +132,27 @@ object ClientObjectBridge {
    * permanent, and the host would learn about it only by looking at its own community.
    * Fail-fast is the only outcome that lets them retry with a working URI.
    *
+   * @param field Names the attachment in error messages: `attachment` or `medias[<index>]`.
    * @throws IllegalArgumentException when the attachment cannot be resolved.
    */
-  private fun decodeAttachment(context: Context, map: ReadableMap): Resource {
+  private fun decodeAttachment(context: Context, map: ReadableMap, field: String): Resource {
     when (val type = map.getStringOrNull("type")) {
       "remoteImage" -> {
         val url = map.getStringOrNull("url")?.takeIf { it.isNotBlank() }
-          ?: throw IllegalArgumentException("attachment.url is required and must be non-empty")
+          ?: throw IllegalArgumentException("$field.url is required and must be non-empty")
         return Resource.Remote(url = url)
       }
 
       "localImage" -> {
         val uri = map.getStringOrNull("uri")?.takeIf { it.isNotBlank() }
-          ?: throw IllegalArgumentException("attachment.uri is required and must be non-empty")
+          ?: throw IllegalArgumentException("$field.uri is required and must be non-empty")
         val resolved = resolveLocalImageUri(context, uri)
-          ?: throw IllegalArgumentException("attachment.uri could not be resolved: $uri")
+          ?: throw IllegalArgumentException("$field.uri could not be resolved: $uri")
         return Resource.Local(uri = resolved)
       }
 
       else -> throw IllegalArgumentException(
-        "attachment.type must be 'remoteImage' or 'localImage', got: ${type ?: "none"}"
+        "$field.type must be 'remoteImage' or 'localImage', got: ${type ?: "none"}"
       )
     }
   }
@@ -243,3 +277,92 @@ internal fun OctopusResult.Failure<ClientPostError>.toClientPostBridgeError(): P
     is OctopusResult.Failure.InvalidArguments -> error.toBridgeErrorCode() to errorMessage
     else -> "SERVER_ERROR" to toString()
   }
+
+/**
+ * Builds the native [OctopusLocalizedText] from the flat wire fields the JS
+ * `localizedTextToWire` sends (`src/internals/localizedText.ts`): per language as soon as
+ * [language] or [texts] is set, else [text] auto-translated, else `null`.
+ *
+ * Each language tag goes through [languageTagLocale] (an underscore read as a hyphen, then
+ * [Locale.forLanguageTag], as the iOS bridge does with `Locale(identifier:)`), and the native
+ * [OctopusLocalizedText.PerLanguage] does the validation, so the rules — and the codes the
+ * caller rejects with — are the native SDK's. One rule needs help here: two tags giving the same
+ * [Locale] (`en-US` and `en-us`, `pt-BR` and `pt_BR`) would silently collapse into one map entry,
+ * so the collision is reported here, as the iOS bridge reports it rather than trap on a duplicate
+ * dictionary key. When the shared locale has no language (`""`, `"und"`, `"x"`, `"123"` all give
+ * [Locale.ROOT]), it is reported as [OctopusLocalizedText.ValidationError.EmptyLanguage], the
+ * reason the native SDK gives for each of those tags; otherwise as the native SDK's own
+ * [OctopusLocalizedText.ValidationError.DuplicateLanguage]. The tags are read in sorted order,
+ * as on iOS, so the error reported does not depend on the order of [texts].
+ *
+ * @throws OctopusLocalizedText.ValidationError when the per-language text is invalid.
+ */
+internal fun decodeLocalizedText(
+  text: String?,
+  language: String?,
+  texts: Map<String, String>?,
+): OctopusLocalizedText? {
+  if (language == null && texts == null) return text?.let { OctopusLocalizedText.AutoTranslated(it) }
+  val byLocale = LinkedHashMap<Locale, String>()
+  texts.orEmpty().toSortedMap().forEach { (tag, label) ->
+    val locale = languageTagLocale(tag)
+    if (byLocale.put(locale, label) != null) {
+      // Tags without a language all give Locale.ROOT: the native SDK refuses each of them as
+      // EmptyLanguage, so their collision is not a duplicate.
+      if (locale.language.isEmpty()) throw OctopusLocalizedText.ValidationError.EmptyLanguage
+      // The code the native SDK sends for this locale, asked of the native SDK itself.
+      val code = OctopusLocalizedText.PerLanguage(mapOf(locale to label), locale).defaultLanguageCode
+      throw OctopusLocalizedText.ValidationError.DuplicateLanguage(code)
+    }
+  }
+  return OctopusLocalizedText.PerLanguage(
+    texts = byLocale,
+    defaultLanguage = languageTagLocale(language ?: ""),
+  )
+}
+
+/**
+ * The [Locale] of a language tag as JS gives it. The only conversion both bridges make, the same
+ * way: `_` becomes `-`, so `pt_BR` is the language tag `pt-BR` (which [Locale.forLanguageTag]
+ * would otherwise read as no language at all). Everything else is the native SDK's to judge.
+ */
+internal fun languageTagLocale(tag: String): Locale = Locale.forLanguageTag(tag.replace('_', '-'))
+
+/**
+ * Maps an [OctopusLocalizedText.ValidationError] to its `LOCALIZED_TEXT_…` code, the same in
+ * `ClientPostErrorCode` and `NavigateToOctopusCreatePostErrorCode`. Exhaustive on purpose: a new
+ * native reason should fail the build here rather than reach JS unmapped.
+ */
+internal fun OctopusLocalizedText.ValidationError.toBridgeErrorCode(): String = when (this) {
+  OctopusLocalizedText.ValidationError.EmptyTexts -> "LOCALIZED_TEXT_EMPTY_TEXTS"
+  is OctopusLocalizedText.ValidationError.BlankText -> "LOCALIZED_TEXT_BLANK_TEXT"
+  OctopusLocalizedText.ValidationError.EmptyLanguage -> "LOCALIZED_TEXT_EMPTY_LANGUAGE"
+  is OctopusLocalizedText.ValidationError.DuplicateLanguage -> "LOCALIZED_TEXT_DUPLICATE_LANGUAGE"
+  is OctopusLocalizedText.ValidationError.DefaultLanguageMissing ->
+    "LOCALIZED_TEXT_DEFAULT_LANGUAGE_MISSING"
+}
+
+/** The language a validation error names, when it names one. */
+internal val OctopusLocalizedText.ValidationError.faultyLanguageCode: String?
+  get() = when (this) {
+    is OctopusLocalizedText.ValidationError.BlankText -> languageCode
+    is OctopusLocalizedText.ValidationError.DuplicateLanguage -> languageCode
+    is OctopusLocalizedText.ValidationError.DefaultLanguageMissing -> languageCode
+    OctopusLocalizedText.ValidationError.EmptyTexts,
+    OctopusLocalizedText.ValidationError.EmptyLanguage -> null
+  }
+
+/**
+ * Rejects with the code of [error], its language code in `userInfo.languageCode` — which the JS
+ * side copies onto the error as `languageCode`, as iOS does.
+ *
+ * @param userInfo The map to fill; a parameter only so a JVM test, which cannot load the native
+ * map `Arguments.createMap` builds, can pass its own.
+ */
+internal fun Promise.rejectLocalizedText(
+  error: OctopusLocalizedText.ValidationError,
+  userInfo: WritableMap = Arguments.createMap(),
+) {
+  error.faultyLanguageCode?.let { userInfo.putString("languageCode", it) }
+  reject(error.toBridgeErrorCode(), error.message, error, userInfo)
+}

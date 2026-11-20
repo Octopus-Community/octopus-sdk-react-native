@@ -228,18 +228,16 @@ listed in [`CHANGELOG.md`](../CHANGELOG.md).
 
 Any error that might be intercepted by the React Native module will be rejected in the methods you call. If it cannot be intercepted, you may see the underlying SDK's logs in your native logs.
 
-- **iOS crashes when the Octopus UI opens, in `Assets+Generated.swift`** (`Fatal error`, image not
-  found) — the pods are linked as dynamic frameworks. The native UI pod only finds its resource
-  bundle with static frameworks: use `use_frameworks! :linkage => :static` in your `Podfile`, or
-  `"useFrameworks": "static"` in `expo-build-properties` on Expo. Static is the only linkage the
-  example app and the native SDK's CocoaPods validation app are built and tested with. CocoaPods
-  applies it to every pod of the target, so your other pods are linked statically too.
-- **iOS link fails with `Undefined symbol: grpc_…` / `gpr_…`** — another pod depends on
-  `gRPC-Core` (typically Firebase Firestore). Copy
-  [`gRPC-Swift.podspec.json`](https://github.com/Octopus-Community/octopus-sdk-swift/blob/main/CocoaPodsValidationApp/gRPC-Swift.podspec.json)
-  from the native SDK repository next to your `Podfile`, add this line to your app target, then
-  run `pod install` again:
-  ```ruby
-  pod 'gRPC-Swift', :podspec => 'gRPC-Swift.podspec.json'
-  ```
-  `pod 'gRPC-Swift', :modular_headers => true` does not fix this link error.
+- **`pod install` fails with *OctopusReactNativeSdk needs React Native's `spm_dependency`
+  helper*** — the `Podfile` does not load
+  React Native's `react_native_pods.rb`, which defines the helper that attaches the native SDK's
+  Swift package to the `OctopusReactNativeSdk` pod. Every React Native (0.75+) and Expo template
+  loads it; restore the `require` at the top of your `Podfile`.
+- **The iOS build cannot resolve `octopus-sdk-swift`** — Xcode fetches the native SDK and its
+  Swift dependencies from `github.com` on the first build. Give the build machine that access, or
+  resolve once with `xcodebuild -resolvePackageDependencies` and cache the packages directory
+  (`-clonedSourcePackagesDirPath`).
+- **You added `pod 'gRPC-Swift', :podspec => 'gRPC-Swift.podspec.json'`** for an earlier version
+  (the `Undefined symbol: grpc_…` workaround next to Firebase Firestore) — remove that line and
+  run `pod install`: the native SDK now takes gRPC Swift from its Swift package, so that pod is
+  no longer used by Octopus.

@@ -117,6 +117,7 @@ const EVERY_SLOT: DeepRequired<OctopusIcons> = {
     },
     delete: img('46'),
     report: img('47'),
+    translation: img('77'),
   },
   gamification: {
     badge: img('48'),
@@ -172,8 +173,8 @@ describe('flattenIconOverrides', () => {
       ...ICON_ON_OFF_PATHS.flatMap((p) => [`${p}.on`, `${p}.off`]),
     ];
     expect(Object.keys(flat).sort()).toEqual([...expectedKeys].sort());
-    expect(expectedKeys).toHaveLength(76);
-    expect(new Set(Object.values(flat)).size).toBe(76);
+    expect(expectedKeys).toHaveLength(77);
+    expect(new Set(Object.values(flat)).size).toBe(77);
     expect(warnings()).toEqual([]);
   });
 
@@ -337,6 +338,25 @@ describe('initialize sanitises the logo scale', () => {
 });
 
 describe('initialize forwards theme.icons as iconOverrides', () => {
+  it('forwards the translation toggle icon and its scale without warnings', async () => {
+    await initialize({
+      apiKey: 'k',
+      connectionMode: { type: 'sso', appManagedFields: [] },
+      theme: {
+        icons: {
+          content: { translation: { ...img('translation'), scale: 2 } },
+        },
+      },
+    });
+    const { theme } = mockInitialize.mock.calls[0][0];
+    expect(theme.iconOverrides).toEqual({
+      'content.translation': 'asset_translation',
+    });
+    expect(theme.iconOverrideScales).toEqual({ 'content.translation': 2 });
+    expect(theme).not.toHaveProperty('icons');
+    expect(warnings()).toEqual([]);
+  });
+
   it('sends the scale of each icon over the bridge as iconOverrideScales', async () => {
     await initialize({
       apiKey: 'k',

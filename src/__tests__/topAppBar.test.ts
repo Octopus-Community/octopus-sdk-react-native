@@ -64,8 +64,8 @@ describe('initialize forwards topAppBar', () => {
   });
 });
 
-describe('initialize warns on a text title combined with a theme logo', () => {
-  it('logs a WARN when title is text and a theme logo is set', async () => {
+describe('initialize accepts a text title combined with a theme logo', () => {
+  it('forwards both without a divergence warning', async () => {
     const logger = jest.fn();
     setLogger(logger);
     await initialize({
@@ -77,9 +77,13 @@ describe('initialize warns on a text title combined with a theme logo', () => {
     const warnCalls = logger.mock.calls.filter(
       ([level]) => level === LogLevel.WARN
     );
-    expect(warnCalls).toHaveLength(1);
-    expect(warnCalls[0][1]).toMatch(/topAppBar/);
-    expect(warnCalls[0][1]).toMatch(/logo/i);
+    expect(warnCalls).toHaveLength(0);
+    const payload = mockInitialize.mock.calls[0][0];
+    expect(payload.theme.logo.image).toEqual(logo);
+    expect(payload.topAppBar.title).toEqual({
+      type: 'text',
+      text: 'My Community',
+    });
   });
 
   it('does not warn when a text title is used without a theme logo', async () => {

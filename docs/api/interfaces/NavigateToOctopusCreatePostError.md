@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.15.3**](../README.md)
+[**@octopus-community/react-native v1.16.0**](../README.md)
 
 ---
 
@@ -27,6 +27,17 @@ The error [navigateToOctopusCreatePost](../functions/navigateToOctopusCreatePost
 ### code
 
 > `readonly` **code**: `string` & `object` \| [`NavigateToOctopusCreatePostErrorCode`](../type-aliases/NavigateToOctopusCreatePostErrorCode.md)
+
+---
+
+### languageCode?
+
+> `readonly` `optional` **languageCode**: `string`
+
+The code of the language at fault (`'en'`, `'pt-BR'`), for `LOCALIZED_TEXT_BLANK_TEXT`,
+`LOCALIZED_TEXT_DUPLICATE_LANGUAGE` and `LOCALIZED_TEXT_DEFAULT_LANGUAGE_MISSING`. It is the
+code the native SDK built from your language tag, so its case may differ from what you
+wrote. Absent for every other code.
 
 ---
 

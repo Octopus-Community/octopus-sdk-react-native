@@ -786,7 +786,13 @@ it('runs contentOptions preset 7 with optional text and keeps the other flags en
       await jest.advanceTimersByTimeAsync(300);
     });
     expect(Octopus.debugOverrideContentOptions).toHaveBeenLastCalledWith({
-      post: { enablePictures: true, enablePolls: true, textRequired: false },
+      post: {
+        enablePictures: true,
+        enablePolls: true,
+        textRequired: false,
+        imageTapOpensPost: false,
+        groupNameTapOpensGroup: false,
+      },
       comment: { enablePictures: true },
       reply: { enablePictures: true },
     });
@@ -798,6 +804,119 @@ it('runs contentOptions preset 7 with optional text and keeps the other flags en
     jest.useRealTimers();
   }
 });
+
+it.each([
+  [8, true, false],
+  [9, false, true],
+  [10, true, true],
+] as const)(
+  'runs contentOptions tap preset %s and resets previous customization',
+  async (preset, image, group) => {
+    jest.useFakeTimers();
+    let tree!: ReactTestRenderer;
+    try {
+      await act(async () => {
+        tree = create(<ScenariosScreen {...scenarioProps()} />);
+      });
+      act(() =>
+        tree.root
+          .findByProps({ testID: 'scenarios-search-input' })
+          .props.onChangeText('debugOverrideContentOptions')
+      );
+      act(() =>
+        tree.root
+          .findByProps({ testID: 'scenarios-contentOptions-card' })
+          .props.onPress()
+      );
+      // Presets must replace every input, including a pending clear override.
+      for (const testID of [
+        'qa-param-contentOptions-post-pictures',
+        'qa-param-contentOptions-post-polls',
+        'qa-param-contentOptions-post-text',
+        'qa-param-contentOptions-comment-pictures',
+        'qa-param-contentOptions-reply-pictures',
+        'qa-param-contentOptions-post-taps-image',
+        'qa-param-contentOptions-post-taps-group',
+        'qa-preset-contentOptions-clear',
+      ]) {
+        act(() => tree.root.findByProps({ testID }).props.onPress());
+      }
+      await act(async () => {
+        tree.root
+          .findByProps({ testID: `qa-preset-contentOptions-${preset}` })
+          .props.onPress();
+        await jest.advanceTimersByTimeAsync(300);
+      });
+      const expected = {
+        post: {
+          enablePictures: true,
+          enablePolls: true,
+          textRequired: true,
+          imageTapOpensPost: image,
+          groupNameTapOpensGroup: group,
+        },
+        comment: { enablePictures: true },
+        reply: { enablePictures: true },
+      };
+      expect(Octopus.debugOverrideContentOptions).toHaveBeenLastCalledWith(
+        expected
+      );
+      // The controls now describe the applied preset: running again sends the same payload.
+      await act(async () => {
+        tree.root
+          .findByProps({ testID: 'qa-run-contentOptions' })
+          .props.onPress();
+        await jest.advanceTimersByTimeAsync(300);
+      });
+      expect(Octopus.debugOverrideContentOptions).toHaveBeenLastCalledWith(
+        expected
+      );
+      // Each tap option can be forced off after a preset.
+      for (const flag of ['image', 'group']) {
+        if ((flag === 'image' && image) || (flag === 'group' && group)) {
+          act(() =>
+            tree.root
+              .findByProps({
+                testID: `qa-param-contentOptions-post-taps-${flag}`,
+              })
+              .props.onPress()
+          );
+        }
+      }
+      await act(async () => {
+        tree.root
+          .findByProps({ testID: 'qa-preset-contentOptions-1' })
+          .props.onPress();
+        await jest.advanceTimersByTimeAsync(300);
+      });
+      expect(Octopus.debugOverrideContentOptions).toHaveBeenLastCalledWith({
+        ...expected,
+        post: {
+          ...expected.post,
+          imageTapOpensPost: false,
+          groupNameTapOpensGroup: false,
+        },
+      });
+      act(() =>
+        tree.root
+          .findByProps({ testID: 'qa-preset-contentOptions-clear' })
+          .props.onPress()
+      );
+      await act(async () => {
+        tree.root
+          .findByProps({ testID: 'qa-run-contentOptions' })
+          .props.onPress();
+        await jest.advanceTimersByTimeAsync(300);
+      });
+      expect(Octopus.debugOverrideContentOptions).toHaveBeenLastCalledWith(
+        null
+      );
+    } finally {
+      if (tree) act(() => tree.unmount());
+      jest.useRealTimers();
+    }
+  }
+);
 
 it('runs the three nickname presets without changing profile lock or host-managed fields', async () => {
   jest.useFakeTimers();

@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.15.3**](../README.md)
+[**@octopus-community/react-native v1.16.0**](../README.md)
 
 ---
 
@@ -8,4 +8,4 @@
 
 > **OctopusClientPostAttachment** = [`OctopusLocalImageAttachment`](../interfaces/OctopusLocalImageAttachment.md) \| [`OctopusRemoteImageAttachment`](../interfaces/OctopusRemoteImageAttachment.md)
 
-The image attached to a [ClientPost](../interfaces/ClientPost.md) — either bundled/local, or web-hosted.
+An image attached to a [ClientPost](../interfaces/ClientPost.md) — either bundled/local, or web-hosted.

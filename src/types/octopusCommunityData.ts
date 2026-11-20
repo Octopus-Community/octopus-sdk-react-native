@@ -1,14 +1,16 @@
 /**
  * A user's gamification standing in the community.
  *
- * Present only when gamification is enabled for the community.
+ * Present only when gamification is enabled for the community and the profile
+ * is not tagged as an admin.
  */
 export interface OctopusGamification {
   /** The user's gamification level index. */
   level: number;
   /**
-   * The user's gamification score (points). Available to back-office consumers only; `null` for
-   * regular consumers, as the backend does not expose it on public profiles today.
+   * The member's total points on Android and iOS with native SDK 1.16.0.
+   * A total of zero is returned as `0`. The score is `null` when the server
+   * omits the total.
    */
   score: number | null;
 }
@@ -23,7 +25,7 @@ export interface OctopusGamification {
  * Note the naming asymmetry with the native SDKs: Android names this id `userId`, iOS names it
  * `profileId`. This wrapper follows the Flutter wrapper's precedent and names it `profileId`.
  *
- * @see {@link fetchCommunityData} – one-shot refresh.
+ * @see {@link fetchCommunityData} – one-shot lookup.
  * @see {@link startObservingCommunityData} / {@link addCommunityDataListener} – reactive updates.
  */
 export interface OctopusCommunityData {
@@ -31,7 +33,10 @@ export interface OctopusCommunityData {
   profileId: string;
   /** The user's aggregate message count in the community, or `null` when unavailable. */
   messageCount: number | null;
-  /** The user's gamification standing, or `null` when gamification is disabled. */
+  /**
+   * The user's gamification standing, or `null` when gamification is disabled
+   * or the profile is tagged as an admin.
+   */
   gamification: OctopusGamification | null;
 }
 

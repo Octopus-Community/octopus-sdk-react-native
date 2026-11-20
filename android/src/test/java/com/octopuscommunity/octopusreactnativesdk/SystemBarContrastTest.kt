@@ -12,7 +12,7 @@ class SystemBarContrastTest {
 
   @Test
   fun crossoverIsWhereWhiteAndBlackContrastEqually() {
-    assertEquals((sqrt(1.05 * 0.05) - 0.05).toFloat(), WCAG_CROSSOVER, 0.0001f)
+    assertEquals((sqrt(1.05 * 0.05) - 0.05).toFloat(), WCAG_CROSSOVER, 1e-6f)
   }
 
   @Test

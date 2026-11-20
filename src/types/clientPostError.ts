@@ -3,7 +3,9 @@
  * error.
  *
  * The first sixteen codes are content/validation failures produced by the native
- * `ClientPostError` hierarchy. Then come the connection-level outcomes both bridges flatten
+ * `ClientPostError` hierarchy, and the five `LOCALIZED_TEXT_…` ones the native
+ * `OctopusLocalizedText` validation of {@link ClientPost.viewObjectButton} raises. Those five
+ * are raised before the post is created, the same on both platforms. Then come the connection-level outcomes both bridges flatten
  * into the same rejection, following the {@link SetReactionErrorCode} precedent, and finally
  * the two the bridge raises itself: `INVALID_ARGS`, and the one code that belongs to
  * {@link addClientObjectRelatedPostListener} rather than to
@@ -27,11 +29,16 @@
  * | `INVALID_AUTHOR` | The connected user is not authorised to create posts for this object. | Android |
  * | `TOKEN_INVALID` | The bridge signature returned by your token provider is invalid or malformed. | Android |
  * | `TOKEN_EXPIRED` | The bridge signature returned by your token provider has expired. | Android |
+ * | `LOCALIZED_TEXT_EMPTY_TEXTS` | `viewObjectButton` is per language and gives no text. | Android, iOS |
+ * | `LOCALIZED_TEXT_BLANK_TEXT` | A text of a per-language `viewObjectButton` is blank; `languageCode` names its language. | Android, iOS |
+ * | `LOCALIZED_TEXT_EMPTY_LANGUAGE` | A language of a per-language `viewObjectButton` has no language part. | Android, iOS |
+ * | `LOCALIZED_TEXT_DUPLICATE_LANGUAGE` | Two languages of a per-language `viewObjectButton` give the same code; `languageCode` names it. | Android, iOS |
+ * | `LOCALIZED_TEXT_DEFAULT_LANGUAGE_MISSING` | The default language of a per-language `viewObjectButton` is not one of its languages; `languageCode` names it. | Android, iOS |
  * | `NO_NETWORK` | No network connection was available. Retryable. | Android, iOS |
  * | `NOT_CONNECTED` | No user is connected, or the backend refused the call as unauthenticated / unauthorised. | Android |
  * | `SERVER_ERROR` | The Octopus backend answered with an error. | Android, iOS |
- * | `CLIENT_POST_ERROR` | Anything else, including every failure iOS does not classify. | Android, iOS |
- * | `INVALID_ARGS` | The `clientPost` argument is unusable — `objectId` or `text` missing or blank, or an `attachment` that resolves to no image. Rejected by the bridge before the native SDK is called, so no post is created. | Android, iOS |
+ * | `CLIENT_POST_ERROR` | Anything else, including more than {@link OCTOPUS_POST_MAX_IMAGE_COUNT} `medias` and every failure iOS does not classify. | Android, iOS |
+ * | `INVALID_ARGS` | The `clientPost` argument is unusable — `objectId` or `text` missing or blank, an `attachment` or a `medias` entry that resolves to no image, both `attachment` and `medias` set, both `viewObjectButtonText` and `viewObjectButton` set, or a `viewObjectButton` that is not an {@link OctopusLocalizedText}. Rejected by the bridge before the native SDK is called, so no post is created. | Android, iOS |
  * | `START_OBSERVING_CLIENT_OBJECT_POST_ERROR` | {@link addClientObjectRelatedPostListener} could not start its observation — in practice, `initialize()` has not run yet. Not produced by {@link fetchOrCreateClientObjectRelatedPost}. | Android, iOS |
  *
  * ## Why the "Emitted on" column is lopsided
@@ -71,6 +78,11 @@ export type ClientPostErrorCode =
   | 'INVALID_AUTHOR'
   | 'TOKEN_INVALID'
   | 'TOKEN_EXPIRED'
+  | 'LOCALIZED_TEXT_EMPTY_TEXTS'
+  | 'LOCALIZED_TEXT_BLANK_TEXT'
+  | 'LOCALIZED_TEXT_EMPTY_LANGUAGE'
+  | 'LOCALIZED_TEXT_DUPLICATE_LANGUAGE'
+  | 'LOCALIZED_TEXT_DEFAULT_LANGUAGE_MISSING'
   | 'NO_NETWORK'
   | 'NOT_CONNECTED'
   | 'SERVER_ERROR'
@@ -91,6 +103,13 @@ export interface ClientPostError extends Error {
    * default branch.
    */
   readonly code: ClientPostErrorCode | (string & {});
+  /**
+   * The code of the language at fault (`'en'`, `'pt-BR'`), for `LOCALIZED_TEXT_BLANK_TEXT`,
+   * `LOCALIZED_TEXT_DUPLICATE_LANGUAGE` and `LOCALIZED_TEXT_DEFAULT_LANGUAGE_MISSING`. It is the
+   * code the native SDK built from your language tag, so its case may differ from what you
+   * wrote. Absent for every other code.
+   */
+  readonly languageCode?: string;
 }
 
 /**

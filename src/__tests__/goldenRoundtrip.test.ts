@@ -68,9 +68,13 @@ import { isNavigateToOctopusCreatePostError } from '../types/navigateToOctopusCr
 import { isOverrideCommunityAccessError } from '../types/overrideCommunityAccessError';
 import { fetchOrCreateClientObjectRelatedPost } from '../fetchOrCreateClientObjectRelatedPost';
 import { navigateToOctopusCreatePost } from '../navigateToOctopusCreatePost';
+import { fetchCommunityData } from '../fetchCommunityData';
+import { addCommunityDataListener } from '../addCommunityDataListener';
+import { DeviceEventEmitter } from 'react-native';
 
 const mockFetchOrCreate = jest.fn();
 const mockNavigateToCreatePost = jest.fn();
+const mockFetchCommunityData = jest.fn();
 
 jest.mock('../internals/nativeModule', () => ({
   OctopusReactNativeSdk: {
@@ -82,6 +86,7 @@ jest.mock('../internals/nativeModule', () => ({
       mockFetchOrCreate(...args),
     navigateToOctopusCreatePost: (...args: unknown[]) =>
       mockNavigateToCreatePost(...args),
+    fetchCommunityData: (...args: unknown[]) => mockFetchCommunityData(...args),
   },
 }));
 
@@ -157,6 +162,7 @@ const screenToWire = (screen: ScreenInfo): Wire => {
     case 'settingsList':
     case 'settingsAccount':
     case 'reportExplanation':
+    case 'communityAccessDenied':
     case 'deleteAccount':
     case 'unknown':
       return { type };
@@ -431,6 +437,7 @@ const SCREEN_GOLDENS: Record<ScreenType, Wire> = {
   settingsList: { type: 'settingsList' },
   settingsAccount: { type: 'settingsAccount' },
   reportExplanation: { type: 'reportExplanation' },
+  communityAccessDenied: { type: 'communityAccessDenied' },
   deleteAccount: { type: 'deleteAccount' },
   unknown: { type: 'unknown' },
 };
@@ -674,17 +681,37 @@ describe('read models — golden round-trip', () => {
     );
   });
 
-  it('re-serializes community data, gamification included', () => {
-    const golden: Wire = {
-      profileId: 'profile-1',
-      messageCount: 27,
-      gamification: { level: 4, score: 1200 },
-    };
+  it.each([1200, 0, null])(
+    'preserves community-data score %s through fetch and observation',
+    async (score) => {
+      const golden: OctopusCommunityData = {
+        profileId: 'profile-1',
+        messageCount: 27,
+        gamification: { level: 4, score },
+      };
+      mockFetchCommunityData.mockResolvedValue(golden);
 
-    expect(
-      communityDataToWire(golden as unknown as OctopusCommunityData)
-    ).toStrictEqual(golden);
-  });
+      for (const memberId of [
+        { profileId: 'profile-1' },
+        { clientUserId: 'member-1' },
+      ]) {
+        const fetched = await fetchCommunityData(memberId);
+        expect(communityDataToWire(fetched!)).toStrictEqual(golden);
+      }
+
+      const received: (OctopusCommunityData | null)[] = [];
+      const subscription = addCommunityDataListener((data) =>
+        received.push(data)
+      );
+      try {
+        DeviceEventEmitter.emit('communityDataChanged', golden);
+        expect(received).toStrictEqual([golden]);
+        expect(communityDataToWire(received[0]!)).toStrictEqual(golden);
+      } finally {
+        subscription.remove();
+      }
+    }
+  );
 
   it('keeps the null branches community data sends explicitly', () => {
     // `CommunityDataMapper` calls `putNull` rather than skipping the key, so unlike the event
@@ -810,9 +837,38 @@ describe('write models — outbound wire key-set', () => {
       objectId: 'article-1',
       text: 'A text long enough to pass native validation.',
       attachment: { type: 'localImage', uri: 'file:///tmp/cover.png' },
+      medias: null,
       catchPhrase: 'What do you think?',
       viewObjectButtonText: 'Read the article',
+      viewObjectButtonLanguage: null,
+      viewObjectButtonTexts: null,
       groupId: 'group-1',
+    });
+  });
+
+  it('sends medias in display order, local and remote mixed', async () => {
+    await fetchOrCreateClientObjectRelatedPost({
+      objectId: 'article-1',
+      text: 'A text long enough to pass native validation.',
+      medias: [
+        { type: 'remoteImage', url: 'https://example.com/cover.png' },
+        { type: 'localImage', uri: 'file:///tmp/thumb.png' },
+      ],
+    });
+
+    expect(mockFetchOrCreate.mock.calls[0][0]).toStrictEqual({
+      objectId: 'article-1',
+      text: 'A text long enough to pass native validation.',
+      attachment: null,
+      medias: [
+        { type: 'remoteImage', url: 'https://example.com/cover.png' },
+        { type: 'localImage', uri: 'file:///tmp/thumb.png' },
+      ],
+      catchPhrase: null,
+      viewObjectButtonText: null,
+      viewObjectButtonLanguage: null,
+      viewObjectButtonTexts: null,
+      groupId: null,
     });
   });
 
@@ -828,8 +884,11 @@ describe('write models — outbound wire key-set', () => {
       objectId: 'article-1',
       text: 'A text long enough to pass native validation.',
       attachment: null,
+      medias: null,
       catchPhrase: null,
       viewObjectButtonText: null,
+      viewObjectButtonLanguage: null,
+      viewObjectButtonTexts: null,
       groupId: null,
     });
   });
@@ -850,17 +909,83 @@ describe('write models — outbound wire key-set', () => {
   it('flattens the prefilled post CTA into two wire keys', async () => {
     await navigateToOctopusCreatePost({
       text: 'Draft text',
-      imageUri: 'file:///tmp/cover.png',
+      imageUris: ['file:///tmp/cover.png', 'bundled_image'],
       topicId: 'topic-1',
       cta: { url: 'https://example.com', label: 'Read more' },
     });
 
     expect(mockNavigateToCreatePost.mock.calls[0][0]).toStrictEqual({
       text: 'Draft text',
-      imageUri: 'file:///tmp/cover.png',
+      imageUris: ['file:///tmp/cover.png', 'bundled_image'],
       topicId: 'topic-1',
       ctaUrl: 'https://example.com',
       ctaLabel: 'Read more',
+      ctaLabelLanguage: null,
+      ctaLabelTexts: null,
+    });
+  });
+
+  it('sends a per-language ClientPost button as its language and texts', async () => {
+    await fetchOrCreateClientObjectRelatedPost({
+      objectId: 'article-1',
+      text: 'A text long enough to pass native validation.',
+      viewObjectButton: {
+        type: 'perLanguage',
+        texts: { 'en': 'Read the article', 'pt-BR': 'Ler o artigo' },
+        defaultLanguage: 'en',
+      },
+    });
+
+    expect(mockFetchOrCreate.mock.calls[0][0]).toStrictEqual({
+      objectId: 'article-1',
+      text: 'A text long enough to pass native validation.',
+      attachment: null,
+      medias: null,
+      catchPhrase: null,
+      viewObjectButtonText: null,
+      viewObjectButtonLanguage: 'en',
+      viewObjectButtonTexts: {
+        'en': 'Read the article',
+        'pt-BR': 'Ler o artigo',
+      },
+      groupId: null,
+    });
+  });
+
+  it('flattens a per-language prefilled post CTA label into its wire keys', async () => {
+    await navigateToOctopusCreatePost({
+      cta: {
+        url: 'https://example.com',
+        localizedLabel: {
+          type: 'perLanguage',
+          texts: { 'en': 'Read more', 'zh-Hant-TW': '閱讀更多' },
+          defaultLanguage: 'zh-Hant-TW',
+        },
+      },
+    });
+
+    expect(mockNavigateToCreatePost.mock.calls[0][0]).toStrictEqual({
+      text: null,
+      imageUris: null,
+      topicId: null,
+      ctaUrl: 'https://example.com',
+      ctaLabel: null,
+      ctaLabelLanguage: 'zh-Hant-TW',
+      ctaLabelTexts: { 'en': 'Read more', 'zh-Hant-TW': '閱讀更多' },
+    });
+  });
+
+  it('sends the deprecated single imageUri as a one-element imageUris', async () => {
+    await navigateToOctopusCreatePost({ imageUri: 'file:///tmp/cover.png' });
+
+    expect(mockNavigateToCreatePost.mock.calls[0][0]).toStrictEqual({
+      text: null,
+      imageUris: ['file:///tmp/cover.png'],
+      topicId: null,
+      ctaUrl: null,
+      ctaLabel: null,
+      ctaLabelLanguage: null,
+      ctaLabelTexts: null,
     });
   });
 
@@ -869,10 +994,12 @@ describe('write models — outbound wire key-set', () => {
 
     expect(mockNavigateToCreatePost.mock.calls[0][0]).toStrictEqual({
       text: null,
-      imageUri: null,
+      imageUris: null,
       topicId: null,
       ctaUrl: null,
       ctaLabel: null,
+      ctaLabelLanguage: null,
+      ctaLabelTexts: null,
     });
   });
 

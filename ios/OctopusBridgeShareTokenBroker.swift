@@ -23,6 +23,7 @@ class OctopusBridgeShareTokenBroker {
   /// Both are claimed at once so answering a request also releases its timer.
   private struct PendingRequest {
     let continuation: CheckedContinuation<String?, Never>
+    let tokenProviderId: String?
     var timeoutTask: Task<Void, Never>?
   }
 
@@ -49,10 +50,10 @@ class OctopusBridgeShareTokenBroker {
 
   /// Whether JS has registered a signer (`addBridgeShareTokenRequestListener`).
   ///
-  /// Read when the editor is about to open. It has to be consulted rather than assumed: the
-  /// native `OctopusPrefilledPost.sign` closure has **no "proceed unsigned" channel** — it
-  /// returns a non-optional `String` and throws — so wiring it while nobody is listening would
-  /// turn every prefilled image publish into a client-side failure.
+  /// Read when the editor is about to open. It has to be consulted rather than assumed: wiring
+  /// the native `OctopusPrefilledPost` signing closure while nobody is listening would emit a
+  /// `bridgeShareTokenRequest` no one answers, and hold every prefilled image publish for the
+  /// whole timeout before it goes out unsigned.
   var isProviderRegistered: Bool {
     lock.lock()
     defer { lock.unlock() }
@@ -65,33 +66,51 @@ class OctopusBridgeShareTokenBroker {
     lock.unlock()
   }
 
-  /// Drops the registration and settles every request still in flight as "declined", so a
-  /// publish already waiting on JS is not left hanging until its timeout.
+  /// Drops the global registration and settles its requests as "declined". Per-call signers
+  /// have their own lifetime and must not be interrupted by a global listener being removed.
   func unregisterProvider() {
     lock.lock()
     providerRegistered = false
     lock.unlock()
 
-    for pending in takeAllPendingRequests() {
+    cancelRequests(tokenProviderId: nil)
+  }
+
+  /// Releases unanswered requests belonging to a completed call (or the global signer).
+  func cancelRequests(tokenProviderId: String?) {
+    lock.lock()
+    let requestIds = pendingRequests.compactMap { key, pending in
+      pending.tokenProviderId == tokenProviderId ? key : nil
+    }
+    let requests = requestIds.compactMap { pendingRequests.removeValue(forKey: $0) }
+    lock.unlock()
+    for pending in requests {
       settle(pending, with: nil)
     }
   }
 
-  /// The closure handed to `OctopusPrefilledPost.sign`, or `nil` when JS registered no signer —
-  /// in which case the native SDK sends prefilled shares unsigned, exactly as it did before
-  /// this feature existed.
-  func signClosureOrNil() -> (@Sendable (_ bridgeFingerprint: String) async throws -> String)? {
-    guard isProviderRegistered else { return nil }
+  /// The closure handed to `OctopusPrefilledPost`'s `sign:` (and to
+  /// `fetchOrCreateClientObjectRelatedPost`'s `tokenProvider`), or `nil` when there is no signer
+  /// to ask — in which case the native SDK sends the post unsigned, exactly as it did before this
+  /// feature existed.
+  ///
+  /// With a `tokenProviderId`, every request is routed to that call's JS provider only; without
+  /// one, to the globally registered signer, if any.
+  ///
+  /// A declined signature (JS answered `null`, its signer threw, or nobody answered within the
+  /// timeout) returns `nil`, which the native SDK reads as "send unsigned": the server then
+  /// publishes the post where member pictures are allowed and refuses it where they are not.
+  /// That is what Android's `bridgeShareTokenProvider` does with a `null` reply, so both
+  /// platforms honour the JS contract the same way.
+  func signClosureOrNil(
+    tokenProviderId: String? = nil
+  ) -> (@Sendable (_ bridgeFingerprint: String) async throws -> String?)? {
+    guard tokenProviderId != nil || isProviderRegistered else { return nil }
     return { [weak self] bridgeFingerprint in
       guard let self else { throw BridgeShareSignError.brokerDeallocated }
-      guard let token = await self.requestToken(bridgeFingerprint: bridgeFingerprint) else {
-        // The shape adapter, and the one place iOS and Android diverge. The JS contract has a
-        // `null` reply meaning "publish unsigned", which Android honours; `sign` cannot express
-        // it, so a declined signature fails the publish here rather than sending an empty or
-        // fabricated token. Documented on `useBridgeShareTokenProvider`.
-        throw BridgeShareSignError.notSigned
-      }
-      return token
+      return await self.requestToken(
+        bridgeFingerprint: bridgeFingerprint, tokenProviderId: tokenProviderId
+      )
     }
   }
 
@@ -103,13 +122,13 @@ class OctopusBridgeShareTokenBroker {
   }
 
   /// Emits `bridgeShareTokenRequest` and suspends until JS answers it, or the wait times out.
-  private func requestToken(bridgeFingerprint: String) async -> String? {
+  private func requestToken(bridgeFingerprint: String, tokenProviderId: String?) async -> String? {
     let requestId = UUID().uuidString
 
     return await withCheckedContinuation { continuation in
-      storePendingRequest(continuation, for: requestId)
+      storePendingRequest(continuation, for: requestId, tokenProviderId: tokenProviderId)
       eventManager?.emitBridgeShareTokenRequest(
-        requestId: requestId, bridgeFingerprint: bridgeFingerprint
+        requestId: requestId, bridgeFingerprint: bridgeFingerprint, tokenProviderId: tokenProviderId
       )
       declineOnTimeout(requestId: requestId)
     }
@@ -145,11 +164,14 @@ class OctopusBridgeShareTokenBroker {
 
   private func storePendingRequest(
     _ continuation: CheckedContinuation<String?, Never>,
-    for requestId: String
+    for requestId: String,
+    tokenProviderId: String?
   ) {
     lock.lock()
     defer { lock.unlock() }
-    pendingRequests[requestId] = PendingRequest(continuation: continuation)
+    pendingRequests[requestId] = PendingRequest(
+      continuation: continuation, tokenProviderId: tokenProviderId
+    )
   }
 
   /// Records `task` as `requestId`'s timer, reporting whether the request was still pending.
@@ -179,19 +201,15 @@ class OctopusBridgeShareTokenBroker {
   }
 }
 
-/// Why a prefilled share could not be signed. Raised from the `OctopusPrefilledPost.sign`
+/// Why a prefilled share could not be signed. Raised from the `OctopusPrefilledPost` signing
 /// closure, which the native SDK reports as a failed publish — the editor stays open with an
-/// alert rather than sending an unusable token.
+/// alert. A declined signature is not one of these: it sends the post unsigned instead.
 enum BridgeShareSignError: Error, LocalizedError {
-  /// JS declined to sign (returned `null`, threw, or never answered within the timeout).
-  case notSigned
   /// The bridge was torn down while the native SDK was asking it for a signature.
   case brokerDeallocated
 
   var errorDescription: String? {
     switch self {
-    case .notSigned:
-      return "The bridge share token provider did not return a token for this post."
     case .brokerDeallocated:
       return "The Octopus bridge was torn down before the share could be signed."
     }

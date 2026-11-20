@@ -1,4 +1,4 @@
-[**@octopus-community/react-native v1.15.3**](../README.md)
+[**@octopus-community/react-native v1.16.0**](../README.md)
 
 ---
 
@@ -17,7 +17,7 @@ Note the naming asymmetry with the native SDKs: Android names this id `userId`, 
 
 ## See
 
-- [fetchCommunityData](../functions/fetchCommunityData.md) – one-shot refresh.
+- [fetchCommunityData](../functions/fetchCommunityData.md) – one-shot lookup.
 - [startObservingCommunityData](../functions/startObservingCommunityData.md) / [addCommunityDataListener](../functions/addCommunityDataListener.md) – reactive updates.
 
 ## Properties
@@ -26,7 +26,8 @@ Note the naming asymmetry with the native SDKs: Android names this id `userId`, 
 
 > **gamification**: [`OctopusGamification`](OctopusGamification.md) \| `null`
 
-The user's gamification standing, or `null` when gamification is disabled.
+The user's gamification standing, or `null` when gamification is disabled
+or the profile is tagged as an admin.
 
 ---
 

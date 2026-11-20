@@ -56,6 +56,7 @@ export const ICON_SLOT_PATHS: readonly string[] = [
   'content.reaction.rage',
   'content.delete',
   'content.report',
+  'content.translation',
   'gamification.badge',
   'gamification.info',
   'gamification.rulesHeader',

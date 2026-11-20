@@ -12,6 +12,17 @@ import org.robolectric.annotation.GraphicsMode
 @Config(manifest = Config.NONE, sdk = [34])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ProfilePictureInputTest {
+  private companion object {
+    val REJECTION_REASONS = setOf(
+      "Image processing failed",
+      "Invalid remote URL",
+      "Invalid local URI",
+      "Missing or unreadable local image",
+      "Unreadable drawable or asset",
+      "Invalid or undecodable base64 image",
+    )
+  }
+
   private val png = fixture("avatar.png")
   private fun fixture(name: String): ByteArray = requireNotNull(
     javaClass.getResourceAsStream("/profile-picture-local/$name")
@@ -59,6 +70,10 @@ class ProfilePictureInputTest {
         }
       } catch (error: ProfilePictureLoadException) {
         assertEquals("unexpected rejection: $id", "error", outcome)
+        // The message reaches JS and the reason reaches logcat: both are fixed strings, so a
+        // host's file path, URL or base64 payload never leaks through a rejection.
+        assertEquals(id, "Failed to load profile picture", error.message)
+        assertTrue("$id: unexpected reason ${error.reason}", error.reason in REJECTION_REASONS)
       }
     }
     assertEquals(56, rows.size)

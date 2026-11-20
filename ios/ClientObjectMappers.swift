@@ -12,7 +12,18 @@ enum ClientObjectMappers {
 
   /// Decodes the JS `ClientPost` object into the native model.
   ///
-  /// - Throws: `ClientObjectDecodingError` when a required field is missing, so the caller can
+  /// The deprecated single `attachment` becomes the only element of `medias`, as the native
+  /// deprecated initializer does; the two together are refused, since the native SDK has no
+  /// initializer taking both. More than the native maximum is not counted here: the native SDK
+  /// refuses it with a `ClientPostError.validation`.
+  ///
+  /// The button label arrives as the flat fields of `decodeLocalizedText`: the deprecated
+  /// `viewObjectButtonText` alone is an auto-translated label, as the native deprecated
+  /// initializers make it.
+  ///
+  /// - Throws: `OctopusLocalizedText.ValidationError` when the per-language button label is
+  ///   invalid, which the caller rejects with its own code (`bridgeRejection`).
+  ///   `ClientObjectDecodingError` when a required field is missing, so the caller can
   ///   reject with `INVALID_ARGS` rather than letting the native SDK report a content error
   ///   for what is really a wiring mistake.
   static func decodeClientPost(_ map: [String: Any]) throws -> ClientPost {
@@ -25,14 +36,42 @@ enum ClientObjectMappers {
     guard let text = map["text"] as? String, !isBlank(text) else {
       throw ClientObjectDecodingError.missingField("text")
     }
+    let attachment = try (map["attachment"] as? [String: Any]).map {
+      try decodeAttachment($0, field: "attachment")
+    }
+    let medias = try decodeMedias(map["medias"])
+    if attachment != nil && !medias.isEmpty {
+      throw ClientObjectDecodingError.invalidAttachment(
+        "set medias only: attachment is deprecated and cannot be combined with medias")
+    }
+    let viewObjectButton = try decodeLocalizedText(
+      text: map["viewObjectButtonText"] as? String,
+      language: map["viewObjectButtonLanguage"] as? String,
+      texts: map["viewObjectButtonTexts"]
+    )
     return ClientPost(
       clientObjectId: objectId,
       groupId: map["groupId"] as? String,
       text: text,
       catchPhrase: map["catchPhrase"] as? String,
-      attachment: try (map["attachment"] as? [String: Any]).map { try decodeAttachment($0) },
-      viewClientObjectButtonText: map["viewObjectButtonText"] as? String
+      medias: medias.isEmpty ? (attachment.map { [$0] } ?? []) : medias,
+      viewClientObjectButton: viewObjectButton
     )
+  }
+
+  /// Decodes the JS `medias` array, each entry with `decodeAttachment`'s fail-fast rule.
+  private static func decodeMedias(_ value: Any?) throws -> [ClientPost.Attachment] {
+    guard let value, !(value is NSNull) else { return [] }
+    guard let entries = value as? [Any] else {
+      throw ClientObjectDecodingError.invalidAttachment("medias must be an array of attachments")
+    }
+    return try entries.enumerated().map { index, entry in
+      guard let map = entry as? [String: Any] else {
+        throw ClientObjectDecodingError.invalidAttachment(
+          "medias[\(index)] must be an attachment object")
+      }
+      return try decodeAttachment(map, field: "medias[\(index)]")
+    }
   }
 
   /// Maps the JS attachment discriminator onto the native `ClientPost.Attachment`.
@@ -48,8 +87,11 @@ enum ClientObjectMappers {
   /// fix it, whereas this post is created once and never rewritten — a dropped image here is
   /// permanent. Android throws on the same three conditions.
   ///
+  /// - Parameter field: Names the attachment in error messages: `attachment` or `medias[<index>]`.
   /// - Throws: `ClientObjectDecodingError.invalidAttachment`.
-  private static func decodeAttachment(_ map: [String: Any]) throws -> ClientPost.Attachment {
+  private static func decodeAttachment(
+    _ map: [String: Any], field: String
+  ) throws -> ClientPost.Attachment {
     switch map["type"] as? String {
     case "remoteImage":
       guard let urlString = map["url"] as? String,
@@ -57,17 +99,17 @@ enum ClientObjectMappers {
             let url = URL(string: urlString)
       else {
         throw ClientObjectDecodingError.invalidAttachment(
-          "attachment.url is required and must be a non-empty URL")
+          "\(field).url is required and must be a non-empty URL")
       }
       return .distantImage(url)
     case "localImage":
       guard let uri = map["uri"] as? String, !isBlank(uri) else {
         throw ClientObjectDecodingError.invalidAttachment(
-          "attachment.uri is required and must be non-empty")
+          "\(field).uri is required and must be non-empty")
       }
       guard let data = localImageData(uri) else {
         throw ClientObjectDecodingError.invalidAttachment(
-          "attachment.uri could not be resolved: \(uri)")
+          "\(field).uri could not be resolved: \(uri)")
       }
       return .localImage(data)
     default:
@@ -75,7 +117,7 @@ enum ClientObjectMappers {
       // reads these files as text with a deliberately small comment stripper.
       let type = map["type"] as? String ?? "none"
       throw ClientObjectDecodingError.invalidAttachment(
-        "attachment.type must be remoteImage or localImage, got: \(type)")
+        "\(field).type must be remoteImage or localImage, got: \(type)")
     }
   }
 
@@ -140,6 +182,91 @@ enum ClientObjectMappers {
     case .unknown(let value): return value.isEmpty ? "unknown" : value
     @unknown default: return "unknown"
     }
+  }
+}
+
+extension ClientObjectMappers {
+  /// Builds the native `OctopusLocalizedText` from the flat wire fields the JS
+  /// `localizedTextToWire` sends (`src/internals/localizedText.ts`): per language as soon as
+  /// `language` or `texts` is set, else `text` auto-translated, else `nil`.
+  ///
+  /// Each language tag becomes a locale through `languageTagLocale` — an underscore read as a
+  /// hyphen, then `Locale(identifier:)`, as the Android bridge does with `Locale.forLanguageTag`;
+  /// a hyphenated tag keeps its script (`zh-Hant-TW`) — and the native
+  /// `OctopusLocalizedText.perLanguage` does the validation, so the rules, and the codes the
+  /// caller rejects with, are the native SDK's. Two tags giving the same locale are reported here,
+  /// as Android does, rather than trapping in a dictionary built from duplicate keys: as
+  /// `.emptyLanguage` when that locale has no language (`und` and `UND`), the reason the native SDK
+  /// gives for each of those tags, else as the native `.duplicateLanguage`.
+  ///
+  /// - Throws: `OctopusLocalizedText.ValidationError` when the per-language text is invalid.
+  static func decodeLocalizedText(text: String?, language: String?, texts: Any?) throws
+    -> OctopusLocalizedText? {
+    let textsByTag = texts as? [String: Any]
+    guard language != nil || textsByTag != nil else { return text.map { .autoTranslated($0) } }
+    var byLocale: [Locale: String] = [:]
+    // Sorted so that the duplicate reported does not depend on the order of the dictionary.
+    for (tag, value) in (textsByTag ?? [:]).sorted(by: { $0.key < $1.key }) {
+      guard let label = value as? String else { continue }
+      let locale = languageTagLocale(tag)
+      guard byLocale.updateValue(label, forKey: locale) == nil else {
+        // Tags without a language are each refused by the native SDK as `.emptyLanguage`, so
+        // their collision is not a duplicate.
+        guard hasLanguage(locale) else {
+          throw OctopusLocalizedText.ValidationError(kind: .emptyLanguage)
+        }
+        // The code the native SDK sends for this locale, asked of the native SDK itself.
+        let code = try OctopusLocalizedText.perLanguage([locale: label], defaultLanguage: locale)
+          .defaultLanguageCode
+        throw OctopusLocalizedText.ValidationError(kind: .duplicateLanguage, languageCode: code)
+      }
+    }
+    return try OctopusLocalizedText.perLanguage(
+      byLocale, defaultLanguage: languageTagLocale(language ?? ""))
+  }
+
+  /// The locale of a language tag as JS gives it. The only conversion both bridges make, the same
+  /// way: `_` becomes `-`, so `pt_BR` and `pt-BR` are one language on both platforms. Everything
+  /// else is the native SDK's to judge.
+  static func languageTagLocale(_ tag: String) -> Locale {
+    Locale(identifier: tag.replacingOccurrences(of: "_", with: "-"))
+  }
+
+  /// Whether the native SDK finds a language in `locale`: a language code read from its
+  /// identifier, other than the undetermined `und` — the same reading as the native
+  /// `OctopusLocalizedText`, whose own helper is not public.
+  static func hasLanguage(_ locale: Locale) -> Bool {
+    let components = Locale.components(fromIdentifier: locale.identifier)
+    guard let language = components[NSLocale.Key.languageCode.rawValue] else { return false }
+    return !language.isEmpty && language.lowercased() != "und"
+  }
+}
+
+extension OctopusLocalizedText.ValidationError {
+  /// Maps to its `LOCALIZED_TEXT_…` code, the same in `ClientPostErrorCode` and
+  /// `NavigateToOctopusCreatePostErrorCode` (`src/types/`). A reason a later native SDK adds
+  /// falls back to `fallbackCode`, the catch-all of the call that rejects.
+  func toBridgeErrorCode(fallbackCode: String) -> String {
+    switch kind {
+    case .emptyTexts: return "LOCALIZED_TEXT_EMPTY_TEXTS"
+    case .blankText: return "LOCALIZED_TEXT_BLANK_TEXT"
+    case .emptyLanguage: return "LOCALIZED_TEXT_EMPTY_LANGUAGE"
+    case .duplicateLanguage: return "LOCALIZED_TEXT_DUPLICATE_LANGUAGE"
+    case .defaultLanguageMissing: return "LOCALIZED_TEXT_DEFAULT_LANGUAGE_MISSING"
+    @unknown default: return fallbackCode
+    }
+  }
+
+  /// The code and the error to reject with. The error's `userInfo.languageCode` reaches JS as
+  /// `error.userInfo.languageCode`, which the JS side copies onto the error as `languageCode`,
+  /// as Android does; its description is `debugDescription`, the only one that names the reason.
+  func bridgeRejection(fallbackCode: String) -> (code: String, error: NSError) {
+    var userInfo: [String: Any] = [NSLocalizedDescriptionKey: debugDescription]
+    if let languageCode { userInfo["languageCode"] = languageCode }
+    return (
+      toBridgeErrorCode(fallbackCode: fallbackCode),
+      NSError(domain: "OctopusLocalizedText.ValidationError", code: 0, userInfo: userInfo)
+    )
   }
 }
 

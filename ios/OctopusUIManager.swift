@@ -373,10 +373,11 @@ class OctopusUIManager {
     // safe area — a device with a home button, a floating iPad window — so on such a device
     // the three states above render 16 pt taller there. Nothing is added above a home
     // indicator, or when the view ends above host chrome.
-    // The `.profile` initial screen mounts `OctopusProfileScreen`, which pins its own bottom
-    // inset to 0 and therefore ignores the store entirely — see `makeHomeScreenView`. The
-    // normalization below still runs (harmlessly) so a host that later remounts on the home
-    // screen finds an already-converged value.
+    // The `.profile` initial screen is mounted with the parameters of the native profile entry
+    // point, which leave the bottom inset at 0 and therefore ignore the store entirely — see
+    // `makeHomeScreenView`. It still receives the native 16 pt screen-edge margin above, like
+    // every initial screen. The normalization below still runs (harmlessly) so a host that
+    // later remounts on the home screen finds an already-converged value.
     let bottomSafeAreaInset = requestedBottomInset ?? Self.embeddedDefaultBottomInset
     let bottomInsetStore: OctopusBottomInsetStore? = {
       guard let container = containerView as? OctopusEmbeddedContainerView,
@@ -489,22 +490,25 @@ class OctopusUIManager {
     navigationMode: OctopusNavigationMode = .automatic,
     navBarLeadingAction: OctopusNavBarLeadingAction? = nil
   ) -> AnyView {
-    // The `profile` initial screen mounts a different native view entirely:
-    // `OctopusProfileScreen`, which iOS ships outside its `OctopusInitialScreen` enum. It has
-    // no `bottomSafeAreaInset` parameter (it pins its own to 0 internally), no main-feed
+    // The `profile` initial screen is mounted exactly as the native profile entry point does:
+    // `OctopusHomeScreen` on its `.profile` initial screen, which is what the deprecated native
+    // `OctopusProfileScreen` builds, and which (like every initial screen) is replaced by the
+    // access denied screen when the user cannot access the community. Only `navigationMode` and
+    // `navBarLeadingAction` are forwarded: no `bottomSafeAreaInset` (it stays 0), no main-feed
     // nav-bar title, and no notification deep-link input — so none of the home-screen wiring
-    // below applies to it, only the theme environment.
+    // below applies to it, only the theme environment. The native 16 pt screen-edge margin
+    // still applies when the window has no bottom safe area, like every initial screen.
     if case let .profile(clientUserId) = initialScreen {
-      // Parity wave — navigation & theme. `OctopusProfileScreen` accepts the same two
-      // parameters as `OctopusHomeScreen` (v1.13.2, `Profile/OctopusProfileScreen.swift`)
-      // and Flutter wires them here too (`octopus_profile_screen.dart:137,173`) — dropping
-      // them silently discarded `navBarLeadingAction` (no leading icon at all on this path,
-      // including the `showBackButton` embedded backfill below) and mis-documented this
-      // path's default: unlike `OctopusHomeScreen`'s `.automatic`, this screen's native
-      // default is `.navigationStack`, so an explicit `.automatic` was silently ignored too.
-      let screen = OctopusProfileScreen(
+      // Parity wave — navigation & theme. Dropping these two silently discarded
+      // `navBarLeadingAction` (no leading icon at all on this path, including the
+      // `showBackButton` embedded backfill below) and mis-documented this path's default:
+      // unlike `OctopusHomeScreen`'s `.automatic`, the profile's native default is
+      // `.navigationStack`, so an explicit `.automatic` was silently ignored too.
+      let profile: OctopusInitialScreen.ProfileScreenInfo =
+        clientUserId.map { .init(clientUserId: $0) } ?? .currentUser
+      let screen = OctopusHomeScreen(
         octopus: octopus,
-        clientUserId: clientUserId,
+        initialScreen: .profile(profile),
         navigationMode: navigationMode,
         navBarLeadingAction: navBarLeadingAction
       )

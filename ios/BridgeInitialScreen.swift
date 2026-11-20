@@ -4,17 +4,16 @@ import OctopusUI
 
 /// Which native view the bridge mounts for a decoded `initialScreen` payload.
 ///
-/// Every case but one is a native `OctopusInitialScreen` handed to `OctopusHomeScreen`. The JS
-/// `profile` screen has **no counterpart in the native iOS enum** — iOS ships a separate
-/// top-level `OctopusProfileScreen` view for it (Android pushes a `ProfileSummary` /
-/// `CurrentUserProfileGraph` destination inside the same NavHost as the other bridge-mode
-/// entries). So the decode result has to be able to say "mount a different view", not just
-/// "which start screen". Same shape as the Flutter bridge's `BridgeInitialScreen`.
+/// Both cases mount `OctopusHomeScreen`. The JS `profile` screen keeps a case of its own because it
+/// mounts `OctopusHomeScreen(initialScreen: .profile(...))` forwarding only `navigationMode` and
+/// `navBarLeadingAction` (see `OctopusUIManager.makeHomeScreenView`). Android pushes a
+/// `ProfileSummary` / `CurrentUserProfileGraph` destination inside the same NavHost as the other
+/// bridge-mode entries. Same shape as the Flutter bridge's `BridgeInitialScreen`.
 enum BridgeInitialScreen {
   /// Mount `OctopusHomeScreen` with this start screen.
   case home(OctopusInitialScreen)
-  /// Mount `OctopusProfileScreen` for this member, or — `nil` — for the connected user's own
-  /// (editable) profile.
+  /// Mount `OctopusHomeScreen` on the profile of this member, or — `nil` — on the connected
+  /// user's own (editable) profile.
   case profile(clientUserId: String?)
 }
 
@@ -62,7 +61,7 @@ func decodeBridgeInitialScreen(_ map: [String: Any]) -> BridgeInitialScreen {
     return .home(.mainFeed)
   case "profile":
     // An absent/blank id means the connected user's own profile —
-    // `OctopusProfileScreen(clientUserId: nil)`.
+    // the native `ProfileScreenInfo.currentUser`.
     return .profile(clientUserId: string("clientUserId"))
   default:
     // Never echo the received type: a direct native caller can put anything there, URLs included.

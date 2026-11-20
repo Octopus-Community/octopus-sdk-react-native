@@ -89,6 +89,12 @@ existed still fails the build with `call to consteval function ... is not a cons
 expression` while compiling `fmt/src/format.cc`, long before any project file is reached.
 Re-running `pod install` is the fix for that specific failure.
 
+The native Octopus SDK is not a pod: `pod install` attaches the `octopus-sdk-swift` Swift
+package to the `OctopusReactNativeSdk` pod target through React Native's `spm_dependency`
+(you will see `[SPM]` lines and a warning about static linking, which is expected), and
+`xcodebuild` resolves it on the first build. It shows up under *Package Dependencies* in the
+`Pods` project, not under `Pods`, and `example/ios/Podfile.lock` does not list it.
+
 `yarn example ios:pod` runs the same step through `bundle exec pod`, the way CI does. It needs
 a Ruby matching the floor in [example/Gemfile](example/Gemfile); where the default Ruby is
 older, bundler fails outright and the plain `pod` above is the way through. Whichever you use,

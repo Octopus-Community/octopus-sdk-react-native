@@ -288,6 +288,47 @@ class OctopusUIViewLifecycleTest {
     }
 
     @Test
+    fun `only the focused retained route handles back while both views stay attached`() {
+        attach()
+        navController.navigate("detail")
+        settleComposition()
+        val other = OctopusViewWrapper(wrapper.context)
+        var otherBackRequests = 0
+        try {
+            manager.setIsVisible(other, false)
+            parent.addView(other, FrameLayout.LayoutParams(480, 320))
+            activityController.get().onBackPressedDispatcher.addCallback(
+                other.composeView.findViewTreeLifecycleOwner()!!,
+                object : OnBackPressedCallback(true) {
+                    override fun handleOnBackPressed() { otherBackRequests += 1 }
+                }
+            )
+            repeat(2) {
+                manager.setIsVisible(wrapper, false)
+                manager.setIsVisible(other, true)
+                assertTrue(wrapper.isAttachedToWindow)
+                assertTrue(other.isAttachedToWindow)
+                activityController.get().onBackPressedDispatcher.onBackPressed()
+                assertEquals("detail", navController.currentDestination?.route)
+                assertEquals(it + 1, otherBackRequests)
+                assertEquals(0, onBackRequested)
+                manager.setIsVisible(other, false)
+                manager.setIsVisible(wrapper, true)
+                settleComposition()
+            }
+            activityController.get().onBackPressedDispatcher.onBackPressed()
+            settleComposition()
+            assertEquals("feed", navController.currentDestination?.route)
+            assertEquals(2, otherBackRequests)
+            assertEquals(1, compositions)
+            assertEquals(0, disposals)
+        } finally {
+            manager.onDropViewInstance(other)
+            parent.removeView(other)
+        }
+    }
+
+    @Test
     fun `hidden attached root stops root back forwarding and remains hidden across host resume`() {
         attach()
         settleComposition()

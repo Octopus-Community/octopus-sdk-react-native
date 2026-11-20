@@ -1,7 +1,8 @@
 /**
- * Per-content-type options governing what members may add when creating content.
+ * Per-content-type options governing content creation and post tap navigation.
  *
- * Every flag defaults to `true` when its sub-object (or the whole options object) is omitted.
+ * Creation flags default to `true`; post tap flags default to `false`, including when
+ * their sub-object (or the whole options object) is omitted.
  * Mirrors the native `CommunityConfig.ContentOptions` config type — see
  * {@link debugOverrideContentOptions}. This is a **debug-only** testing hatch: it does not exist
  * on a real production community config, which is set server-side.
@@ -18,6 +19,16 @@ export interface ContentOptions {
      * validation still applies whenever text is present.
      */
     textRequired?: boolean;
+    /**
+     * Whether tapping a feed image opens the post when its card can open the detail.
+     * Defaults to `false`. Otherwise, and in post detail, images still open fullscreen.
+     */
+    imageTapOpensPost?: boolean;
+    /**
+     * Whether tapping a post's group name opens that group in feeds and post detail.
+     * Defaults to `false`. Members without access follow the native group access-denied flow.
+     */
+    groupNameTapOpensGroup?: boolean;
   };
   comment?: {
     /** Whether a comment may include a picture. Defaults to `true`. */

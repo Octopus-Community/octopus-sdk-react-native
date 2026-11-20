@@ -44,6 +44,9 @@ export interface OctopusUIViewProps {
    * when its tab is inactive or a host screen covers it, even if it remains
    * mounted with `opacity: 0`. Android pauses the view's lifecycle while
    * preserving its native navigation stack; updates apply without remounting.
+   * With React Navigation, pass `isVisible={useIsFocused()}` from the route
+   * component, including when `detachInactiveScreens={false}`. The SDK cannot
+   * infer route focus from native attachment or app foreground state.
    *
    * This prop does not hide the view or change touch handling. The host must
    * manage those separately. It is a no-op on iOS, which has no system Back.
@@ -100,15 +103,16 @@ export interface OctopusUIViewProps {
    * Ignored (with a warning) when {@link notification} is also provided — the
    * deep link wins, exactly as in `openUI()`.
    *
-   * Unlike `openUI()`, a prop cannot reject a promise: a `createPost` screen
-   * whose `prefilledPost` fails native validation opens a **blank** editor and
-   * logs natively, instead of surfacing a
-   * {@link NavigateToOctopusCreatePostError}. Use
-   * {@link navigateToOctopusCreatePost} when you need that error back.
+   * When the native SDK refuses a `createPost` prefill, the view opens a
+   * **blank** editor and logs a native warning. Use
+   * {@link navigateToOctopusCreatePost} to receive a
+   * {@link NavigateToOctopusCreatePostError} for a native refusal.
    *
    * @throws A plain `Error` synchronously, while rendering, when the screen is
    *   structurally invalid (blank `postId` / `groupId`, or an `activity` member
-   *   violating the exactly-one-id contract).
+   *   violating the exactly-one-id contract), or for a `createPost`
+   *   `prefilledPost` that sets both `imageUri` and `imageUris`, or both
+   *   `cta.label` and `cta.localizedLabel`.
    *
    * @example
    * ```tsx

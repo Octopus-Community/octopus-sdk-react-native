@@ -2,7 +2,7 @@ import { OctopusReactNativeSdk } from './internals/nativeModule';
 import { sdkVersion } from './internals/sdkVersion';
 import type { UserProfileField } from './types/userProfileField';
 import type { ImageResolvedAssetSource } from 'react-native';
-import { Appearance } from 'react-native';
+import { Appearance, Platform } from 'react-native';
 import { colorSchemeManager } from './internals/colorSchemeManager';
 import { parseFontConfig, type ParsedFontConfig } from './internals/fontParser';
 import { normalizeThemeColors } from './internals/colorValidator';
@@ -15,8 +15,6 @@ import {
   attachStateChannels,
   publishIsInitialised,
 } from './internals/stateChannels';
-import { log } from './internals/logger';
-import { LogLevel } from './enums/LogLevel.enum';
 import type { ApiServer } from './types/apiServer';
 import { setIsInitialised } from './internals/initialisationState';
 
@@ -163,7 +161,8 @@ export interface OctopusFonts {
    * which is smaller than the title size used with no font override. The native
    * top-app-bar title has no typography role of its own and the style we pass
    * replaces the ambient one rather than merging with it, so a complete style has
-   * to be supplied. Use `textStyles.body1.fontSize` to control the resulting size.
+   * to be supplied. Use {@link navBarTitle} to override the title independently, or
+   * `textStyles.body1.fontSize` to control that base size.
    *
    * Omit it to keep each native SDK's own default font.
    */
@@ -188,6 +187,20 @@ export interface OctopusFonts {
    * Omit it to keep each native SDK's own default weight.
    */
   fontWeight?: number;
+  /**
+   * Android only. Overrides the text title font of every Octopus navigation bar.
+   * On iOS the title follows your app's navigation bar appearance; this is ignored.
+   *
+   * Each omitted property keeps the bar's current style, including any global
+   * fontFamily / fontWeight override. Logos and back / close buttons are unchanged.
+   * The main-feed title requires native Android SDK 1.16 or later.
+   */
+  navBarTitle?: {
+    /** Android res/font resource name, without extension, as for fontFamily. */
+    fontFamily?: string;
+    /** Positive size in sp. Invalid or non-positive values are ignored. */
+    fontSize?: OctopusFontSize;
+  };
   /**
    * Unified font configuration for different text types.
    */
@@ -320,9 +333,10 @@ export interface OctopusUIOptions {
    * below the UI, a floating iPad window), the native iOS SDK adds 16 pt on top of whatever
    * this option resolves to, `0` and an absent value included, so the profile bubble and
    * create-post button do not touch the screen edge. Nothing is added above a home indicator or
-   * above host bottom chrome. This covers every initial screen except
-   * `initialScreen: { type: 'profile' }`, which mounts a separate native profile screen that
-   * gets no margin and ignores this option on iOS.
+   * above host bottom chrome. This margin applies to every initial screen, including
+   * `initialScreen: { type: 'profile' }`. On iOS the profile initial screen ignores the
+   * configured inset (it stays `0`), but still receives this native 16 pt screen-edge margin
+   * when the window has no bottom safe area.
    *
    * **iOS caveat — hardware keyboards, embedded `<OctopusUIView>`, value above `0`.** While a
    * keyboard is up, the native SDK stops reserving the band once the keyboard height it is
@@ -418,25 +432,22 @@ export interface InitializeParams {
  * ```
  */
 export function initialize(params: InitializeParams): Promise<void> {
-  // A text title and a theme logo are alternatives on the main feed. iOS shows
-  // the text, but Android's home screen gives the theme logo precedence and
-  // hides the text title. Warn so the divergence is caught at dev time.
-  if (
-    params.topAppBar?.title?.type === 'text' &&
-    params.theme?.logo?.image != null
-  ) {
-    log(
-      LogLevel.WARN,
-      "topAppBar.title is 'text' but a theme.logo is set: Android shows the logo " +
-        'and hides the text title on the main feed (iOS shows the text). Use ' +
-        'either a logo or a text title for consistent behavior.'
-    );
-  }
-
   // Rewrite every color to the one hex shape both bridges parse, and warn for the
   // unparseable ones: each bridge falls back to the native default on its own and has
   // no way to report that back to JS.
   const themeWithCanonicalColors = normalizeThemeColors(params.theme);
+
+  // iOS treats the presence of a fonts map as a request to build a theme, even
+  // when parsedConfig is null. Remove the Android-only option from the raw map
+  // too, and omit the map entirely if no shared font options remain.
+  let platformFonts = themeWithCanonicalColors?.fonts;
+  if (platformFonts && Platform.OS !== 'android') {
+    platformFonts = { ...platformFonts };
+    delete platformFonts.navBarTitle;
+    if (Object.keys(platformFonts).length === 0) {
+      platformFonts = undefined;
+    }
+  }
 
   // Automatically detect the current color scheme and add it to the params
   const colorScheme = Appearance.getColorScheme();
@@ -456,10 +467,10 @@ export function initialize(params: InitializeParams): Promise<void> {
             image: withValidScale(themeWithCanonicalColors.logo.image),
           },
         }),
-        fonts: themeWithCanonicalColors.fonts
+        fonts: platformFonts
           ? {
-              ...themeWithCanonicalColors.fonts,
-              parsedConfig: parseFontConfig(themeWithCanonicalColors.fonts),
+              ...platformFonts,
+              parsedConfig: parseFontConfig(platformFonts),
             }
           : undefined,
         ...(flatIcons && {

@@ -24,17 +24,18 @@ struct DebugOverrideMappers {
     }
   }
 
-  /// Reads the flat `postEnablePictures` / `postEnablePolls` / `postTextRequired` / `commentEnablePictures` /
-  /// `replyEnablePictures` keys the JS wrapper always sends (see `debugOverrideContentOptions.ts`)
-  /// — not nested `post` / `comment` / `reply` sub-dictionaries. Each key independently defaults
-  /// to `true` (the native default) when absent, matching the JS wrapper's own per-field `?? true`.
+  /// Reads the flat keys the JS wrapper always sends (see `debugOverrideContentOptions.ts`),
+  /// not nested `post` / `comment` / `reply` sub-dictionaries. Creation flags default to `true`;
+  /// `postImageTapOpensPost` and `postGroupNameTapOpensGroup` default to `false`.
   static func toContentOptions(_ dict: NSDictionary?) -> ContentOptions? {
     guard let dict = dict as? [String: Any] else { return nil }
     return ContentOptions(
       post: ContentOptions.PostOptions(
         enablePictures: dict["postEnablePictures"] as? Bool ?? true,
         enablePolls: dict["postEnablePolls"] as? Bool ?? true,
-        textRequired: dict["postTextRequired"] as? Bool ?? true
+        textRequired: dict["postTextRequired"] as? Bool ?? true,
+        imageTapOpensPost: dict["postImageTapOpensPost"] as? Bool ?? false,
+        groupNameTapOpensGroup: dict["postGroupNameTapOpensGroup"] as? Bool ?? false
       ),
       comment: ContentOptions.CommentOptions(
         enablePictures: dict["commentEnablePictures"] as? Bool ?? true
